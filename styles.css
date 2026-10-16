@@ -1,0 +1,184 @@
+  :root{
+    --bg:#12111a;
+    --opponent-zone:#241c38;
+    --opponent-accent:#7c5cff;
+    --opponent-edge:#4c3b8c;
+    --player-zone:#2a1c11;
+    --player-accent:#f2a33d;
+    --player-edge:#d68522;
+    --divider:#e8d9b5;
+    --ink:#f5f1ff;
+    --ink-dim:rgba(245,241,255,0.72);
+    --card-bg:rgba(10,9,16,0.64);
+    --card-border:rgba(255,255,255,0.14);
+  }
+  /* This page commits to a single dark tabletop look on purpose - a light
+     variant of a felt-and-wood game tray would fight the dice's own
+     lighting, so background/colors are painted explicitly and there is no
+     light-mode branch. */
+  *{box-sizing:border-box;}
+  html,body{height:100%; touch-action:none; overscroll-behavior:none;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'Karla', system-ui, -apple-system, sans-serif;
+    overflow:hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #scene{
+    position:fixed;
+    inset:0;
+    display:block;
+    touch-action:none;
+    cursor:grab;
+  }
+  #scene.dragging{ cursor:grabbing; }
+  .hud{
+    position:fixed;
+    left:0;
+    right:0;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:2px;
+    padding: 16px;
+    pointer-events:none;
+    z-index:2;
+  }
+  .hud.top{ top:0; padding-top: calc(16px + env(safe-area-inset-top,0px)); }
+  .hud.bottom{ bottom:0; padding-bottom: calc(16px + env(safe-area-inset-bottom,0px)); }
+  .hud .label{
+    font-size:13px;
+    font-weight:700;
+    letter-spacing:0.14em;
+    text-transform:uppercase;
+    color:var(--ink-dim);
+  }
+  .hearts{
+    display:flex;
+    gap:8px;
+  }
+  .heart{
+    position:relative;
+    width:30px;
+    height:30px;
+  }
+  .heart svg{
+    position:absolute;
+    inset:0;
+    width:100%;
+    height:100%;
+    display:block;
+  }
+  .heart-full{
+    transform-origin:50% 50%;
+  }
+  .heart-full.empty{ opacity:0; }
+  .heart-full.losing{
+    animation:heart-pop 650ms cubic-bezier(.36,.07,.19,.97) forwards;
+  }
+  @keyframes heart-pop{
+    0%{ opacity:1; transform:scale(1) rotate(0deg); }
+    22%{ opacity:1; transform:scale(1.3) rotate(-8deg); }
+    45%{ opacity:1; transform:scale(0.82) rotate(6deg); }
+    70%{ opacity:0.6; transform:scale(1.05) rotate(-3deg); }
+    100%{ opacity:0; transform:scale(0.55) rotate(0deg); }
+  }
+  @media (prefers-reduced-motion: reduce){
+    .heart-full.losing{ animation:none; opacity:0; }
+  }
+
+  /* ---------- Main menu ---------- */
+  .menu-overlay{
+    position:fixed;
+    inset:0;
+    z-index:5;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:var(--bg);
+  }
+  .menu-overlay[hidden]{ display:none; }
+  .menu-card{
+    text-align:center;
+    padding:32px;
+  }
+  .menu-title{
+    font-family:'Bungee', system-ui, sans-serif;
+    font-size:clamp(32px, 10vw, 52px);
+    margin:0 0 8px;
+    color:var(--ink);
+  }
+  .menu-subtitle{
+    margin:0 0 28px;
+    color:var(--ink-dim);
+    font-size:14px;
+  }
+  .menu-btn{
+    font-family:'Bungee', system-ui, sans-serif;
+    font-size:18px;
+    letter-spacing:0.03em;
+    color:var(--bg);
+    background:var(--player-accent);
+    border:none;
+    border-radius:14px;
+    padding:16px 36px;
+    cursor:pointer;
+    box-shadow:0 6px 0 var(--player-edge);
+    transition:transform 120ms ease, box-shadow 120ms ease;
+  }
+  .menu-btn:active{
+    transform:translateY(4px);
+    box-shadow:0 2px 0 var(--player-edge);
+  }
+
+  #result{
+    position:fixed;
+    left:50%;
+    top:50%;
+    transform:translate(-50%,-50%);
+    z-index:3;
+    max-width: calc(100vw - 32px);
+    background:var(--card-bg);
+    backdrop-filter: blur(6px);
+    border:1px solid var(--card-border);
+    border-radius:18px;
+    padding:14px 26px;
+    text-align:center;
+    pointer-events:none;
+    opacity:0;
+    transition:opacity 220ms ease;
+  }
+  @media (prefers-reduced-motion: reduce){
+    #result{ transition:none; }
+  }
+  /* Deliberately still pointer-events:none while showing. The card sits dead
+     centre of the screen, which is exactly where the player's die can come to
+     rest against the divider - on a short viewport (a phone held sideways) the
+     card lands right on top of it. If the card ate pointer events, that tap
+     would dismiss the card instead of picking up the die, so the player would
+     have to tap twice. Dismissal is handled by a board tap instead (see the
+     pointerdown listener); the one case where the card itself must be
+     clickable is the match-over card, where there's nothing underneath it to
+     interact with anyway. */
+  #result.show{ opacity:1; }
+  #result.show.game-over{ pointer-events:auto; cursor:pointer; }
+  #result .headline{
+    font-family:'Bungee', system-ui, sans-serif;
+    font-size:22px;
+    margin:0 0 4px;
+  }
+  #result .detail{
+    margin:0;
+    font-size:13px;
+    color:var(--ink-dim);
+    font-variant-numeric: tabular-nums;
+  }
+  #result.game-over .headline{
+    font-size:28px;
+  }
+  #result.game-over .detail{
+    font-size:14px;
+  }
+  .hud[hidden]{ display:none; }

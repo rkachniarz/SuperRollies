@@ -1,0 +1,15 @@
+{
+  "name": "super-rollies",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A d20 roll-off game. Grab your die, throw it, roll higher than your opponent.",
+  "type": "module",
+  "scripts": {
+    "dev": "serve . --listen 8000",
+    "build": "node tools/build-artifact.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "serve": "^14.2.4"
+  }
+}

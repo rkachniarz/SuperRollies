@@ -1,0 +1,11 @@
+node_modules/
+
+# Built single-file copy for publishing as a Claude artifact - derived from
+# index.html + src/, so there's no reason to track it.
+dist/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
