@@ -12,6 +12,8 @@ import {
 export function createThrowControls({
   canvas, camera, die, clampToTray,
   canGrab, onGrab, onFumble, onThrow, onBoardTap,
+  // The seeded source for the random part of a throw's spin (see rng.js).
+  random,
 }) {
   const raycaster = new THREE.Raycaster();
   const pointerNDC = new THREE.Vector2();
@@ -120,9 +122,9 @@ export function createThrowControls({
     const vy = Math.min(speed * LIFT_FACTOR, MAX_LIFT_SPEED);
 
     onThrow(release([vx, vy, vz], [
-      -vz * SPIN_POWER + (Math.random() - 0.5) * 6,
-      (Math.random() - 0.5) * 6,
-      vx * SPIN_POWER + (Math.random() - 0.5) * 6,
+      -vz * SPIN_POWER + (random() - 0.5) * 6,
+      (random() - 0.5) * 6,
+      vx * SPIN_POWER + (random() - 0.5) * 6,
     ]));
   }
 

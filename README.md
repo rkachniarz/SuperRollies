@@ -46,9 +46,18 @@ src/
   roll.js     plays a throw on screen: fixed-step physics, smooth drawing
   replay.js   replays a recorded throw to rest; reads the faces
   input.js    grab / drag / release, and telling a throw from a fumble
-  hud.js      hearts, the message card, the menu
-  game.js     match flow: Quick Game rounds and hearts, and Zen
+  hud.js      the match state (hearts), the message card, the menu
+  game.js     match flow: starts a match, throws, hands each round's dice to
+              the rules, and Zen
+  rng.js      the seeded random number generator every outcome draws from
+  rules/      the rules, as pure functions with no DOM or physics:
+    engine.js         match config, and what a round's dice mean for the match
+    dice-sets.js      what each side throws, and how it's scored
+    spice.js          per-match rule changes (only Vanilla so far)
+    win-conditions.js how a match is won (Hearts by default)
+    types.js          the JSDoc types they share
   main.js     wires it together and runs the frame loop
+test/         unit tests for the RNG and the rules (npm test)
 tools/
   build-artifact.mjs   bundles everything into one file (see below)
   phase0/              browser checks and physics checks (see below)
@@ -64,6 +73,10 @@ page. That exists only for publishing to claude.ai as an artifact, which takes a
 single file. Nothing about running or deploying the site needs it.
 
 ## Checks
+
+```bash
+npm test         # unit tests: RNG and rules engine (node:test, no server needed)
+```
 
 With `npm run dev` running:
 
@@ -99,3 +112,6 @@ at the point it matters:
   long-lived world.
 - **Camera near/far is deliberately tight**, to keep depth-buffer precision where
   the etched numbers need it.
+- **No `Math.random()` in anything that affects a result.** Every match has a
+  seed, and the opponent's throws, the spin on yours, and (later) Spice events
+  each draw from their own stream derived from it. Same seed, same match.

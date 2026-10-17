@@ -183,25 +183,26 @@ export function createDie({ theme, spawnZ, scene }) {
 
 /**
  * A release from a random spot in a die's own half of the tray - the
- * opponent's throw.
+ * opponent's throw. `rand` is the seeded stream to draw from (see rng.js).
+ * @param {() => number} rand
  * @returns {Omit<import('./physics.js').DieRelease, 'id' | 'type'>}
  */
-export function randomThrow(zoneZ, zoneSign, { trayHalfWidth, trayDepth }) {
-  const x = (Math.random() - 0.5) * (trayHalfWidth * 1.1);
-  const z = zoneZ + zoneSign * (Math.random() - 0.5) * (trayDepth * 0.5);
+export function randomThrow(zoneZ, zoneSign, { trayHalfWidth, trayDepth }, rand) {
+  const x = (rand() - 0.5) * (trayHalfWidth * 1.1);
+  const z = zoneZ + zoneSign * (rand() - 0.5) * (trayDepth * 0.5);
   const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(
-    Math.random() * Math.PI,
-    Math.random() * Math.PI,
-    Math.random() * Math.PI
+    rand() * Math.PI,
+    rand() * Math.PI,
+    rand() * Math.PI
   ));
   return {
-    p: [x, DIE_RADIUS + 1.4 + Math.random() * 0.6, z],
+    p: [x, DIE_RADIUS + 1.4 + rand() * 0.6, z],
     q: q.toArray(),
-    v: [(Math.random() - 0.5) * 5, 0, (Math.random() - 0.5) * 5],
+    v: [(rand() - 0.5) * 5, 0, (rand() - 0.5) * 5],
     w: [
-      (Math.random() - 0.5) * 18,
-      (Math.random() - 0.5) * 18,
-      (Math.random() - 0.5) * 18,
+      (rand() - 0.5) * 18,
+      (rand() - 0.5) * 18,
+      (rand() - 0.5) * 18,
     ],
   };
 }

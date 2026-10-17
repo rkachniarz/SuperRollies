@@ -11,6 +11,8 @@ of scope.
 AI opponent that throws at random, and rules hard-coded in `game.js` `runRound()`
 (higher roll wins, ties cost nothing, 3 hearts). No multiplayer code exists.
 Since Phase 0 (2026-10-17): physics on Rapier, and a Zen mode (D15).
+Since Phase 1 (2026-10-17): a seeded RNG, and the rules in a pure engine
+(`src/rules/`) with Vanilla, Hearts and The Classic as its only entries.
 
 ---
 
@@ -61,6 +63,7 @@ Some Spice works with any dice; some only makes sense with particular dice
 | D13 | 2026-10-16 | The rules engine gets **unit tests with `node:test`** (no new dependency). The verification checklist becomes a **Playwright script**. Spice and dice-set definitions use **`// @ts-check` with JSDoc types** for editor checking without a build step. |
 | D14 | 2026-10-17 | **Browser checks run in Chromium only until after the MVP.** The checks run after every change, and three engines make each run take far longer. Firefox and WebKit (Safari, and every browser on iOS) compatibility is a post-MVP step (see §7, *Post-MVP*). For Check D (0.7) this means Node, desktop Chromium and Android Chrome for now. Cross-engine determinism, which an iPhone vs. desktop multiplayer match depends on, is verified in that post-MVP step. |
 | D15 | 2026-10-17 | **Zen mode** added to the main menu during Phase 0, as a way to test physics without a match getting in the way: one die, no opponent, no divider, no score; each throw's result is shown. A **back-to-menu button** (top-left) is shown in Zen and Quick Game; leaving Quick Game abandons the match. Its placement is checked to be clear of every spot a die can rest (the principle in 4.6a). |
+| D16 | 2026-10-17 | **Rules engine shape (Phase 1).** The match config is plain data naming its dice set and Spice **by id**, so it can be sent to the other player as-is. Each random consumer draws from **its own stream derived from the match seed** (`deriveSeed`: `rules`, `opponent`, `throw`), so extra draws in one never shift another; only `rules` is shared in multiplayer. The **win condition owns the default damage** of a round, and `score` / `applyDamage` hooks **transform the default** they are given rather than computing from scratch. A win condition may end a match as a **draw** (both sides out together, e.g. Hearts under Mutual Destruction). `afterSettle` is part of the Spice type but is physical, so the game calls it, not the engine; it is wired up with the first Spice that needs it (Phase 5). |
 
 ---
 
@@ -394,25 +397,52 @@ and D); both need `npm run dev` running.
 
 Behaviour is unchanged: 1d20 vs. AI plays exactly as it does today.
 
-- [ ] **1.0** Test tooling: `npm test` runs `node:test` suites; Playwright
+- [x] **1.0** Test tooling: `npm test` runs `node:test` suites; Playwright
   added as a dev dependency, with the current five checks from `CLAUDE.md`
-  scripted (R5.5, R5.6).
-- [ ] **1.1** Seeded RNG module; route all game randomness through it (R5.2).
-- [ ] **1.2** Match config object: `{ seed, diceSet, spice }`.
-- [ ] **1.3** Pure rules engine, extracted from `game.js` `runRound()`: takes
+  scripted (R5.5, R5.6). *Playwright and the scripted checks came with
+  Phase 0 (`npm run verify`); `npm test` runs `test/**/*.test.js`.*
+- [x] **1.1** Seeded RNG module; route all game randomness through it (R5.2).
+  *`src/rng.js` (mulberry32, the generator the Phase 0 tools already used,
+  which now import it from there). No `Math.random()` left in `src/`: the
+  opponent's throw and the player's spin jitter each have a stream derived
+  from the match seed (D16). The seed comes from `crypto.getRandomValues`;
+  `game.start(mode, seed)` takes one explicitly, for tests.*
+- [x] **1.2** Match config object: `{ seed, diceSet, spice }`. *`matchConfig()`
+  in `src/rules/engine.js`; ids, not objects (D16).*
+- [x] **1.3** Pure rules engine, extracted from `game.js` `runRound()`: takes
   the config, the match state and both sides' face values; returns the round
-  outcome and the new match state.
-- [ ] **1.4** Spice hook interface (R3.1) with Vanilla as the only
-  implementation.
-- [ ] **1.5** `winCondition` hook with Hearts (3) as the default; `hud.js`
-  renders from it instead of assuming hearts (R3.4).
-- [ ] **1.6** Dice-set definition format (die types, count, scorer, scale, tray
-  size), with The Classic (1d20) as the only entry.
-- [ ] **1.6a** `// @ts-check` and JSDoc types for the match config, dice-set
-  and Spice definitions, and the rules engine.
-- [ ] **1.6b** Unit tests for the rules engine, Hearts and Vanilla.
-- [ ] **1.7** Verification checklist passes; artifact republished.
-- [ ] **1.8** Docs refresh.
+  outcome and the new match state. *`startMatch`, `beginRound`, `playRound`.
+  The rules stream's state lives in the match state, so the engine stays
+  pure even when a Spice draws random numbers.*
+- [x] **1.4** Spice hook interface (R3.1) with Vanilla as the only
+  implementation. *`src/rules/spice.js`; `setup`, `beforeThrow`, `score`,
+  `compare` and `applyDamage` are called by the engine and covered by a test
+  Spice; `afterSettle` is typed only (D16).*
+- [x] **1.5** `winCondition` hook with Hearts (3) as the default; `hud.js`
+  renders from it instead of assuming hearts (R3.4). *A win condition has
+  `init`, `damage`, `apply`, `matchWinner` and `view`; `hud.showMatch` draws
+  the view.*
+- [x] **1.6** Dice-set definition format (die types, count, scorer, scale, tray
+  size), with The Classic (1d20) as the only entry. *`src/rules/dice-sets.js`.
+  Scale and tray size are declared but not yet read; Phase 2 (2.5) uses
+  them.*
+- [x] **1.6a** `// @ts-check` and JSDoc types for the match config, dice-set
+  and Spice definitions, and the rules engine. *`src/rules/types.js`. Clean
+  under `tsc --strict --checkJs` (run once via `npx`, not a dependency).*
+- [x] **1.6b** Unit tests for the rules engine, Hearts and Vanilla. *30 tests
+  in `test/`.*
+- [x] **1.7** Verification checklist passes; artifact republished. *All
+  `npm run verify` checks pass, plus a new one: the same seed throws the
+  opponent's die the same way. `npm run phase0` passes. Republished as
+  version 14.*
+  - **Open:** one run in six of `npm run verify` failed "Zen (390x844)" with
+    a 15 s `waitForFunction` timeout (a throw that never produced a round);
+    the next four runs passed. Not yet diagnosed, and it isn't known whether
+    it predates Phase 1.
+- [x] **1.8** Docs refresh. *`README.md` file map and checks; `CLAUDE.md`
+  commands, three new entries (pure rules engine, one RNG stream per
+  consumer, HUD draws the win condition's view) and check 8. `index.html`
+  and `package.json` copy unchanged: the game plays as before.*
 
 ### Phase 2 — Multiple dice and the d6
 

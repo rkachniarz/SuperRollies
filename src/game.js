@@ -1,15 +1,19 @@
-// Match flow: what a round is, what winning and losing one costs, and when the
-// match is over.
+// Match flow: starting a match, throwing, and handing each round's dice to the
+// rules engine (rules/engine.js), which decides what they mean. This file only
+// turns that into dice on the table and words on the screen.
 //
-// Quick Game: both dice are thrown, whoever rolls higher wins the round, and
-// the loser empties a heart (a tie costs nobody one). Lose all three and the
-// match ends.
+// Quick Game: The Classic (1d20) with Vanilla - both dice are thrown, whoever
+// rolls higher wins the round, and the loser empties a heart. Lose all three
+// and the match ends.
 //
 // Zen: no opponent, no divider, no score - one die and the whole tray, for
 // throwing for the sake of it.
 
 import { TRAY_DEPTH, TRAY_HALF_WIDTH, GAME_OVER_LINGER_MS } from './config.js';
 import { randomThrow } from './dice.js';
+import { createRng, deriveSeed, randomSeed } from './rng.js';
+import { matchConfig, resolveRules, startMatch, beginRound, playRound } from './rules/engine.js';
+import { dieTypes } from './rules/dice-sets.js';
 
 export function createGame({ hud, roller, arena, setTable }) {
   let state = 'menu'; // 'menu' | 'playing' | 'ended'
@@ -19,19 +23,51 @@ export function createGame({ hud, roller, arena, setTable }) {
   // be replayed exactly (see replay.js); the test tools read it from the page.
   const rounds = [];
 
+  // The match being played: its config, the rules it names, and where it
+  // stands. Zen has a config too (for its seed and die type) but no rules state.
+  let config;
+  let rules;
+  let match;
+  // Separate random streams for the AI's throws and for the spin jitter on the
+  // player's, so neither can shift the other or the rules' own stream.
+  let opponentRng;
+  let throwRng;
+
+  function newMatch(seed) {
+    config = matchConfig({ seed });
+    rules = resolveRules(config);
+    match = startMatch(rules);
+    opponentRng = createRng(deriveSeed(seed, 'opponent'));
+    throwRng = createRng(deriveSeed(seed, 'throw'));
+  }
+  newMatch(0);
+
+  // The type of die each side throws. One per side until Phase 2.
+  const dieType = () => dieTypes(rules.diceSet)[0];
+
   function recordFor(dice) {
     return { v: 1, arenaHalfWidth: arena.arenaHalfWidth, divider: arena.divider, dice };
   }
 
-  function start(newMode) {
+  function start(newMode, seed = randomSeed()) {
     mode = newMode;
     rolling = false;
+    newMatch(seed);
     // Dice back to their starting spots, and the divider in or out.
     setTable(mode);
-    hud.resetHearts();
-    state = 'playing';
     hud.showBoard(mode);
+    if (mode === 'quick') {
+      hud.showMatch(rules.winCondition.view(match.win));
+      announceRound();
+    }
+    state = 'playing';
     hud.showResult('Pick up your die and throw it', '');
+  }
+
+  // Lets the Spice set up the coming round. Vanilla has nothing to say yet;
+  // what a Spice announces gets shown once one does (Phase 4).
+  function announceRound() {
+    ({ state: match } = beginRound(rules, match));
   }
 
   function returnToMenu() {
@@ -43,7 +79,7 @@ export function createGame({ hud, roller, arena, setTable }) {
   }
 
   async function runZenThrow(playerRelease) {
-    const record = recordFor([{ id: 'player', type: 'd20', ...playerRelease }]);
+    const record = recordFor([{ id: 'player', type: dieType(), ...playerRelease }]);
     const result = await roller.start(record);
     rounds.push({ record, result });
     hud.showResult(`You rolled ${result.dice[0].face}`, '');
@@ -53,48 +89,34 @@ export function createGame({ hud, roller, arena, setTable }) {
   async function runRound(playerRelease) {
     // The player's release comes from the throw gesture; the opponent's die is
     // thrown at random from its own half.
+    const opponentRelease = randomThrow(-TRAY_DEPTH / 2, -1,
+      { trayHalfWidth: TRAY_HALF_WIDTH, trayDepth: TRAY_DEPTH }, () => opponentRng.next());
     const record = recordFor([
-      { id: 'opponent', type: 'd20', ...randomThrow(-TRAY_DEPTH / 2, -1, { trayHalfWidth: TRAY_HALF_WIDTH, trayDepth: TRAY_DEPTH }) },
-      { id: 'player', type: 'd20', ...playerRelease },
+      { id: 'opponent', type: dieType(), ...opponentRelease },
+      { id: 'player', type: dieType(), ...playerRelease },
     ]);
     const result = await roller.start(record);
-    rounds.push({ record, result });
 
-    const face = (id) => result.dice.find((d) => d.id === id).face;
-    const opponentRoll = face('opponent');
-    const youRoll = face('player');
-    const detail = `You rolled ${youRoll} · Opponent rolled ${opponentRoll}`;
+    const faces = (id) => result.dice.filter((d) => d.id === id).map((d) => d.face);
+    let outcome;
+    ({ outcome, state: match } = playRound(rules, match, { player: faces('player'), opponent: faces('opponent') }));
+    rounds.push({ record, result, outcome });
+    hud.showMatch(rules.winCondition.view(match.win));
 
-    let headline;
-    let loserSide = null;
-    if (youRoll > opponentRoll) {
-      headline = 'You win!';
-      loserSide = 'opponent';
-    } else if (youRoll < opponentRoll) {
-      headline = 'You lose.';
-      loserSide = 'you';
-    } else {
-      headline = "It's a tie!";
+    const detail = `You rolled ${outcome.scores.player} · Opponent rolled ${outcome.scores.opponent}`;
+
+    if (outcome.matchWinner) {
+      // Match over: announce it, then head back to the main menu after a beat
+      // (or immediately if they tap the card).
+      state = 'ended';
+      hud.showResult(MATCH_HEADLINES[outcome.matchWinner], detail, { gameOver: true });
+      rolling = false;
+      setTimeout(() => { if (state === 'ended') returnToMenu(); }, GAME_OVER_LINGER_MS);
+      return;
     }
 
-    if (loserSide) {
-      const remaining = hud.loseHeart(loserSide);
-      if (remaining <= 0) {
-        // Match over: announce it, then head back to the main menu after a beat
-        // (or immediately if they tap the card).
-        state = 'ended';
-        hud.showResult(
-          loserSide === 'you' ? 'You lose the game' : 'You win the game',
-          detail,
-          { gameOver: true }
-        );
-        rolling = false;
-        setTimeout(() => { if (state === 'ended') returnToMenu(); }, GAME_OVER_LINGER_MS);
-        return;
-      }
-    }
-
-    hud.showResult(headline, detail);
+    announceRound();
+    hud.showResult(ROUND_HEADLINES[outcome.winner ?? 'tie'], detail);
     rolling = false;
   }
 
@@ -112,7 +134,12 @@ export function createGame({ hud, roller, arena, setTable }) {
   return {
     get state() { return state; },
     get mode() { return mode; },
+    get config() { return config; },
+    get match() { return match; },
     rounds,
+    start,
+    /** Spin jitter for the player's throws, from the match's seed. */
+    random: () => throwRng.next(),
     // The die can only be picked up between rounds of a match in progress.
     canGrab: () => state === 'playing' && !rolling,
     onGrab() {
@@ -122,7 +149,7 @@ export function createGame({ hud, roller, arena, setTable }) {
     },
     onFumble(playerRelease) {
       // Let go of it without a throw: it just drops back onto the table.
-      roller.start(recordFor([{ id: 'player', type: 'd20', ...playerRelease }]));
+      roller.start(recordFor([{ id: 'player', type: dieType(), ...playerRelease }]));
       hud.showResult('Make a proper throw!', 'That was too gentle to count - give it a real toss.');
     },
     onThrow(playerRelease) {
@@ -140,3 +167,15 @@ export function createGame({ hud, roller, arena, setTable }) {
     },
   };
 }
+
+const ROUND_HEADLINES = {
+  player: 'You win!',
+  opponent: 'You lose.',
+  tie: "It's a tie!",
+};
+
+const MATCH_HEADLINES = {
+  player: 'You win the game',
+  opponent: 'You lose the game',
+  draw: 'The game is a draw',
+};

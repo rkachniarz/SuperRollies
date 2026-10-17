@@ -17,6 +17,7 @@ record new decisions in its log rather than silently changing requirements.
 npm install
 npm run dev     # http://localhost:8000 - must be served, ES modules don't load over file://
 npm run build   # -> dist/artifact.html, the single-file copy for claude.ai only
+npm test        # unit tests (node:test): RNG, rules engine, Hearts, Vanilla
 npm run verify  # the browser checks below, in headless Chromium (needs npm run dev)
 npm run phase0  # physics checks: d10 settling, tunnelling, determinism (needs npm run dev)
 ```
@@ -86,6 +87,17 @@ someone (or something) tidying with good intentions.
   (`restsOnFace`).** A die toppling off an edge pauses at the tipping point;
   speed alone called that settled. The touching points must span an area.
   Counting them doesn't work: Rapier reports several along a single edge.
+- **`src/rules/` — the rules engine stays pure.** No DOM, physics, clock or
+  `Math.random()`: a round's outcome is a function of the match config, the
+  match state and both sides' faces, and nothing else. Multiplayer depends on
+  both clients computing it themselves and agreeing (DEV_PLAN.md R4.4).
+  Randomness comes from the seeded rules stream in the hook context.
+- **`src/rng.js` — one stream per consumer, derived from the match seed.** The
+  opponent's throws, the player's spin jitter and the rules each have their
+  own (`deriveSeed`). Sharing one would let an extra draw in one shift the
+  others, and in multiplayer only the rules stream is common to both players.
+- **`src/hud.js` — the HUD draws the win condition's `view`, it doesn't keep
+  score.** Hearts are only the default win condition (R3.4).
 - **`src/physics.js` — squared magnitudes, not `Math.hypot`, in anything that
   decides when a simulation stops.** `hypot`'s last bit may differ between
   JavaScript engines; determinism needs bit-exact decisions everywhere.
@@ -123,6 +135,9 @@ these are scripted in `npm run verify` (`tools/phase0/verify.mjs`):
    mid-fall.
 7. Zen: no opponent, the die reaches the far half, the back button is clear of
    every spot a die can rest, and Quick Game afterwards restores the table.
+8. The same match seed throws the opponent's die the same way.
+
+Run `npm test` alongside; it needs no server.
 
 After a change to physics, also run `npm run phase0`. If throw outcomes change
 on purpose (tuning, colliders), re-record the determinism fixtures with

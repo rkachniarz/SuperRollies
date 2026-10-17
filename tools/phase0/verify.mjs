@@ -150,6 +150,21 @@ await withMatch(DESKTOP, '5', async (page) => {
     `${backAtMenu ? 'back at menu' : 'NOT back at menu'}`);
 });
 
+// The match seed decides every random event (R5.2): the same seed throws the
+// opponent's die the same way, a different one doesn't.
+await withMatch(DESKTOP, 'seed', async (page) => {
+  const opponentThrow = async (seed) => {
+    await page.evaluate((seed) => window.superRollies.game.start('quick', seed), seed);
+    await waitForDiceAtRest(page);
+    const round = await throwAndWait(page);
+    return JSON.stringify(round.record.dice.find((d) => d.id === 'opponent'));
+  };
+  const first = await opponentThrow(1234);
+  const again = await opponentThrow(1234);
+  const other = await opponentThrow(4321);
+  report('Same seed, same opponent throw; another seed, another throw', first === again && first !== other);
+});
+
 // Zen: one die, the whole tray, no score, and a way back to the menu.
 for (const [name, viewport] of [['desktop', DESKTOP], ['390x844', PHONE]]) {
   await withMatch(viewport, `Zen (${name})`, async (page) => {

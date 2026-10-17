@@ -1,14 +1,17 @@
-// Everything on top of the 3D view: the hearts, the message card, the menu.
-
-import { HEARTS_PER_SIDE } from './config.js';
+// Everything on top of the 3D view: the match-state display, the message card,
+// the menu.
+//
+// The match state is drawn from whatever the win condition asks for (its
+// `view`, see rules/types.js), never from a count kept here: hearts are the
+// default, not an assumption (DEV_PLAN.md R3.4).
 
 const HEART_PATH =
   'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z';
 
-function buildHeartsRow(container) {
+function buildHeartsRow(container, count) {
   container.innerHTML = '';
   const fulls = [];
-  for (let i = 0; i < HEARTS_PER_SIDE; i++) {
+  for (let i = 0; i < count; i++) {
     const wrap = document.createElement('span');
     wrap.className = 'heart';
     wrap.innerHTML =
@@ -32,34 +35,40 @@ export function createHud() {
   const resultDetailEl = document.getElementById('resultDetail');
   const menuStatusEl = document.getElementById('menuStatus');
 
-  const opponentHeartEls = buildHeartsRow(document.getElementById('opponentHearts'));
-  const youHeartEls = buildHeartsRow(document.getElementById('youHearts'));
+  // Each side's row of hearts, and how many of them are currently drawn full.
+  const heartRows = {
+    player: { container: document.getElementById('youHearts'), fulls: [], left: 0 },
+    opponent: { container: document.getElementById('opponentHearts'), fulls: [], left: 0 },
+  };
 
-  // Each side starts a match with 3 full hearts. Losing a round empties one,
-  // with a little "pop and fade" animation so the loss reads as an event rather
-  // than a number quietly changing.
-  const hearts = { you: HEARTS_PER_SIDE, opponent: HEARTS_PER_SIDE };
-
-  function resetHearts() {
-    hearts.you = HEARTS_PER_SIDE;
-    hearts.opponent = HEARTS_PER_SIDE;
-    youHeartEls.concat(opponentHeartEls).forEach((el) => el.classList.remove('losing', 'empty'));
+  // Brings one side's hearts in line with `left` of `max`. A heart that goes
+  // from full to empty gets a little "pop and fade" animation, so the loss
+  // reads as an event rather than a number quietly changing; a fresh match
+  // (all full again) just redraws.
+  function showHearts(row, { left, max }) {
+    if (row.fulls.length !== max) {
+      row.fulls = buildHeartsRow(row.container, max);
+      row.left = max;
+    }
+    row.fulls.forEach((el, i) => {
+      if (i < left) {
+        el.classList.remove('losing', 'empty');
+      } else if (i < row.left) {
+        el.classList.add('losing');
+        el.addEventListener('animationend', () => {
+          el.classList.remove('losing');
+          el.classList.add('empty');
+        }, { once: true });
+      }
+    });
+    row.left = left;
   }
 
-  // Empties the next still-full heart (rightmost-full one) for the given side
-  // and returns how many that side has left.
-  function loseHeart(side) {
-    const els = side === 'you' ? youHeartEls : opponentHeartEls;
-    hearts[side] = Math.max(0, hearts[side] - 1);
-    const el = els[hearts[side]];
-    if (el) {
-      el.classList.add('losing');
-      el.addEventListener('animationend', () => {
-        el.classList.remove('losing');
-        el.classList.add('empty');
-      }, { once: true });
-    }
-    return hearts[side];
+  /** Draws the match state, as given by the win condition's `view`. */
+  function showMatch(view) {
+    if (view.kind !== 'hearts') throw new Error(`No HUD for match state "${view.kind}"`);
+    showHearts(heartRows.player, view.sides.player);
+    showHearts(heartRows.opponent, view.sides.opponent);
   }
 
   function showResult(headline, detail, { gameOver = false } = {}) {
@@ -105,7 +114,7 @@ export function createHud() {
   }
 
   return {
-    hearts, resetHearts, loseHeart,
+    showMatch,
     showResult, hideResult, showBoard, showMenu, setLoaded, setLoadFailed,
     onQuickGame(handler) { quickGameBtn.addEventListener('click', handler); },
     onZen(handler) { zenBtn.addEventListener('click', handler); },

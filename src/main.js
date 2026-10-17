@@ -42,6 +42,7 @@ createThrowControls({
   onFumble: game.onFumble,
   onThrow: game.onThrow,
   onBoardTap: game.onBoardTap,
+  random: game.random,
 });
 
 // The scene is drawn straight away; the menu waits for the physics engine.
