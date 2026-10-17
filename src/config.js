@@ -67,16 +67,17 @@ export const SETTLE_SPEED = 0.22;
 export const SETTLE_TIME = 0.22;
 
 // ---------- Camera ----------
-// Near/far are deliberately tight around what is ever actually on screen (the
-// camera sits ~11.5-15 units from anything in the tray) rather than a generic
-// 0.1-50 span. A wide near/far range starves the depth buffer of precision in
-// the range that matters, which once caused the etched numbers to lose the
-// depth test against the very face they sit on - on some GPUs only.
+// Placed for The Classic's tray; a bigger tray is framed from further back
+// along the same line (fitCamera in arena.js). Near/far are not set here: they
+// are computed tightly around whichever tray is in use, plus this margin,
+// rather than a generic 0.1-50 span. A wide near/far range starves the depth
+// buffer of precision in the range that matters, which once caused the etched
+// numbers to lose the depth test against the very face they sit on - on some
+// GPUs only.
 export const CAMERA_FOV = 40;
-export const CAMERA_NEAR = 8;
-export const CAMERA_FAR = 20;
 export const CAMERA_POSITION = [0, 12.5, 4.4];
 export const CAMERA_LOOK_AT = [0, 0, 0.2];
+export const CAMERA_DEPTH_MARGIN = 0.5;
 
 // ---------- Throw feel ----------
 export const HELD_HEIGHT = DIE_RADIUS + 0.5; // how high the die floats while held
@@ -89,6 +90,51 @@ export const SPIN_POWER = 2.2; // throw speed/direction -> tumbling spin
 // Below this much total movement a release is a fumble, not a throw. See
 // input.js for why this is measured as distance rather than speed.
 export const MIN_DRAG_DISTANCE = 0.35;
+
+// ---------- A handful, held ----------
+// Several dice held at once are simulated (createHoldSim in physics.js), lying
+// in a cupped palm under gravity: a shallow bowl, flat in the middle, with a
+// steep lip round the edge and fingers standing up round that, so they can't
+// fall out. All of it unseen, like the hand. The palm follows the
+// pointer, and is gently shaken side to side and tilted with it, so the dice
+// slide and roll about in it - the outer ones on the slope most - and now and
+// then one gives a little hop. One die alone is held still.
+// The bowl's radius is HOLD_PALM_SIZE[0] + HOLD_PALM_SIZE[1] x the square root
+// of how many dice it holds, times a die's circumradius: room for them all in
+// one layer, loosely (palmFor in physics.js).
+export const HOLD_PALM_SIZE = [0.75, 0.7];
+export const HOLD_PALM_FLAT = 0.35; // the flat middle, as a fraction of the bowl's radius
+export const HOLD_PALM_SLOPE = 0.2; // radians: the bowl's gentle slope (~11 degrees)
+export const HOLD_PALM_LIP = 1.3; // the lip's length, x a die's circumradius
+export const HOLD_PALM_LIP_SLOPE = 1.2; // radians: steep (~70 degrees), so nothing climbs out
+export const HOLD_PALM_FINGERS = 1.5; // how far the fingers stand up above the lip, x a die's circumradius
+export const HOLD_PALM_FRICTION = 0.8; // grippy, so dice roll rather than slide
+export const HOLD_PALM_RESTITUTION = 0.05; // a hand is soft: dice barely bounce off it
+// The palm chases the pointer like a critically damped spring of this natural
+// frequency (rad/s), but never accelerates harder than HOLD_MAX_ACCEL: a palm
+// jerked faster than gravity can hold the dice in it would fling them out.
+export const HOLD_FOLLOW = 14;
+export const HOLD_MAX_ACCEL = 14;
+// The gentle shake: side to side by HOLD_SWAY either way, HOLD_SWAY_HZ times a
+// second, rocking by up to HOLD_TILT radians as it goes.
+export const HOLD_SWAY = 0.06;
+export const HOLD_SWAY_HZ = 2.2;
+export const HOLD_TILT = 0.2;
+// The shake dies away as the hand moves: halved at this speed.
+export const HOLD_CALM_SPEED = 1.5;
+// Now and then a die is bumped up off the palm: a small hop, with barely any
+// spin, so it lands on the same face it left.
+export const HOLD_HOP_CHANCE = 0.008; // per die per step
+export const HOLD_HOP = 1.3; // upward speed: ~4 cm high
+export const HOLD_HOP_SPIN = 2;
+// When let go, the held dice are given up to this many steps, unseen and
+// heavily damped, to push apart until nothing overlaps by more than
+// HOLD_RELEASE_OVERLAP. In practice it stalls at a few cm in the worst cases,
+// which Rapier then separates gently (check-handfuls.mjs measures it); more
+// steps don't help.
+export const HOLD_SETTLE_STEPS = 30;
+export const HOLD_SETTLE_DAMPING = 20; // per second, while they do
+export const HOLD_RELEASE_OVERLAP = 0.005;
 
 // ---------- Match ----------
 export const HEARTS_PER_SIDE = 3;

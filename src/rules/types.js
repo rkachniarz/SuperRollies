@@ -32,7 +32,13 @@
 
 /**
  * Turns one side's face values, in the dice set's order, into its total.
- * @typedef {(faces: number[]) => number} Scorer
+ * `kept` says which dice counted towards it (for the breakdown on the result
+ * card, R2.5); a scorer without it counts every die.
+ * @typedef {((faces: number[]) => number) & {
+ *   id: string,
+ *   suffix: string,
+ *   kept?: (faces: number[]) => boolean[],
+ * }} Scorer
  */
 
 /**
@@ -42,14 +48,16 @@
  * @property {string} notation  As printed on its card, e.g. `8d6`.
  * @property {{ type: string, count: number }[]} dice  Per side, in order.
  * @property {Scorer} scorer
- * @property {number} dieScale  Die size relative to DIE_RADIUS.
- * @property {{ halfWidth: number, depth: number }} tray  Depth is one side's half.
+ * @property {number} dieScale  Die size relative to the die type's own.
+ * @property {{ halfWidth: number, depth: number }} tray  Inside the walls; depth
+ *   is one side's half.
  */
 
 /**
  * What happened in a round, before the win condition has its say.
  * @typedef {Object} Round
  * @property {PerSide<number[]>} faces
+ * @property {PerSide<boolean[]>} kept  Which dice counted, per the dice set's scorer.
  * @property {PerSide<number>} scores
  * @property {Side | null} winner  null for a tie.
  */

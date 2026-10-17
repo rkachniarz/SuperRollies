@@ -18,15 +18,22 @@ export async function openGame(engine = 'chromium', viewport = { width: 1280, he
   return { browser, page, errors };
 }
 
-/** Waits for the physics engine to load and starts a Quick Game. */
-export function startQuickGame(page) {
-  return startMode(page, '#quickGameBtn');
+/** Waits for the physics engine to load and starts a Quick Game with `diceSet` (an id). */
+export function startQuickGame(page, diceSet = 'classic') {
+  return startMode(page, '#quickGameBtn', { pick: diceSet });
 }
 
-/** Waits for the physics engine to load and starts the mode behind `button`. */
-export async function startMode(page, button, { waitForRest = true } = {}) {
+/**
+ * Waits for the physics engine to load and starts the mode behind `button`,
+ * choosing `pick` from the picker it opens: a dice set's id (either mode),
+ * or `die:<type>` for one die alone in Zen. The default is The Classic.
+ */
+export async function startMode(page, button, { pick, pickAfter = false, waitForRest = true } = {}) {
   await page.waitForSelector(`${button}:not([disabled])`, { timeout: 30000 });
   await page.click(button);
+  // `pickAfter` leaves the picker open, for a check that looks at it first.
+  if (pickAfter) return;
+  await page.click(`#pickerOptions [data-pick="${pick ?? 'classic'}"]`);
   if (waitForRest) await waitForDiceAtRest(page);
 }
 
@@ -35,18 +42,18 @@ export async function waitForDiceAtRest(page) {
   await page.waitForFunction(() => !window.superRollies.roller.busy, null, { timeout: 15000 });
 }
 
-/** Where a die is on screen, in CSS pixels. */
-export function dieScreenPos(page, id = 'player') {
-  return page.evaluate((id) => {
+/** Where a die is on screen, in CSS pixels: a side's first die, or its die `index`. */
+export function dieScreenPos(page, side = 'player', index = 0) {
+  return page.evaluate(([side, index]) => {
     const { arena, dice } = window.superRollies;
-    const v = dice[id].mesh.position.clone().project(arena.camera);
+    const v = dice[side][index].mesh.position.clone().project(arena.camera);
     const r = arena.renderer.domElement.getBoundingClientRect();
     return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height };
-  }, id);
+  }, [side, index]);
 }
 
 /**
- * Grabs the player's die and drags it by (dx, dy) pixels over `steps` pointer
+ * Grabs the player's dice and drags them by (dx, dy) pixels over `steps` pointer
  * moves, then lets go. Returns the result card's headline straight after.
  */
 export async function drag(page, dx, dy, steps = 8, from = null) {

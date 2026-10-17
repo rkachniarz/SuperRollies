@@ -111,9 +111,12 @@ export function playRound(rules, state, faces) {
       const base = diceSet.scorer(sideFaces);
       return spice.score ? spice.score(sideFaces, base, ctx) : base;
     };
+    const keptOf = (/** @type {number[]} */ sideFaces) =>
+      diceSet.scorer.kept?.(sideFaces) ?? sideFaces.map(() => true);
     const scores = { player: scoreOf(faces.player), opponent: scoreOf(faces.opponent) };
+    const kept = { player: keptOf(faces.player), opponent: keptOf(faces.opponent) };
     const winner = spice.compare ? spice.compare(scores, ctx) : higherWins(scores);
-    const round = { faces, scores, winner };
+    const round = { faces, kept, scores, winner };
     const base = winCondition.damage(round);
     const damage = spice.applyDamage ? spice.applyDamage(round, base, ctx) : base;
     return { ...round, damage };

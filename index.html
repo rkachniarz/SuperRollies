@@ -7,7 +7,7 @@
        padding in the HUD styles actually resolve on notched screens. -->
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#12111a">
-  <meta name="description" content="Roll higher than your opponent: lose three rounds and it's over. Or just roll, in Zen.">
+  <meta name="description" content="Pick your dice, from a d20 to a Fireball's 8d6, and roll higher than your opponent: lose three rounds and it's over. Or just roll, in Zen.">
   <title>Super Rollies</title>
 
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Karla:wght@400;600;700&display=swap">
@@ -49,14 +49,19 @@
 </div>
 
 <div class="menu-overlay" id="menu">
-  <div class="menu-card">
+  <div class="menu-card" id="menuMain">
     <h1 class="menu-title">Super Rollies</h1>
-    <p class="menu-subtitle">Quick Game: roll higher to win the round, lose 3 and it's over.<br>Zen: just roll.</p>
+    <p class="menu-subtitle">Quick Game: pick your dice, roll higher to win the round, lose 3 and it's over.<br>Zen: just roll.</p>
     <div class="menu-buttons">
       <button class="menu-btn" id="quickGameBtn" disabled>Loading…</button>
       <button class="menu-btn secondary" id="zenBtn" disabled>Zen</button>
     </div>
     <p class="menu-status" id="menuStatus" hidden></p>
+  </div>
+  <div class="menu-card" id="picker" hidden>
+    <h2 class="picker-title" id="pickerTitle"></h2>
+    <div class="picker-options" id="pickerOptions"></div>
+    <button class="picker-back" id="pickerBack">&larr; Back</button>
   </div>
 </div>
 

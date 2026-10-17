@@ -1,4 +1,4 @@
-// The five checks from CLAUDE.md, run against the real game in a browser.
+// The checks from CLAUDE.md, run against the real game in a browser.
 //
 //   node tools/phase0/verify.mjs
 //
@@ -21,6 +21,10 @@ function report(name, ok, detail = '') {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  - ' + detail : ''}`);
 }
 
+/**
+ * Runs `fn` on a fresh page with a match started. `options.pick` is the dice
+ * set (Quick Game) or die type (Zen) to choose; see startMode in driver.mjs.
+ */
 async function withMatch(viewport, label, fn, button = '#quickGameBtn', options) {
   const { browser, page, errors } = await openGame(engine, viewport);
   try {
@@ -62,25 +66,34 @@ await withMatch(DESKTOP, 'grab', async (page) => {
     `${falling ? 'still falling' : 'had already landed'}; card said "${caught}"`);
 }, '#quickGameBtn', { waitForRest: false });
 
-// 1. 20 decals per die, and at rest at least one squarely faces the camera.
-await withMatch(DESKTOP, '1', async (page) => {
-  await throwAndWait(page);
-  const decals = await page.evaluate(() => {
-    const { arena, dice } = window.superRollies;
-    const view = arena.camera.getWorldDirection(arena.camera.position.clone());
-    return Object.fromEntries(Object.entries(dice).map(([id, { mesh }]) => {
-      const planes = mesh.children.filter((c) => c.type === 'Mesh');
-      // A decal faces along its local +Z; facing the camera means pointing
-      // against the view direction.
-      const best = Math.max(...planes.map((p) => -p.getWorldDirection(view.clone()).dot(view)));
-      return [id, { count: planes.length, best }];
-    }));
-  });
-  for (const [id, { count, best }] of Object.entries(decals)) {
-    report(`1. ${id} die: 20 decals, one squarely facing the camera`, count === 20 && best > 0.8,
-      `${count} decals, best facing ${best.toFixed(3)}`);
-  }
-});
+// 1. Each die shows its full set of numerals (or pips), and at rest at least
+// one squarely faces the camera. And (§8, 6) the face the game read is the one
+// whose decal points up.
+const DECALS = { d20: 20, d6: 6 };
+for (const [set, button] of [['classic', '#quickGameBtn'], ['fireball', '#quickGameBtn'], ['die:d6', '#zenBtn']]) {
+  await withMatch(DESKTOP, `1 (${set})`, async (page) => {
+    const round = await throwAndWait(page);
+    const dice = await page.evaluate(() => {
+      const { arena, dice } = window.superRollies;
+      const view = arena.camera.getWorldDirection(arena.camera.position.clone());
+      return [...dice.player, ...dice.opponent].map(({ id, type, mesh }) => {
+        const decals = mesh.children.filter((c) => c.type === 'Mesh');
+        // A decal faces along its local +Z; facing the camera means pointing
+        // against the view direction.
+        const facing = decals.map((p) => -p.getWorldDirection(view.clone()).dot(view));
+        const up = decals.map((p) => p.getWorldDirection(view.clone()).y);
+        const top = decals[up.indexOf(Math.max(...up))].userData.number;
+        return { id, type, count: decals.length, best: Math.max(...facing), top };
+      });
+    });
+    const read = Object.fromEntries(round.result.dice.map((d) => [d.id, d.face]));
+    const bad = dice.filter((d) => d.count !== DECALS[d.type] || d.best <= 0.8 || d.top !== read[d.id]);
+    report(`1. ${set}: every die shows all its faces, one squarely facing the camera, and the face read is the one on top`,
+      bad.length === 0,
+      bad.map((d) => `${d.id}: ${d.count} decals, best facing ${d.best.toFixed(3)}, top ${d.top} read ${read[d.id]}`).join('; ') ||
+      `${dice.length} dice`);
+  }, button, { pick: set });
+}
 
 // 2. A micro-nudge is refused; a genuine drag throws.
 await withMatch(DESKTOP, '2', async (page) => {
@@ -122,19 +135,27 @@ await withMatch(DESKTOP, '3', async (page) => {
     `${overlaps ? 'pressed the die through the card' : 'die did NOT end up under the card'}; card said "${said}"`);
 });
 
-// 4. On a 390x844 viewport the die is still reachable at its sideways limit.
-await withMatch(PHONE, '4', async (page) => {
-  for (const side of [1, -1]) {
-    // A hard sideways throw ends up at the sideways limit.
-    await throwAndWait(page, side * 400, -40);
-    const p = await dieScreenPos(page);
-    const onScreen = p.x > 0 && p.x < PHONE.width && p.y > 0 && p.y < PHONE.height;
-    const said = await pressAt(page, p);
-    report(`4. die reachable at its ${side > 0 ? 'right' : 'left'} limit on 390x844`,
-      onScreen && said === 'Let go to throw', `rests at x=${p.x.toFixed(0)}px; card said "${said}"`);
-    if (await page.locator('#result.game-over').count()) break;
-  }
-});
+// 4. On a 390x844 viewport every die is still reachable at its sideways
+// limit - for one die, and for the largest dice set (8 dice).
+for (const set of ['classic', 'fireball']) {
+  await withMatch(PHONE, `4 (${set})`, async (page) => {
+    for (const side of [1, -1]) {
+      // A hard sideways throw ends up at the sideways limit.
+      await throwAndWait(page, side * 400, -40);
+      const all = await page.evaluate(() => window.superRollies.dice.player.length);
+      const spots = [];
+      for (let i = 0; i < all; i++) spots.push(await dieScreenPos(page, 'player', i));
+      const offScreen = spots.filter((p) => !(p.x > 0 && p.x < PHONE.width && p.y > 0 && p.y < PHONE.height));
+      // The outermost die, pressed: it's the one most likely to be out of reach.
+      const outer = spots.reduce((a, b) => (side * b.x > side * a.x ? b : a));
+      const said = await pressAt(page, outer);
+      report(`4. ${set}: every die reachable at the ${side > 0 ? 'right' : 'left'} limit on 390x844`,
+        offScreen.length === 0 && said === 'Let go to throw',
+        `${all} dice, ${offScreen.length} off screen; outermost at x=${outer.x.toFixed(0)}px; card said "${said}"`);
+      if (await page.locator('#result.game-over').count()) break;
+    }
+  }, '#quickGameBtn', { pick: set });
+}
 
 // 5. A full match drains hearts to 0, announces the result, returns to the menu.
 await withMatch(DESKTOP, '5', async (page) => {
@@ -160,10 +181,10 @@ await withMatch(DESKTOP, '5', async (page) => {
 // opponent's die the same way, a different one doesn't.
 await withMatch(DESKTOP, 'seed', async (page) => {
   const opponentThrow = async (seed) => {
-    await page.evaluate((seed) => window.superRollies.game.start('quick', seed), seed);
+    await page.evaluate((seed) => window.superRollies.game.start('quick', { seed }), seed);
     await waitForDiceAtRest(page);
     const round = await throwAndWait(page);
-    return JSON.stringify(round.record.dice.find((d) => d.id === 'opponent'));
+    return JSON.stringify(round.record.dice.filter((d) => d.id.startsWith('opponent')));
   };
   const first = await opponentThrow(1234);
   const again = await opponentThrow(1234);
@@ -171,11 +192,126 @@ await withMatch(DESKTOP, 'seed', async (page) => {
   report('Same seed, same opponent throw; another seed, another throw', first === again && first !== other);
 });
 
+// Handfuls (R2.3-R2.5): every die is picked up in one grab, thrown together,
+// and the result card adds each side up, greying out the dice that don't count.
+for (const [set, count, dropped] of [['greatsword', 2, 0], ['advantage', 2, 1], ['dice-poker', 5, 0], ['fireball', 8, 0], ['heroic-stats', 4, 1]]) {
+  await withMatch(DESKTOP, `handful (${set})`, async (page) => {
+    // Grab one die and hold: the whole handful comes up off the table, and
+    // bunches up closer than it lay there.
+    const spread = () => page.evaluate(() => {
+      const ds = window.superRollies.dice.player.map((d) => d.mesh.position);
+      const cx = ds.reduce((s, d) => s + d.x, 0) / ds.length;
+      const cz = ds.reduce((s, d) => s + d.z, 0) / ds.length;
+      return Math.max(...ds.map((d) => Math.hypot(d.x - cx, d.z - cz)));
+    });
+    const resting = await page.evaluate(() => window.superRollies.dice.player.map((d) => d.mesh.position.y));
+    const restSpread = await spread();
+    const p = await dieScreenPos(page);
+    await page.mouse.move(p.x, p.y);
+    await page.mouse.down();
+    await page.mouse.move(p.x, p.y - 20, { steps: 3 });
+    await page.waitForTimeout(400);
+    const held = await page.evaluate(() => window.superRollies.dice.player.map((d) => d.mesh.position.y));
+    const heldSpread = await spread();
+    await page.mouse.up();
+    await waitForDiceAtRest(page);
+    const lifted = held.filter((y, i) => y > resting[i] + 0.1).length;
+    const allHeld = held.length === count && lifted === count && heldSpread < restSpread;
+
+    const round = await throwAndWait(page);
+    const { faces, kept, scores } = round.outcome;
+    const lines = await page.$$eval('#result .breakdown', (els) => els.map((el) => ({
+      text: el.textContent, dropped: el.querySelectorAll('.dropped').length,
+    })));
+    const expected = ['player', 'opponent'].map((side, i) =>
+      `${['You', 'Opponent'][i]}: ${faces[side].join(' + ')} = ${scores[side]}`);
+    const ok = allHeld && faces.player.length === count && faces.opponent.length === count &&
+      lines.length === 2 && lines.every((l, i) => l.text === expected[i] && l.dropped === dropped) &&
+      kept.player.filter((k) => !k).length === dropped;
+    report(`Handful: ${set} (${count} dice) picked up together, thrown, added up on the card`, ok,
+      `${lifted}/${count} lifted, bunched to ${heldSpread.toFixed(2)} from ${restSpread.toFixed(2)}; card: ${lines.map((l) => `"${l.text}" (${l.dropped} greyed)`).join(', ')}`);
+  }, '#quickGameBtn', { pick: set });
+}
+
+// Dice that come to rest stay exactly where the simulation left them - in
+// particular against a side wall, where keeping dice on screen once pulled
+// every d6 inwards by a fifth of a unit as the throw ended. And when the
+// window narrows, dice past its new edge are still slid back on screen.
+await withMatch(DESKTOP, 'stay put', async (page) => {
+  let moved = [];
+  let atWall = 0;
+  for (let i = 0; i < 4; i++) {
+    const round = await throwAndWait(page, (i % 2 ? 1 : -1) * 300, -200);
+    await page.waitForTimeout(150);
+    const now = await page.evaluate(() => Object.fromEntries([...window.superRollies.dice.player, ...window.superRollies.dice.opponent]
+      .map((d) => [d.id, d.mesh.position.x])));
+    const wall = await page.evaluate(() => window.superRollies.arena.xLimit(0));
+    for (const d of round.result.dice) {
+      if (now[d.id] !== d.p[0]) moved.push(`${d.id} ${d.p[0].toFixed(2)} -> ${now[d.id].toFixed(2)}`);
+      if (wall - Math.abs(d.p[0]) < 0.45) atWall++;
+    }
+    if (await page.locator('#result.game-over').count()) break;
+  }
+  report('Fireball: dice at rest stay where they landed, against the side walls too', moved.length === 0 && atWall > 0,
+    `${atWall} came to rest by a side wall; ${moved.length} moved${moved.length ? ': ' + moved.slice(0, 3).join(', ') : ''}`);
+
+  await page.setViewportSize(PHONE);
+  await page.waitForTimeout(200);
+  const all = await page.evaluate(() => window.superRollies.dice.player.length + window.superRollies.dice.opponent.length);
+  const off = [];
+  for (const side of ['player', 'opponent']) {
+    for (let i = 0; i < all / 2; i++) {
+      const p = await dieScreenPos(page, side, i);
+      if (!(p.x > 0 && p.x < PHONE.width)) off.push(`${side}-${i} at x=${p.x.toFixed(0)}px`);
+    }
+  }
+  report('Fireball: after narrowing to 390x844, every die is slid back on screen', off.length === 0, off.join(', ') || `${all} dice`);
+}, '#quickGameBtn', { pick: 'fireball' });
+
+// Zen is the testbed (D18): it offers every dice set Quick Game does, plus
+// every die type on its own, and throws whatever is picked.
+await withMatch(DESKTOP, 'Zen picker', async (page) => {
+  const offered = await page.$$eval('#pickerOptions [data-pick]', (els) => els.map((el) => el.dataset.pick));
+  // Every dice set by id, with its dice; and every die type.
+  const { sets, types } = await page.evaluate(async () => {
+    const { DICE_SETS, dieTypes } = await import('./src/rules/dice-sets.js');
+    return {
+      sets: Object.values(DICE_SETS).map((set) => ({ id: set.id, dice: dieTypes(set).join() })),
+      types: (await import('./src/die-shapes.js')).DIE_TYPES,
+    };
+  });
+  // A die type alone is on offer as its own entry, or as a set of just that die.
+  const alone = (type) => offered.includes(`die:${type}`) ||
+    sets.some((set) => set.dice === type && offered.includes(set.id));
+  report('Zen offers every dice set and every die type alone',
+    sets.every((set) => offered.includes(set.id)) && types.every(alone), offered.join(', '));
+  await page.click('#pickerOptions [data-pick="die:d6"]');
+  await waitForDiceAtRest(page);
+  const round = await throwAndWait(page, 30, -300);
+  const said = await page.textContent('#resultHeadline');
+  report('Zen, one d6: one d6 thrown, and the card names the face read',
+    round.record.dice.length === 1 && round.record.dice[0].type === 'd6' && said === `You rolled ${round.result.dice[0].face}`,
+    `card said "${said}"`);
+}, '#zenBtn', { pickAfter: true });
+
+for (const [set, count, dropped] of [['fireball', 8, 0], ['heroic-stats', 4, 1]]) {
+  await withMatch(DESKTOP, `Zen ${set}`, async (page) => {
+    const round = await throwAndWait(page, 30, -300);
+    const faces = round.result.dice.map((d) => d.face);
+    const headline = await page.textContent('#resultHeadline');
+    const line = await page.$eval('#result .breakdown', (el) => ({ text: el.textContent, dropped: el.querySelectorAll('.dropped').length }));
+    const ok = round.record.dice.length === count && round.record.dice.every((d) => d.id.startsWith('player')) &&
+      headline.startsWith('You rolled ') && line.text === `You: ${faces.join(' + ')} = ${headline.slice(11)}` &&
+      line.dropped === dropped;
+    report(`Zen ${set}: ${count} dice, no opponent, the card adds them up`, ok, `"${headline}", "${line.text}" (${line.dropped} greyed)`);
+  }, '#zenBtn', { pick: set });
+}
+
 // Zen: one die, the whole tray, no score, and a way back to the menu.
 for (const [name, viewport] of [['desktop', DESKTOP], ['390x844', PHONE]]) {
   await withMatch(viewport, `Zen (${name})`, async (page) => {
     const layout = await page.evaluate(() => ({
-      opponentShown: window.superRollies.dice.opponent.mesh.visible,
+      opponentShown: window.superRollies.dice.opponent.length > 0,
       hearts: !document.getElementById('youHud').hidden || !document.getElementById('opponentHud').hidden,
     }));
     report(`Zen (${name}): no opponent die, no hearts`, !layout.opponentShown && !layout.hearts);
@@ -202,7 +338,7 @@ for (const [name, viewport] of [['desktop', DESKTOP], ['390x844', PHONE]]) {
       const btn = document.getElementById('backBtn').getBoundingClientRect();
       const r = arena.renderer.domElement.getBoundingClientRect();
       const toScreen = (v) => { v.project(arena.camera); return { x: (v.x + 1) / 2 * r.width, y: (1 - v.y) / 2 * r.height }; };
-      const p = dice.player.mesh.position.clone().set(-xMax, DIE_RADIUS, -TRAY_DEPTH + 0.45);
+      const p = dice.player[0].mesh.position.clone().set(-xMax, DIE_RADIUS, -TRAY_DEPTH + 0.45);
       const centre = toScreen(p.clone());
       // The die's on-screen radius, from its circumradius.
       const edge = toScreen(p.clone().setX(p.x + DIE_RADIUS));
@@ -218,9 +354,9 @@ for (const [name, viewport] of [['desktop', DESKTOP], ['390x844', PHONE]]) {
     // And Quick Game afterwards puts the opponent and the divider back.
     await startQuickGame(page);
     const restored = await page.evaluate(() => ({
-      opponent: window.superRollies.dice.opponent.mesh.visible,
+      opponent: window.superRollies.dice.opponent.length > 0,
       divider: window.superRollies.arena.divider,
-      playerZ: window.superRollies.dice.player.mesh.position.z,
+      playerZ: window.superRollies.dice.player[0].mesh.position.z,
     }));
     report(`Zen (${name}): back to menu, then Quick Game restores the table`,
       atMenu && restored.opponent && restored.divider && restored.playerZ > 0);

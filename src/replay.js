@@ -6,17 +6,12 @@
 // for the Phase 0 checks in tools/phase0/, and later for multiplayer, where the
 // other player receives a throw's record and simulates it themselves.
 
-import * as THREE from 'three';
 import { createRoundSim } from './physics.js';
-import { faceUpNumber } from './d20.js';
-
-const FACE_READERS = {
-  d20: (q) => faceUpNumber(new THREE.Quaternion(q[0], q[1], q[2], q[3])),
-};
+import { SHAPES } from './die-shapes.js';
 
 /** The number showing on top of a die of `type` resting at orientation `q`. */
 export function readFace(type, q) {
-  return FACE_READERS[type](q);
+  return SHAPES[type].faceUp(q);
 }
 
 /**

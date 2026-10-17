@@ -1,5 +1,5 @@
 // Everything on top of the 3D view: the match-state display, the message card,
-// the menu.
+// the menu and its pickers.
 //
 // The match state is drawn from whatever the win condition asks for (its
 // `view`, see rules/types.js), never from a count kept here: hearts are the
@@ -25,6 +25,11 @@ function buildHeartsRow(container, count) {
 
 export function createHud() {
   const menuEl = document.getElementById('menu');
+  const menuMainEl = document.getElementById('menuMain');
+  const pickerEl = document.getElementById('picker');
+  const pickerTitleEl = document.getElementById('pickerTitle');
+  const pickerOptionsEl = document.getElementById('pickerOptions');
+  const pickerBackBtn = document.getElementById('pickerBack');
   const quickGameBtn = document.getElementById('quickGameBtn');
   const zenBtn = document.getElementById('zenBtn');
   const backBtn = document.getElementById('backBtn');
@@ -82,6 +87,40 @@ export function createHud() {
     resultEl.classList.remove('show', 'game-over');
   }
 
+  const SIDE_NAMES = { player: 'You', opponent: 'Opponent' };
+
+  /**
+   * A round's result, with how each side's score was made up (R2.5): every
+   * die, then the total, with dice that didn't count (a dropped lowest, the
+   * lower of two under advantage) greyed out. With one die a side there's
+   * nothing to break down, so it's just the two rolls.
+   * @param {{ side: string, faces: number[], kept: boolean[], score: number }[]} sides
+   */
+  function showRound(headline, sides, options) {
+    showResult(headline, '', options);
+    if (sides.every((s) => s.faces.length === 1)) {
+      resultDetailEl.textContent = sides.map((s) => `${SIDE_NAMES[s.side]} rolled ${s.score}`).join(' · ');
+      return;
+    }
+    for (const { side, faces, kept, score } of sides) {
+      const line = document.createElement('span');
+      line.className = 'breakdown';
+      line.append(`${SIDE_NAMES[side]}: `);
+      faces.forEach((face, i) => {
+        if (i > 0) line.append(' + ');
+        const die = document.createElement('span');
+        die.textContent = String(face);
+        if (!kept[i]) die.className = 'dropped';
+        line.append(die);
+      });
+      line.append(' = ');
+      const total = document.createElement('strong');
+      total.textContent = String(score);
+      line.append(total);
+      resultDetailEl.append(line);
+    }
+  }
+
   // Zen has no opponent and no score, so no hearts either.
   function showBoard(mode) {
     menuEl.hidden = true;
@@ -110,12 +149,43 @@ export function createHud() {
     opponentHudEl.hidden = true;
     youHudEl.hidden = true;
     backBtn.hidden = true;
+    pickerEl.hidden = true;
+    menuMainEl.hidden = false;
     menuEl.hidden = false;
   }
 
+  /**
+   * Swaps the menu for a list of choices, one button each; `onPick` gets the
+   * chosen one's id. Back returns to the menu.
+   * @param {string} title
+   * @param {{ id: string, label: string, detail?: string }[]} options
+   * @param {(id: string) => void} onPick
+   */
+  function showPicker(title, options, onPick) {
+    pickerTitleEl.textContent = title;
+    pickerOptionsEl.replaceChildren(...options.map(({ id, label, detail }) => {
+      const btn = document.createElement('button');
+      btn.className = 'pick-btn';
+      btn.dataset.pick = id;
+      btn.textContent = label;
+      if (detail) {
+        const small = document.createElement('small');
+        small.textContent = detail;
+        btn.append(small);
+      }
+      btn.addEventListener('click', () => onPick(id));
+      return btn;
+    }));
+    menuMainEl.hidden = true;
+    pickerEl.hidden = false;
+    pickerOptionsEl.querySelector('button')?.focus();
+  }
+
+  pickerBackBtn.addEventListener('click', showMenu);
+
   return {
     showMatch,
-    showResult, hideResult, showBoard, showMenu, setLoaded, setLoadFailed,
+    showResult, showRound, hideResult, showBoard, showMenu, showPicker, setLoaded, setLoadFailed,
     onQuickGame(handler) { quickGameBtn.addEventListener('click', handler); },
     onZen(handler) { zenBtn.addEventListener('click', handler); },
     onBack(handler) { backBtn.addEventListener('click', handler); },

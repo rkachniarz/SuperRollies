@@ -13,6 +13,9 @@ AI opponent that throws at random, and rules hard-coded in `game.js` `runRound()
 Since Phase 0 (2026-10-17): physics on Rapier, and a Zen mode (D15).
 Since Phase 1 (2026-10-17): a seeded RNG, and the rules in a pure engine
 (`src/rules/`) with Vanilla, Hearts and The Classic as its only entries.
+Since Phase 2 (2026-10-17): the d6, handfuls of up to 8 dice a side, and eight
+dice sets, picked from a list for now (D19); Zen offers all of them, and each
+die type alone (D18).
 
 ---
 
@@ -65,6 +68,12 @@ Some Spice works with any dice; some only makes sense with particular dice
 | D15 | 2026-10-17 | **Zen mode** added to the main menu during Phase 0, as a way to test physics without a match getting in the way: one die, no opponent, no divider, no score; each throw's result is shown. A **back-to-menu button** (top-left) is shown in Zen and Quick Game; leaving Quick Game abandons the match. Its placement is checked to be clear of every spot a die can rest (the principle in 4.6a). |
 | D16 | 2026-10-17 | **Rules engine shape (Phase 1).** The match config is plain data naming its dice set and Spice **by id**, so it can be sent to the other player as-is. Each random consumer draws from **its own stream derived from the match seed** (`deriveSeed`: `rules`, `opponent`, `throw`), so extra draws in one never shift another; only `rules` is shared in multiplayer. The **win condition owns the default damage** of a round, and `score` / `applyDamage` hooks **transform the default** they are given rather than computing from scratch. A win condition may end a match as a **draw** (both sides out together, e.g. Hearts under Mutual Destruction). `afterSettle` is part of the Spice type but is physical, so the game calls it, not the engine; it is wired up with the first Spice that needs it (Phase 5). |
 | D17 | 2026-10-17 | **A throw is as hard as the hand moved, not the held die.** The held die is clamped to its own zone, so a die pinned against the divider or an edge used to barely move however hard the player swiped, and a forward flick from the divider was refused as a fumble. Release speed and the fumble check now follow the pointer: a hard flick into a wall throws the die into it, and it bounces off. A die is also released at least its circumradius from any wall, so a throw never starts inside a collider. |
+| D18 | 2026-10-17 | **Zen is the testbed: its picker offers everything.** Every dice set Quick Game offers, plus every die type on its own (as "One d6" where no set is just that die), so each die and each handful can be tried without an opponent in the way. A new dice set or die type joins it as it is implemented, automatically: the picker is built from `DICE_SETS` and `DIE_TYPES`. `npm run verify` checks it offers them all. |
+| D19 | 2026-10-17 | **Interim dice-set picker.** Until the Phase 4 draft (R1.1, R1.2), Quick Game opens a list of every enabled dice set, so each can be played and tested as it lands. Phase 4 replaces it with the two-card draft and reuses it for the multiplayer host's catalogue (4.3). |
+| D20 | 2026-10-17 | **The d6 has pips, not numerals,** as real ones do, and slightly cut corners, as real ones have rounded ones. Its face numbering is standard (opposite faces sum to 7; 1-2-3 counter-clockwise round their corner). |
+| D21 | 2026-10-17 | **Trays scale uniformly.** A dice set's tray is The Classic's times a factor, and the camera pulls back by the same factor along the same line, so every tray fills the screen the same way and the on-screen limit logic carries over unchanged. Handfuls are laid out with each die at least two circumradii (plus a gap) from the next, so they never start a throw overlapping. The throw record gains optional `tray` and per-die `s` (scale); records without them are The Classic's, so the Phase 0 fixtures still replay. |
+| D22 | 2026-10-17 | **A held handful jiggles.** Several dice held at once are simulated while held (`createHoldSim`): drawn into a loose, restless bunch round the pointer, tumbling, jolted and knocking into each other, as if shaken in a hand. The throw is released from wherever they are, so the bunch can be tighter than `handLayout` spaces dice and the throw still never starts with them overlapping. The hold isn't deterministic (it follows the pointer and frame rate) and doesn't need to be: like the pointer, it only decides the release, which the record captures. Its jolts draw from the player's `throw` stream. One die alone is still held steady. *How it moves is superseded by D23.* |
+| D23 | 2026-10-17 | **A held handful lies in a palm.** Playtesting said D22's floating, jolted bunch looked strange next to real dice, which lie in one layer on the hand; some roll back and forth as it's shaken, the outer ones most, and some just hop a little without turning over. So the hold is now a cupped palm under gravity: a shallow bowl, a steep lip, and fingers standing up round it with their tips curled in, all unseen. It follows the pointer (a critically damped spring, its acceleration capped) and is gently shaken side to side and rocked, less the faster the hand moves; now and then a die is bumped into a small hop. The dice start packed flat in the bowl, any that don't fit one layer up in the dips between the others. Still not deterministic, still released from wherever the dice are, still using the player's `throw` stream. |
 
 ---
 
@@ -447,15 +456,60 @@ Behaviour is unchanged: 1d20 vs. AI plays exactly as it does today.
 
 ### Phase 2 — Multiple dice and the d6
 
-- [ ] **2.1** d6: geometry, numbering (opposite faces sum to 7), decals, physics
-  shape, face-up reader.
-- [ ] **2.2** Generalise `dice.js` so die type is a parameter; d20 behaviour
-  unchanged.
-- [ ] **2.3** Multi-die sides: spawn layout, handful grab/throw with per-die
-  scatter (R2.3).
-- [ ] **2.4** Wait for N dice to settle, with the existing settle timeout per die.
-- [ ] **2.5** Per-dice-set scale and tray size; camera fitting; confine-to-screen
-  bounds follow the tray (R2.2).
+- [x] **2.1** d6: geometry, numbering (opposite faces sum to 7), decals, physics
+  shape, face-up reader. *`src/d6.js`: a cube with its corners cut off a
+  little, pips rather than numerals (D20).*
+- [x] **2.2** Generalise `dice.js` so die type is a parameter; d20 behaviour
+  unchanged. *`src/die-shapes.js` derives normals, rest pose, face reader and
+  hull from any die's vertices and numbered faces. The d20's vertices,
+  numbering and hull are bit-identical to before: the 20 recorded throws still
+  replay exactly.*
+- [x] **2.3** Multi-die sides: spawn layout, handful grab/throw with per-die
+  scatter (R2.3). *`src/handful.js` (layout, scatter, the opponent's throw)
+  and `src/table.js` (each side's dice per match). Grabbing any die picks up
+  the whole handful; the dice glide into place round the pointer and are
+  released from where they were headed. A single die is thrown exactly as
+  before, with no scatter and the same random draws.*
+  - *Fixed after playtesting: Fireball dice that came to rest against a side
+    wall jumped ~0.2 inwards as the throw ended. Keeping dice on screen
+    between throws held them a circumradius from the wall, but a d6 lying
+    against one sits only half its side away. It now goes by each die's
+    actual sideways reach. `npm run verify` checks dice stay put, and that
+    narrowing the window still slides them back on screen.*
+- [x] **2.3b** A held handful jiggles: dice bunch up close, tumble, and
+  knock into each other while held (D22), lying in a palm as real dice do
+  (D23). *New requirement, added after playtesting, then reworked after a
+  second round of it. Tuning is in `config.js` (`HOLD_*`).
+  `check-handfuls.mjs` holds every set for up to 10 s with the hand jumping
+  about the tray, harsher than any real drag, then lets go: overlap at
+  release at most ~4 cm, shove at most 0.05 units/s, and a die put back in
+  the palm by the safety net in at most 1 hold in 100 (Fireball, the worst:
+  1 in 300). Held still, a d6 turns over about once every 10 s, and a
+  Fireball handful has a die resting partly on the others about half the
+  time. `npm run verify` checks the handful is lifted and bunched (Fireball:
+  spread 2.15 → ~1.1).*
+- [x] **2.4** Wait for N dice to settle, with the existing settle timeout per die.
+  *All dice are released together, so the one 4 s timeout covers each of
+  them. Two bugs only handfuls could hit, both fixed in `physics.js`:*
+  - *A settled die put to sleep while another, still moving, touched it sank
+    through the floor (Rapier keeps applying gravity to it with no contact).
+    It happened in roughly 1 Fireball throw in 3. Now such a die stays awake
+    and counts as settled while it stays quiet (`touchesAnotherDie`).*
+  - *Dice leaning on each other never counted as resting on a face: Rapier
+    holds two moving bodies 1–2 cm apart, beyond the 1 cm "touching"
+    threshold. Die-to-die contacts now use 3 cm (`TOUCHING_DIE`).*
+  - *New physics check, `tools/phase0/check-handfuls.mjs` (in `npm run
+    phase0`): every multi-die set, both sides at once, up to full speed;
+    nothing sinks or escapes. **Known:** ~0.3% of throws (1.3% for 8d6) end on
+    the timeout with a die still creeping slowly, typically down another die
+    pinned against a wall. It is read where it lies, like a cocked die; see
+    3.4.*
+- [x] **2.5** Per-dice-set scale and tray size; camera fitting; confine-to-screen
+  bounds follow the tray (R2.2). *`arena.setTray`: the tray is rebuilt, the
+  camera pulled back by the tray's scale (D21), near/far recomputed tightly
+  around it (≈9–15 for The Classic, ≈14.5–21.5 for Fireball's), and the
+  on-screen limit re-measured. `clampToTray` and `opponentZone` take the
+  handful's reach.*
   - Camera near/far is **recomputed tightly** around each tray, never widened
     to a range that covers them all. The depth-precision invariant in
     `CLAUDE.md` still applies; only the fixed 8–20 values go.
@@ -463,19 +517,39 @@ Behaviour is unchanged: 1d20 vs. AI plays exactly as it does today.
     once at module scope from `TRAY_HALF_WIDTH`, `TRAY_DEPTH` and
     `DIE_RADIUS`. They must be recomputed whenever the dice set changes, not
     just on resize.
-- [ ] **2.6** Measure whether 8d6 fits and stays reachable on 390×844; enlarge
-  the tray if not.
-- [ ] **2.7** Scorers: `sum`, `keepHighest`, `dropLowest`, with unit tests.
-- [ ] **2.8** Result breakdown on the result card (R2.5).
-- [ ] **2.9** AI opponent throws a handful the same way.
-- [ ] **2.10** Dice sets enabled: Greatsword, Ability Score, Heroic Stats,
+- [x] **2.6** Measure whether 8d6 fits and stays reachable on 390×844; enlarge
+  the tray if not. *It didn't fit The Classic's tray: a held 8d6 handful is
+  ~3.3 deep, leaving no room to move it in a 3.1-deep half. Fireball plays on
+  a tray 1.45× The Classic's with dice at 0.9 scale; 3d6 to 5d6 at 1.15–1.25×.
+  On 390×844 every Fireball die stays on screen and grabbable at both
+  sideways limits (verify check 4).*
+- [x] **2.7** Scorers: `sum`, `keepHighest`, `dropLowest`, with unit tests.
+  *Each says which dice it `kept`; of equal dice, the later is dropped, so
+  it's the same on every client. Notation gains the usual suffix
+  (`2d20kh1`, `4d6dl1`).*
+- [x] **2.8** Result breakdown on the result card (R2.5). *One line per side,
+  `You: 6 + 4 + 1 + 5 = 16`, dropped dice greyed and struck through; one die
+  a side keeps the old "You rolled 17 · Opponent rolled 9". The round outcome
+  carries `kept`.*
+- [x] **2.9** AI opponent throws a handful the same way. *`randomHandful`.*
+- [x] **2.10** Dice sets enabled: Greatsword, Ability Score, Heroic Stats,
   Guiding Bolt, Fireball, Dice Poker (scored as a sum until Phase 6), Advantage
-  (needs only d20).
-- [ ] **2.11** Verification checklist passes for 1, 2, 5 and 8 dice; artifact
-  republished.
-- [ ] **2.12** Docs refresh. In `CLAUDE.md`: check 1 ("20 decals per die")
+  (needs only d20). *Played from an interim list (D19).*
+- [x] **2.10a** Zen offers every dice set and every die type alone, and
+  every new one joins it (D18). A handful in Zen is totalled with its set's
+  scorer, the breakdown under it.
+- [x] **2.11** Verification checklist passes for 1, 2, 5 and 8 dice; artifact
+  republished. *`npm run verify`: check 1 for the d20, the d6 and 16 dice at
+  once, including that the face read is the one on top (§8, 6); check 4 for
+  1 and 8 dice on 390×844; handful checks for 2, 4, 5 and 8 dice; the Zen
+  picker. `npm test` (51) and `npm run phase0` pass. Republished as version
+  17.*
+- [x] **2.12** Docs refresh. In `CLAUDE.md`: check 1 ("20 decals per die")
   becomes per die type, matching §8; the camera near/far entry describes the
-  per-tray computation.
+  per-tray computation. *Also: the two physics traps above, the wall
+  clearance entry generalised to handfuls, Zen's die list (D18), and checks
+  1, 4, 7–9. `README.md` file map, `index.html` copy and `package.json`
+  description no longer describe a d20-only game.*
 
 ### Phase 3 — Remaining die types
 

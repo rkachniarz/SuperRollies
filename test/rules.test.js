@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { matchConfig, resolveRules, startMatch, beginRound, playRound, higherWins } from '../src/rules/engine.js';
-import { THE_CLASSIC, DICE_SETS, sum, dieTypes } from '../src/rules/dice-sets.js';
+import { THE_CLASSIC, DICE_SETS, sum, keepHighest, dropLowest, dieTypes } from '../src/rules/dice-sets.js';
 import { VANILLA, SPICE } from '../src/rules/spice.js';
 import { HEARTS, hearts } from '../src/rules/win-conditions.js';
 
@@ -52,9 +52,73 @@ describe('dice sets', () => {
     assert.equal(DICE_SETS.classic, THE_CLASSIC);
   });
 
-  test('sum adds every face', () => {
+  test('sum adds every face, and keeps them all', () => {
     assert.equal(sum([6, 4, 1, 5]), 16);
     assert.equal(sum([]), 0);
+    assert.deepEqual(sum.kept([6, 4, 1]), [true, true, true]);
+  });
+
+  test('keepHighest counts only the highest n', () => {
+    const kh1 = keepHighest(1);
+    assert.equal(kh1([4, 17]), 17);
+    assert.deepEqual(kh1.kept([4, 17]), [false, true]);
+    assert.equal(keepHighest(2)([3, 6, 1, 5]), 11);
+    assert.deepEqual(keepHighest(2).kept([3, 6, 1, 5]), [false, true, false, true]);
+    // More than there are: every die counts.
+    assert.equal(keepHighest(3)([2, 9]), 11);
+  });
+
+  test('dropLowest counts all but the lowest n', () => {
+    const dl1 = dropLowest(1);
+    assert.equal(dl1([5, 6, 1, 4]), 15);
+    assert.deepEqual(dl1.kept([5, 6, 1, 4]), [true, true, false, true]);
+    assert.equal(dropLowest(2)([5, 6, 1, 4]), 11);
+    assert.equal(dropLowest(5)([5, 6]), 0);
+  });
+
+  test('of equal dice, the same one is always dropped: the later', () => {
+    assert.deepEqual(dropLowest(1).kept([3, 3, 3, 3]), [true, true, true, false]);
+    assert.deepEqual(keepHighest(1).kept([20, 20]), [true, false]);
+    assert.deepEqual(dropLowest(1).kept([2, 6, 2]), [true, true, false]);
+  });
+
+  test('notation follows the dice and the scorer', () => {
+    const notation = Object.fromEntries(Object.values(DICE_SETS).map((set) => [set.id, set.notation]));
+    assert.deepEqual(notation, {
+      classic: '1d20',
+      advantage: '2d20kh1',
+      greatsword: '2d6',
+      'ability-score': '3d6',
+      'heroic-stats': '4d6dl1',
+      'guiding-bolt': '4d6',
+      'dice-poker': '5d6',
+      fireball: '8d6',
+    });
+  });
+
+  test("every set has 1 to 8 dice a side (D6), of known types, and a tray at least The Classic's", async () => {
+    const { SHAPES } = await import('../src/die-shapes.js');
+    for (const set of Object.values(DICE_SETS)) {
+      const types = dieTypes(set);
+      assert.ok(types.length >= 1 && types.length <= 8, set.id);
+      assert.ok(types.every((t) => SHAPES[t]), set.id);
+      assert.ok(set.tray.halfWidth >= THE_CLASSIC.tray.halfWidth && set.tray.depth >= THE_CLASSIC.tray.depth, set.id);
+      assert.equal(DICE_SETS[set.id], set);
+    }
+  });
+
+  test("a round's outcome says which dice counted", () => {
+    const rules = resolveRules(matchConfig({ seed: 1, diceSet: 'heroic-stats' }));
+    const { outcome } = playRound(rules, startMatch(rules), { player: [5, 6, 1, 4], opponent: [2, 2, 2, 2] });
+    assert.deepEqual(outcome.scores, { player: 15, opponent: 6 });
+    assert.deepEqual(outcome.kept, { player: [true, true, false, true], opponent: [true, true, true, false] });
+    assert.equal(outcome.winner, 'player');
+  });
+
+  test('advantage: the higher of two d20s', () => {
+    const rules = resolveRules(matchConfig({ seed: 1, diceSet: 'advantage' }));
+    const { outcome } = playRound(rules, startMatch(rules), { player: [3, 18], opponent: [17, 17] });
+    assert.deepEqual(outcome.scores, { player: 18, opponent: 17 });
   });
 });
 

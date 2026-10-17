@@ -11,7 +11,8 @@ import { PHYSICS_STEP, MAX_STEPS_PER_FRAME } from './config.js';
 import { createRoundSim } from './physics.js';
 import { summarise } from './replay.js';
 
-export function createRoller(meshesById) {
+/** `meshFor(id)` is the mesh to draw the die with that id (as in the record). */
+export function createRoller(meshFor) {
   let sim = null;
   let finish = null;
   let accumulator = 0;
@@ -23,7 +24,7 @@ export function createRoller(meshesById) {
 
   function draw(alpha) {
     for (const d of sim.dice) {
-      const mesh = meshesById[d.id];
+      const mesh = meshFor(d.id);
       pa.fromArray(d.prev.p);
       pb.fromArray(d.curr.p);
       qa.fromArray(d.prev.q);

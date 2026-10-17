@@ -1,7 +1,8 @@
 // The shape of a twenty-sided die, and which number goes on which face.
 //
 // Nothing here touches the DOM or the physics engine - it is pure geometry, so
-// it can be reasoned about (and tested) on its own.
+// it can be reasoned about (and tested) on its own. die-shapes.js derives the
+// rest (normals, rest pose, face reader) from it, as for every die type.
 
 import * as THREE from 'three';
 import { DIE_RADIUS } from './config.js';
@@ -18,7 +19,7 @@ const RAW_VERTS = [
   [PHI, 0, -1], [PHI, 0, 1], [-PHI, 0, -1], [-PHI, 0, 1],
 ];
 
-export const FACES = [
+const FACES = [
   [0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11],
   [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8],
   [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9],
@@ -26,21 +27,20 @@ export const FACES = [
 ];
 
 // Pushed out onto a sphere of DIE_RADIUS so the die is a regular icosahedron.
-export const VERTS = RAW_VERTS.map(([x, y, z]) => {
+const VERTS = RAW_VERTS.map(([x, y, z]) => {
   const len = Math.hypot(x, y, z);
   return [(x / len) * DIE_RADIUS, (y / len) * DIE_RADIUS, (z / len) * DIE_RADIUS];
 });
 
-// Per-face outward normal, and (filled in below) the number printed on it.
-export const FACE_LOCAL = FACES.map(([a, b, c]) => {
+// Per-face outward normal, for working out the numbering below.
+const NORMALS = FACES.map(([a, b, c]) => {
   const va = new THREE.Vector3(...VERTS[a]);
   const vb = new THREE.Vector3(...VERTS[b]);
   const vc = new THREE.Vector3(...VERTS[c]);
-  const normal = new THREE.Vector3()
+  return new THREE.Vector3()
     .subVectors(vb, va)
     .cross(new THREE.Vector3().subVectors(vc, va))
     .normalize();
-  return { normal, number: 0 };
 });
 
 // ---------- Standard d20 numbering (not spindown) ----------
@@ -56,9 +56,9 @@ export const FACE_LOCAL = FACES.map(([a, b, c]) => {
 // antiparallel normals, edge adjacency comes from shared vertex pairs, and a
 // small greedy pass assigns each pair's {low, 21-low} to whichever face keeps
 // consecutive numbers apart from its neighbours.
-export const FACE_NUMBERS = (() => {
+const FACE_NUMBERS = (() => {
   const n = FACES.length;
-  const normals = FACE_LOCAL.map((f) => f.normal);
+  const normals = NORMALS;
 
   const oppositeOf = new Array(n).fill(-1);
   for (let i = 0; i < n; i++) {
@@ -112,16 +112,12 @@ export const FACE_NUMBERS = (() => {
   return numbers;
 })();
 
-FACE_LOCAL.forEach((f, i) => { f.number = FACE_NUMBERS[i]; });
-
-// Which number is pointing up, given an orientation. Used to read the roll once
-// a die has come to rest.
-export function faceUpNumber(quaternion) {
-  let best = null;
-  let bestDot = -Infinity;
-  for (const face of FACE_LOCAL) {
-    const n = face.normal.clone().applyQuaternion(quaternion);
-    if (n.y > bestDot) { bestDot = n.y; best = face; }
-  }
-  return best.number;
-}
+/** @type {import('./die-shapes.js').ShapeSpec} */
+export const D20 = {
+  type: 'd20',
+  verts: VERTS,
+  faces: FACES,
+  numbers: FACE_NUMBERS,
+  label: 'numeral',
+  decalSize: 1.0,
+};

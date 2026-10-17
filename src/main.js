@@ -1,8 +1,7 @@
 // Wires the pieces together and runs the frame loop.
 
-import { THEMES, TRAY_DEPTH } from './config.js';
 import { createArena } from './arena.js';
-import { createDie } from './dice.js';
+import { createTable } from './table.js';
 import { initPhysics } from './physics.js';
 import { createRoller } from './roll.js';
 import { replayThrow } from './replay.js';
@@ -12,31 +11,18 @@ import { createThrowControls } from './input.js';
 
 const canvas = document.getElementById('scene');
 const arena = createArena(canvas);
-
-const opponentDie = createDie({ theme: THEMES.opponent, spawnZ: -TRAY_DEPTH / 2, scene: arena.scene });
-const playerDie = createDie({ theme: THEMES.player, spawnZ: TRAY_DEPTH / 2, scene: arena.scene });
-
-const roller = createRoller({ opponent: opponentDie.mesh, player: playerDie.mesh });
+const table = createTable(arena);
+const roller = createRoller(table.meshFor);
 const hud = createHud();
+const game = createGame({ hud, roller, arena, table });
+// Something to look at behind the menu while the physics engine loads.
+table.setup({ types: ['d20'], scale: 1, tray: arena.tray, opponent: true });
 
-// Lays the table out for a mode, with the dice back on their starting spots.
-// Zen has no opponent die and no divider.
-function setTable(mode) {
-  const zen = mode === 'zen';
-  roller.cancel();
-  arena.setDivider(!zen);
-  opponentDie.mesh.visible = !zen;
-  opponentDie.goHome();
-  playerDie.goHome();
-}
-
-const game = createGame({ hud, roller, arena, setTable });
-
-createThrowControls({
+const controls = createThrowControls({
   canvas,
   camera: arena.camera,
-  die: playerDie,
-  clampToTray: arena.clampToTray,
+  table,
+  arena,
   canGrab: game.canGrab,
   onGrab: game.onGrab,
   onFumble: game.onFumble,
@@ -61,20 +47,12 @@ window.superRollies = {
   rounds: game.rounds,
   replayThrow,
   arena,
-  dice: { player: playerDie, opponent: opponentDie },
+  /** Each side's dice this match: { player: [...], opponent: [...] }. */
+  dice: table.sides,
+  table,
   game,
   roller,
 };
-
-// The on-screen strip narrows when the window does (a phone turned upright), and
-// a die already at rest past its new edge couldn't be tapped, stranding the
-// match. Between throws, such a die is slid back in.
-function keepDiceOnScreen() {
-  const limit = arena.arenaHalfWidth;
-  for (const { mesh } of [playerDie, opponentDie]) {
-    mesh.position.x = Math.max(-limit, Math.min(limit, mesh.position.x));
-  }
-}
 
 let lastTime = performance.now();
 
@@ -83,7 +61,8 @@ function animate(now) {
   const dt = (now - lastTime) / 1000;
   lastTime = now;
   roller.frame(dt);
-  if (!roller.busy) keepDiceOnScreen();
+  controls.frame(dt);
+  if (!roller.busy) table.keepOnScreen();
   arena.renderer.render(arena.scene, arena.camera);
 }
 
