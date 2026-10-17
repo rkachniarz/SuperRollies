@@ -3,6 +3,9 @@
 import { THEMES, TRAY_DEPTH } from './config.js';
 import { createArena } from './arena.js';
 import { createDie } from './dice.js';
+import { initPhysics } from './physics.js';
+import { createRoller } from './roll.js';
+import { replayThrow } from './replay.js';
 import { createHud } from './hud.js';
 import { createGame } from './game.js';
 import { createThrowControls } from './input.js';
@@ -10,24 +13,24 @@ import { createThrowControls } from './input.js';
 const canvas = document.getElementById('scene');
 const arena = createArena(canvas);
 
-const opponentDie = createDie({
-  theme: THEMES.opponent,
-  spawnZ: -TRAY_DEPTH / 2,
-  scene: arena.scene,
-  world: arena.world,
-  physicsMaterial: arena.diceMaterial,
-});
+const opponentDie = createDie({ theme: THEMES.opponent, spawnZ: -TRAY_DEPTH / 2, scene: arena.scene });
+const playerDie = createDie({ theme: THEMES.player, spawnZ: TRAY_DEPTH / 2, scene: arena.scene });
 
-const playerDie = createDie({
-  theme: THEMES.player,
-  spawnZ: TRAY_DEPTH / 2,
-  scene: arena.scene,
-  world: arena.world,
-  physicsMaterial: arena.diceMaterial,
-});
-
+const roller = createRoller({ opponent: opponentDie.mesh, player: playerDie.mesh });
 const hud = createHud();
-const game = createGame({ hud, playerDie, opponentDie });
+
+// Lays the table out for a mode, with the dice back on their starting spots.
+// Zen has no opponent die and no divider.
+function setTable(mode) {
+  const zen = mode === 'zen';
+  roller.cancel();
+  arena.setDivider(!zen);
+  opponentDie.mesh.visible = !zen;
+  opponentDie.goHome();
+  playerDie.goHome();
+}
+
+const game = createGame({ hud, roller, arena, setTable });
 
 createThrowControls({
   canvas,
@@ -41,23 +44,34 @@ createThrowControls({
   onBoardTap: game.onBoardTap,
 });
 
-const FIXED_STEP = 1 / 60;
+// The scene is drawn straight away; the menu waits for the physics engine.
+initPhysics().then(
+  () => hud.setLoaded(),
+  (err) => {
+    console.error(err);
+    hud.setLoadFailed();
+  }
+);
+
+// For tools and tests driving the page (tools/phase0/): every round played so
+// far, the replay function to check them against, and the scene to find the
+// dice on screen.
+window.superRollies = {
+  rounds: game.rounds,
+  replayThrow,
+  arena,
+  dice: { player: playerDie, opponent: opponentDie },
+  game,
+  roller,
+};
+
 let lastTime = performance.now();
 
 function animate(now) {
   requestAnimationFrame(animate);
-  const dt = Math.min((now - lastTime) / 1000, 0.1);
+  const dt = (now - lastTime) / 1000;
   lastTime = now;
-
-  arena.world.step(FIXED_STEP, dt, 5);
-  arena.clampToArena(opponentDie.body);
-  arena.clampToArena(playerDie.body);
-
-  opponentDie.mesh.position.copy(opponentDie.body.position);
-  opponentDie.mesh.quaternion.copy(opponentDie.body.quaternion);
-  playerDie.mesh.position.copy(playerDie.body.position);
-  playerDie.mesh.quaternion.copy(playerDie.body.quaternion);
-
+  roller.frame(dt);
   arena.renderer.render(arena.scene, arena.camera);
 }
 

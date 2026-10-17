@@ -1,12 +1,12 @@
 // The tray the dice are thrown into: what you see (renderer, camera, lights,
-// floor, walls) and what they collide with (the physics world), plus the rules
-// about where a die is allowed to end up.
+// floor, walls), plus the rules about where a die is allowed to end up. What
+// the dice actually collide with is built in physics.js, from the same
+// dimensions.
 
 import * as THREE from 'three';
-import * as CANNON from 'cannon-es';
 import {
   SCENE_BACKGROUND, OPPONENT_FLOOR_COLOR, PLAYER_FLOOR_COLOR, WALL_COLOR,
-  TRAY_HALF_WIDTH, TRAY_DEPTH, WALL_T, WALL_HALF_HEIGHT, WALL_VISIBLE_HALF_HEIGHT,
+  TRAY_HALF_WIDTH, TRAY_DEPTH, WALL_T, WALL_VISIBLE_HALF_HEIGHT,
   DIE_RADIUS, CAMERA_FOV, CAMERA_NEAR, CAMERA_FAR, CAMERA_POSITION, CAMERA_LOOK_AT,
 } from './config.js';
 
@@ -54,25 +54,10 @@ export function createArena(canvas) {
     floor.position.set(0, 0, z);
     floor.receiveShadow = true;
     scene.add(floor);
+    return floor;
   }
-  addFloor(OPPONENT_FLOOR_COLOR, -TRAY_DEPTH / 2);
+  const opponentFloor = addFloor(OPPONENT_FLOOR_COLOR, -TRAY_DEPTH / 2);
   addFloor(PLAYER_FLOOR_COLOR, TRAY_DEPTH / 2);
-
-  // ---------- Physics ----------
-  const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -20, 0) });
-  world.allowSleep = true;
-  world.broadphase = new CANNON.SAPBroadphase(world);
-
-  const diceMaterial = new CANNON.Material('dice');
-  const floorMaterial = new CANNON.Material('floor');
-  const wallMaterial = new CANNON.Material('wall');
-  world.addContactMaterial(new CANNON.ContactMaterial(diceMaterial, floorMaterial, { friction: 0.45, restitution: 0.3 }));
-  world.addContactMaterial(new CANNON.ContactMaterial(diceMaterial, wallMaterial, { friction: 0.3, restitution: 0.55 }));
-  world.addContactMaterial(new CANNON.ContactMaterial(diceMaterial, diceMaterial, { friction: 0.3, restitution: 0.4 }));
-
-  const groundBody = new CANNON.Body({ mass: 0, shape: new CANNON.Plane(), material: floorMaterial });
-  groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
-  world.addBody(groundBody);
 
   // ---------- Walls ----------
   const wallVisualMaterial = new THREE.MeshStandardMaterial({
@@ -81,15 +66,10 @@ export function createArena(canvas) {
     metalness: 0.12,
   });
 
+  // Only a short strip at the base of each wall is drawn; its collider (in
+  // physics.js) is WALL_HALF_HEIGHT tall, so it blocks throws well above what
+  // you can see of it.
   function addWall(x, z, sx, sz) {
-    const body = new CANNON.Body({
-      mass: 0,
-      shape: new CANNON.Box(new CANNON.Vec3(sx, WALL_HALF_HEIGHT, sz)),
-      material: wallMaterial,
-    });
-    body.position.set(x, WALL_HALF_HEIGHT, z);
-    world.addBody(body);
-
     const mesh = new THREE.Mesh(
       new THREE.BoxGeometry(sx * 2, WALL_VISIBLE_HALF_HEIGHT * 2, sz * 2),
       wallVisualMaterial
@@ -98,13 +78,23 @@ export function createArena(canvas) {
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     scene.add(mesh);
+    return mesh;
   }
 
   addWall(-TRAY_HALF_WIDTH - WALL_T, 0, WALL_T, TRAY_DEPTH + WALL_T * 2); // left
   addWall(TRAY_HALF_WIDTH + WALL_T, 0, WALL_T, TRAY_DEPTH + WALL_T * 2); // right
   addWall(0, -TRAY_DEPTH - WALL_T, TRAY_HALF_WIDTH + WALL_T * 2, WALL_T); // far edge
   addWall(0, TRAY_DEPTH + WALL_T, TRAY_HALF_WIDTH + WALL_T * 2, WALL_T); // near edge
-  addWall(0, 0, TRAY_HALF_WIDTH + WALL_T * 2, WALL_T * 1.4); // the divider
+  const dividerMesh = addWall(0, 0, TRAY_HALF_WIDTH + WALL_T * 2, WALL_T * 1.4);
+
+  // Zen mode takes the divider out, giving one die the whole tray - and paints
+  // the floor one colour, so it reads as one tray rather than two halves.
+  let divider = true;
+  function setDivider(on) {
+    divider = on;
+    dividerMesh.visible = on;
+    opponentFloor.material.color.set(on ? OPPONENT_FLOOR_COLOR : PLAYER_FLOOR_COLOR);
+  }
 
   // ---------- Where a die is allowed to be ----------
   // How far out to the sides a die may end up. The camera has a fixed VERTICAL
@@ -134,32 +124,18 @@ export function createArena(canvas) {
     arenaHalfWidth = DIE_RADIUS;
   }
 
-  const ARENA_Z_MIN = -TRAY_DEPTH + DIE_RADIUS;
-  const ARENA_Z_MAX = TRAY_DEPTH - DIE_RADIUS;
-
-  // A hard backstop, independent of the wall colliders above: cannon-es has no
-  // continuous collision detection, so a small, fast, tumbling die can
-  // occasionally tunnel straight through a thin wall in a single physics step
-  // instead of bouncing off it. Rather than chase that per-collision, every
-  // die's position is clamped after each step, so ending up outside the tray is
-  // impossible no matter what the collision pass missed.
-  function clampToArena(body) {
-    if (body.type !== CANNON.Body.DYNAMIC) return; // held dice are clamped by the drag instead
-    const xLimit = arenaHalfWidth;
-    if (body.position.x < -xLimit) { body.position.x = -xLimit; if (body.velocity.x < 0) body.velocity.x = 0; }
-    else if (body.position.x > xLimit) { body.position.x = xLimit; if (body.velocity.x > 0) body.velocity.x = 0; }
-    if (body.position.z < ARENA_Z_MIN) { body.position.z = ARENA_Z_MIN; if (body.velocity.z < 0) body.velocity.z = 0; }
-    else if (body.position.z > ARENA_Z_MAX) { body.position.z = ARENA_Z_MAX; if (body.velocity.z > 0) body.velocity.z = 0; }
-  }
-
-  // While held, the die is kinematic (moved by direct position, not physics), so
-  // it wouldn't be stopped by the solid divider wall on its own - clamp it to
+  // The thrown dice are held to the same sideways limit inside the simulation
+  // (clampToArena in physics.js), which reads it from each throw's record.
+  //
+  // While held, the die isn't simulated at all (it simply follows the pointer),
+  // so nothing would stop it at the solid divider wall on its own - clamp it to
   // the player's own zone, and to the same sideways limit a thrown die gets, so
   // it can't be dragged through the divider or out past the edge of the screen.
   function clampToTray(x, z) {
+    const zMin = divider ? WALL_T * 1.4 + DIE_RADIUS * 0.6 : -TRAY_DEPTH + DIE_RADIUS;
     return {
       x: Math.max(-arenaHalfWidth, Math.min(arenaHalfWidth, x)),
-      z: Math.max(WALL_T * 1.4 + DIE_RADIUS * 0.6, Math.min(TRAY_DEPTH - DIE_RADIUS, z)),
+      z: Math.max(zMin, Math.min(TRAY_DEPTH - DIE_RADIUS, z)),
     };
   }
 
@@ -177,8 +153,9 @@ export function createArena(canvas) {
   resize();
 
   return {
-    renderer, scene, camera, world, diceMaterial,
-    clampToArena, clampToTray, resize,
+    renderer, scene, camera,
+    clampToTray, resize, setDivider,
+    get divider() { return divider; },
     get arenaHalfWidth() { return arenaHalfWidth; },
   };
 }

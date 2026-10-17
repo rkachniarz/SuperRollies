@@ -1,10 +1,9 @@
-// Building a die: the faceted body, its etched numbers, and the matching
-// physics shape.
+// Building a die: the faceted body and its etched numbers. (Its collision
+// shape is built from the same vertices, in physics.js.)
 
 import * as THREE from 'three';
-import * as CANNON from 'cannon-es';
 import { DIE_RADIUS } from './config.js';
-import { FACES, VERTS, FACE_LOCAL, faceUpNumber } from './d20.js';
+import { FACES, VERTS, FACE_LOCAL } from './d20.js';
 
 function buildDieGeometry(themeColor) {
   const positions = [];
@@ -137,17 +136,22 @@ function addFaceNumbers(mesh, numberColor) {
   });
 }
 
-const cannonVerts = VERTS.map(([x, y, z]) => new CANNON.Vec3(x, y, z));
-
-function makeDieShape() {
-  return new CANNON.ConvexPolyhedron({ vertices: cannonVerts, faces: FACES });
-}
+// Where every die starts: lying flat with its 20 on top, already at rest.
+// Placed, never dropped - a die released from rest in its default orientation
+// lands exactly on a level edge and, with nothing to tip it either way in a
+// deterministic simulation, stays balanced there.
+const TOP_FACE = FACE_LOCAL.findIndex((f) => f.number === 20);
+const REST_QUATERNION = new THREE.Quaternion().setFromUnitVectors(
+  FACE_LOCAL[TOP_FACE].normal, new THREE.Vector3(0, 1, 0)
+);
+// Centre to face: how high the centre sits when lying on one.
+const REST_HEIGHT = FACE_LOCAL[TOP_FACE].normal.dot(new THREE.Vector3(...VERTS[FACES[TOP_FACE][0]]));
 
 /**
- * Creates one die: adds its mesh to the scene and its body to the physics
- * world, and returns both.
+ * Creates one die's mesh and adds it to the scene, resting at the centre of
+ * its own half of the tray.
  */
-export function createDie({ theme, spawnZ, scene, world, physicsMaterial }) {
+export function createDie({ theme, spawnZ, scene }) {
   const geometry = buildDieGeometry(theme.body);
   const material = new THREE.MeshStandardMaterial({
     vertexColors: true,
@@ -164,46 +168,40 @@ export function createDie({ theme, spawnZ, scene, world, physicsMaterial }) {
   );
   mesh.add(edges);
   addFaceNumbers(mesh, theme.number);
+  const die = {
+    mesh,
+    /** Puts it back where it starts, at the start of each match. */
+    goHome() {
+      mesh.position.set(0, REST_HEIGHT, spawnZ);
+      mesh.quaternion.copy(REST_QUATERNION);
+    },
+  };
+  die.goHome();
   scene.add(mesh);
-
-  const body = new CANNON.Body({
-    mass: 1,
-    shape: makeDieShape(),
-    material: physicsMaterial,
-    position: new CANNON.Vec3(0, DIE_RADIUS + 0.3, spawnZ),
-    angularDamping: 0.35,
-    linearDamping: 0.05,
-  });
-  body.allowSleep = true;
-  body.sleepSpeedLimit = 0.22;
-  body.sleepTimeLimit = 0.22;
-  world.addBody(body);
-
-  return { mesh, body };
+  return die;
 }
 
-/** The number showing on top of a settled die. */
-export function readFaceUp(body) {
-  const q = body.quaternion;
-  return faceUpNumber(new THREE.Quaternion(q.x, q.y, q.z, q.w));
-}
-
-/** Throws a die from a random spot in its own half of the tray. */
-export function throwDie(die, zoneZ, zoneSign, { trayHalfWidth, trayDepth }) {
-  const { body } = die;
-  body.wakeUp();
+/**
+ * A release from a random spot in a die's own half of the tray - the
+ * opponent's throw.
+ * @returns {Omit<import('./physics.js').DieRelease, 'id' | 'type'>}
+ */
+export function randomThrow(zoneZ, zoneSign, { trayHalfWidth, trayDepth }) {
   const x = (Math.random() - 0.5) * (trayHalfWidth * 1.1);
   const z = zoneZ + zoneSign * (Math.random() - 0.5) * (trayDepth * 0.5);
-  body.position.set(x, DIE_RADIUS + 1.4 + Math.random() * 0.6, z);
-  body.velocity.set((Math.random() - 0.5) * 5, 0, (Math.random() - 0.5) * 5);
-  body.angularVelocity.set(
-    (Math.random() - 0.5) * 18,
-    (Math.random() - 0.5) * 18,
-    (Math.random() - 0.5) * 18
-  );
-  body.quaternion.setFromEuler(
+  const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(
     Math.random() * Math.PI,
     Math.random() * Math.PI,
     Math.random() * Math.PI
-  );
+  ));
+  return {
+    p: [x, DIE_RADIUS + 1.4 + Math.random() * 0.6, z],
+    q: q.toArray(),
+    v: [(Math.random() - 0.5) * 5, 0, (Math.random() - 0.5) * 5],
+    w: [
+      (Math.random() - 0.5) * 18,
+      (Math.random() - 0.5) * 18,
+      (Math.random() - 0.5) * 18,
+    ],
+  };
 }

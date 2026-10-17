@@ -7,7 +7,7 @@
        padding in the HUD styles actually resolve on notched screens. -->
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#12111a">
-  <meta name="description" content="Roll higher than your opponent. Lose three rounds and it's over.">
+  <meta name="description" content="Roll higher than your opponent: lose three rounds and it's over. Or just roll, in Zen.">
   <title>Super Rollies</title>
 
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Karla:wght@400;600;700&display=swap">
@@ -19,7 +19,7 @@
   {
     "imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-      "cannon-es": "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js"
+      "@dimforge/rapier3d-deterministic-compat": "https://cdn.jsdelivr.net/npm/@dimforge/rapier3d-deterministic-compat@0.21.0/dist/rapier.mjs"
     }
   }
   </script>
@@ -27,6 +27,11 @@
 <body>
 
 <canvas id="scene"></canvas>
+
+<!-- Top-left corner: outside the tray as drawn on every screen shape, so no die
+     can come to rest under it (a tappable control over a resting die would
+     steal the tap meant to pick it up). -->
+<button class="back-btn" id="backBtn" hidden aria-label="Back to the menu">&larr; Menu</button>
 
 <div class="hud top" id="opponentHud" hidden>
   <div class="label">Opponent</div>
@@ -46,8 +51,12 @@
 <div class="menu-overlay" id="menu">
   <div class="menu-card">
     <h1 class="menu-title">Super Rollies</h1>
-    <p class="menu-subtitle">Roll higher to win the round. Lose 3 rounds and it's over.</p>
-    <button class="menu-btn" id="quickGameBtn">Quick Game</button>
+    <p class="menu-subtitle">Quick Game: roll higher to win the round, lose 3 and it's over.<br>Zen: just roll.</p>
+    <div class="menu-buttons">
+      <button class="menu-btn" id="quickGameBtn" disabled>Loading…</button>
+      <button class="menu-btn secondary" id="zenBtn" disabled>Zen</button>
+    </div>
+    <p class="menu-status" id="menuStatus" hidden></p>
   </div>
 </div>
 

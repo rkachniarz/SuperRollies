@@ -32,6 +32,39 @@ export const WALL_VISIBLE_HALF_HEIGHT = 0.09; // the visible rim
 // ---------- The die ----------
 export const DIE_RADIUS = 0.62;
 
+// ---------- Physics ----------
+// The simulation always advances in steps of exactly this length, however fast
+// or slow the screen refreshes, and the renderer interpolates between steps. A
+// throw's outcome therefore depends only on how it was released, never on the
+// frame rate - which is what lets a recorded throw be replayed exactly.
+export const PHYSICS_HZ = 60;
+export const PHYSICS_STEP = 1 / PHYSICS_HZ;
+export const MAX_STEPS_PER_FRAME = 5; // a stalled tab slows the dice down rather than freezing
+export const GRAVITY = -20;
+
+// Rapier combines two colliders' coefficients by averaging them. These started
+// out giving the same pairings the game had under cannon-es (die-floor
+// friction 0.45 / bounce 0.3, die-wall 0.3 / 0.55, die-die 0.3 / 0.4), but the
+// same numbers bounce noticeably less in Rapier - dice felt heavy. Die-floor
+// bounce is now 0.375, which matches how high cannon-es's dice bounced on the
+// same throws (measured side by side in Node, not by eye).
+export const DIE_FRICTION = 0.3;
+export const DIE_RESTITUTION = 0.4;
+export const FLOOR_FRICTION = 0.6;
+export const FLOOR_RESTITUTION = 0.35;
+export const WALL_FRICTION = 0.3;
+export const WALL_RESTITUTION = 0.7;
+// Per-second damping rates. cannon-es's 0.05 / 0.35 were "fraction lost per
+// second"; these are the equivalent continuous rates (-ln(1 - x)).
+export const DIE_LINEAR_DAMPING = 0.05;
+export const DIE_ANGULAR_DAMPING = 0.43;
+
+// A die counts as settled once its linear and angular speeds have both stayed
+// below SETTLE_SPEED for SETTLE_TIME seconds of simulated time, while resting
+// on a face (see restsOnFace in physics.js).
+export const SETTLE_SPEED = 0.22;
+export const SETTLE_TIME = 0.22;
+
 // ---------- Camera ----------
 // Near/far are deliberately tight around what is ever actually on screen (the
 // camera sits ~11.5-15 units from anything in the tray) rather than a generic
@@ -58,5 +91,5 @@ export const MIN_DRAG_DISTANCE = 0.35;
 
 // ---------- Match ----------
 export const HEARTS_PER_SIDE = 3;
-export const SETTLE_TIMEOUT_MS = 4000; // give up waiting for a die to come to rest
+export const SETTLE_TIMEOUT_MS = 4000; // simulated time; give up waiting for a die to come to rest
 export const GAME_OVER_LINGER_MS = 2600; // how long the match-over card stays up

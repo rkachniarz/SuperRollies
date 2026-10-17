@@ -23,11 +23,14 @@ function buildHeartsRow(container) {
 export function createHud() {
   const menuEl = document.getElementById('menu');
   const quickGameBtn = document.getElementById('quickGameBtn');
+  const zenBtn = document.getElementById('zenBtn');
+  const backBtn = document.getElementById('backBtn');
   const opponentHudEl = document.getElementById('opponentHud');
   const youHudEl = document.getElementById('youHud');
   const resultEl = document.getElementById('result');
   const resultHeadlineEl = document.getElementById('resultHeadline');
   const resultDetailEl = document.getElementById('resultDetail');
+  const menuStatusEl = document.getElementById('menuStatus');
 
   const opponentHeartEls = buildHeartsRow(document.getElementById('opponentHearts'));
   const youHeartEls = buildHeartsRow(document.getElementById('youHearts'));
@@ -70,23 +73,43 @@ export function createHud() {
     resultEl.classList.remove('show', 'game-over');
   }
 
-  function showBoard() {
+  // Zen has no opponent and no score, so no hearts either.
+  function showBoard(mode) {
     menuEl.hidden = true;
-    opponentHudEl.hidden = false;
-    youHudEl.hidden = false;
+    opponentHudEl.hidden = mode === 'zen';
+    youHudEl.hidden = mode === 'zen';
+    backBtn.hidden = false;
+  }
+
+  // The menu is up before the physics engine has finished loading (its
+  // WebAssembly takes a moment, longest on a phone), so Quick Game starts
+  // disabled and is switched on once it's ready.
+  function setLoaded() {
+    quickGameBtn.disabled = false;
+    zenBtn.disabled = false;
+    quickGameBtn.textContent = 'Quick Game';
+  }
+
+  function setLoadFailed() {
+    quickGameBtn.textContent = "Couldn't load";
+    menuStatusEl.textContent = 'The physics engine failed to load. Check your connection and reload the page.';
+    menuStatusEl.hidden = false;
   }
 
   function showMenu() {
     hideResult();
     opponentHudEl.hidden = true;
     youHudEl.hidden = true;
+    backBtn.hidden = true;
     menuEl.hidden = false;
   }
 
   return {
     hearts, resetHearts, loseHeart,
-    showResult, hideResult, showBoard, showMenu,
+    showResult, hideResult, showBoard, showMenu, setLoaded, setLoadFailed,
     onQuickGame(handler) { quickGameBtn.addEventListener('click', handler); },
+    onZen(handler) { zenBtn.addEventListener('click', handler); },
+    onBack(handler) { backBtn.addEventListener('click', handler); },
     onResultClick(handler) { resultEl.addEventListener('click', handler); },
   };
 }

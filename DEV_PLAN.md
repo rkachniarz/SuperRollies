@@ -10,6 +10,7 @@ of scope.
 **Starting point (as of 2026-10-16):** one die type (d20), one die per side, an
 AI opponent that throws at random, and rules hard-coded in `game.js` `runRound()`
 (higher roll wins, ties cost nothing, 3 hearts). No multiplayer code exists.
+Since Phase 0 (2026-10-17): physics on Rapier, and a Zen mode (D15).
 
 ---
 
@@ -54,10 +55,12 @@ Some Spice works with any dice; some only makes sense with particular dice
 | D7 | 2026-10-16 | **Win conditions are Spice.** Hearts are the default; Spice may replace them (Hit Points, Race to N, Tug of War, ...). |
 | D8 | 2026-10-16 | **State-based asymmetry is allowed.** Rules are identical for both players but may favour whoever is in a given situation (behind, just lost). A rule never favours a player by identity (e.g. host). |
 | D9 | 2026-10-16 | Exactly **one Spice per match**. Stacking is a possible later extension; eligibility metadata includes incompatibilities to allow for it. |
-| D10 | 2026-10-16 | **Provisional, pending Phase 0:** replace cannon-es with **Rapier** (`@dimforge/rapier3d-compat`, deterministic build). Rapier is maintained, has continuous collision detection, and can produce identical simulations on every client, which lets multiplayer send throw inputs instead of trajectories. If any Phase 0 check fails, stay on cannon-es and keep the trajectory-replay design (R4.3b). Record the outcome here. |
+| D10 | 2026-10-16 | Replace cannon-es with **Rapier** (`@dimforge/rapier3d-compat`, deterministic build). Rapier is maintained, has continuous collision detection, and can produce identical simulations on every client, which lets multiplayer send throw inputs instead of trajectories. **Adopted 2026-10-17 after Phase 0:** all four checks passed (A feel, B d10 collider, C tunnelling, D determinism; D within the D14 scope). Package: `@dimforge/rapier3d-deterministic-compat@0.21.0`. The trajectory-replay fallback (R4.3b, 7.5b) is dropped. |
 | D11 | 2026-10-16 | Rest of the stack stays: three.js, no framework, no build step to run, esbuild only for the artifact. |
 | D12 | 2026-10-16 | Multiplayer uses a **TURN server** alongside PeerJS's public signalling server, so players behind strict NATs and some mobile networks can still connect. |
 | D13 | 2026-10-16 | The rules engine gets **unit tests with `node:test`** (no new dependency). The verification checklist becomes a **Playwright script**. Spice and dice-set definitions use **`// @ts-check` with JSDoc types** for editor checking without a build step. |
+| D14 | 2026-10-17 | **Browser checks run in Chromium only until after the MVP.** The checks run after every change, and three engines make each run take far longer. Firefox and WebKit (Safari, and every browser on iOS) compatibility is a post-MVP step (see §7, *Post-MVP*). For Check D (0.7) this means Node, desktop Chromium and Android Chrome for now. Cross-engine determinism, which an iPhone vs. desktop multiplayer match depends on, is verified in that post-MVP step. |
+| D15 | 2026-10-17 | **Zen mode** added to the main menu during Phase 0, as a way to test physics without a match getting in the way: one die, no opponent, no divider, no score; each throw's result is shown. A **back-to-menu button** (top-left) is shown in Zen and Quick Game; leaving Quick Game abandons the match. Its placement is checked to be clear of every spot a die can rest (the principle in 4.6a). |
 
 ---
 
@@ -73,8 +76,8 @@ Some Spice works with any dice; some only makes sense with particular dice
     this is settled.
 - [ ] **Q2 — Rejoin window after a multiplayer disconnect.** How long before the
   remaining player is awarded the match?
-- [ ] **Q3 — Physics engine: Rapier or cannon-es?** Answered by Phase 0 (D10).
-  Affects every physics-touching task, and decides between R4.3a and R4.3b.
+- [x] **Q3 — Physics engine: Rapier or cannon-es?** Rapier (D10), settled by
+  Phase 0.
 - [ ] **Q4 — Which TURN provider?** Needs a free or cheap tier and credentials
   that are safe to ship in a static site (short-lived credentials are better if
   the provider supports them).
@@ -149,14 +152,11 @@ Some Spice works with any dice; some only makes sense with particular dice
 - **R4.2** The host picks Dice and Spice from the **full catalogue**: all dice
   sets, then every Spice eligible for that set. The guest sees the choice and
   the full rule text before the first round. *(D3)*
-- **R4.3** Each client is authoritative for **its own throw**. How the other
-  client sees it depends on the Phase 0 outcome (Q3):
-  - **R4.3a (Rapier, deterministic):** the thrower sends the release state
-    (position, orientation, linear and angular velocity of each die). The other
-    client simulates the same throw and arrives at the same result, and both
-    sides check the face values match.
-  - **R4.3b (cannon-es, fallback):** the thrower simulates locally and sends the
-    face values plus a compressed trajectory, which the other client replays.
+- **R4.3** Each client is authoritative for **its own throw**. The thrower
+  sends the release record (`ThrowRecord` in `src/physics.js`: position,
+  orientation, linear and angular velocity of each die, plus the table layout).
+  The other client simulates the same throw with `replayThrow` and arrives at
+  the same result, and both sides check the face values match. *(D10)*
 - **R4.4** All rules logic is a **pure function** of the match config (seed,
   dice set, Spice) and both sides' results. Both clients evaluate it and reach
   the same outcome.
@@ -178,7 +178,7 @@ Some Spice works with any dice; some only makes sense with particular dice
   hold for **every die type and dice count**.
 - **R5.4** Physics runs a **fixed number of steps per simulated second**,
   independent of frame rate; rendering interpolates between steps. Required for
-  determinism (R4.3a) and harmless otherwise.
+  determinism (R4.3) and harmless otherwise.
 - **R5.5** The rules engine and every Spice and scorer have unit tests
   (`node:test`), runnable with `npm test`. *(D13)*
 - **R5.6** The verification checklist (§8) is a Playwright script, runnable with
@@ -248,6 +248,7 @@ Some Spice works with any dice; some only makes sense with particular dice
 | Pothole | A hole in each half of the table; a die that falls in counts as 0. | |
 | Gusty Table | A random breeze pushes the dice while they roll. | |
 | No Man's Land | The divider is removed and both sides throw at once; dice can knock into each other. | Multiplayer depends on Q1 |
+| Difficult terrain | The board is covered in bumps and strange geometry, influencing the rolls |
 
 ### 6.5 Specific to particular dice
 
@@ -288,33 +289,106 @@ Answers Q3 and settles D10. Do this before Phase 1: physics code runs through
 porting is cheapest while there is only one die type. Keep the trial separate
 from the working game until it passes.
 
-- [ ] **0.1** Port the current 1d20 game to Rapier
+Trial lives on branch `phase-0-rapier`. Check scripts are in `tools/phase0/`:
+`npm run verify` (the five browser checks) and `npm run phase0` (Checks B, C
+and D); both need `npm run dev` running.
+
+- [x] **0.1** Port the current 1d20 game to Rapier
   (`@dimforge/rapier3d-compat`, deterministic build, pinned in the import map).
   Add a loading step while the WebAssembly initialises.
-- [ ] **0.2** Fixed-step physics loop decoupled from frame rate, with render
-  interpolation (R5.4).
-- [ ] **0.3** Throw-recording harness: capture a throw's release state, replay
+  - Package is `@dimforge/rapier3d-deterministic-compat@0.21.0` (the
+    deterministic build of the compat package, WebAssembly inlined).
+  - Physics is in `src/physics.js`, free of the DOM so it also runs in Node.
+    A **fresh world is built for every throw** from its release record, rather
+    than one long-lived world: the engine's internal state between steps
+    (contact caches, warm-starting) can't be captured in a record, so this is
+    what makes a replay exact. The held die is no longer a physics body; it
+    just follows the pointer.
+  - Quick Game is disabled and reads "Loading…" until the WebAssembly is ready.
+- [x] **0.2** Fixed-step physics loop decoupled from frame rate, with render
+  interpolation (R5.4). `src/roll.js`; 60 Hz, at most 5 steps per frame.
+- [x] **0.3** Throw-recording harness: capture a throw's release state, replay
   it, and output final positions and orientations. Reused by the checks below,
-  by Playwright tests, and by multiplayer later.
-- [ ] **0.4 Check A — feel.** Throws, bounces and settling feel at least as good
-  as on cannon-es. Judged by playing it on desktop and on a phone.
-- [ ] **0.5 Check B — d10 collider.** A convex-hull collider for the
+  by Playwright tests, and by multiplayer later. `src/replay.js`. The game keeps
+  every round's record and result (`window.superRollies.rounds`). The record
+  includes the thrower's on-screen sideways limit (`arenaHalfWidth`), which
+  depends on screen size. That keeps a replay on a different-sized screen
+  exact.
+- [x] **0.4 Check A — feel.** Throws, bounces and settling feel at least as good
+  as on cannon-es. Judged by playing it on desktop and on a phone. *Passed.*
+  Two things came out of playing it, both fixed and measured against the old
+  cannon-es setup run in Node on the same throws:
+  - **Dice felt heavy:** they bounced about 25% lower and 40% less often.
+    Die-floor restitution raised to 0.375, which matches cannon-es's bounce
+    height. Travel is still ~10% shorter, a difference in how the engines
+    solve contacts that friction and damping don't change.
+  - **Slow to stop against a side wall.** This was `clampToArena` holding dice
+    to the on-screen limit by moving them, 0.13 in front of the real wall.
+    Dice leaning on it crawled for seconds (1 throw in 80 hit the 4 s
+    timeout). The on-screen limit is now made of **real side-wall colliders**
+    (`sideWallFace` in `physics.js`): on desktop the tray's own walls, on a
+    narrow screen invisible walls at its edges. `clampToArena` remains only
+    as the tunnelling safety net, at the real walls. Worst settle time went
+    from 4.0 s to 2.6 s.
+  - Dice cocked against a wall: about 3.5% of throws, fewer than under
+    cannon-es (5.8%, some leaning on its invisible clamp wall).
+- [x] **0.5 Check B — d10 collider.** A convex-hull collider for the
   pentagonal trapezohedron (kite faces) settles flat on a face and never on an
-  edge or point.
-- [ ] **0.6 Check C — no tunnelling.** With `clampToArena` disabled, 200 throws
-  at maximum speed: zero dice leave the tray or cross the divider.
-- [ ] **0.7 Check D — determinism.** 20 recorded throws replayed in desktop
+  edge or point. *Passed: 10,000 throws, none off flat in the open, none timed
+  out.* Getting there found two problems with how a throw ends, both fixed and
+  both affecting the d20 too:
+  - Rapier's own auto-sleep froze dice still slowly toppling off an edge
+    (around 1 throw in 100 for the d10). It is now off; the game's settle
+    check is the only thing that puts a die to sleep.
+  - "Slow for a moment" isn't "at rest": a die can pause at the tipping point.
+    Settling now also requires the die's contact points to span an area, not
+    a line (`restsOnFace` in `physics.js`). Contact-point *counts* don't work:
+    Rapier can report several along a single edge.
+  - About 1.3% of d10 throws come to rest **cocked** against a wall, as real
+    dice do. Phase 3 (3.4) needs a rule for this: re-throw, or read the
+    most-upward face.
+  - `clampToArena` holds a die by moving it, which makes it an invisible,
+    frictionless wall that a d10 can rest leaning against. On desktop it sits
+    0.13 inside the real wall, on phones further in. Pre-existing (cannon-es
+    had the same). *Fixed under 0.4: the on-screen limit is now real
+    side-wall colliders.*
+- [x] **0.6 Check C — no tunnelling.** With `clampToArena` disabled, 200 throws
+  at maximum speed: zero dice leave the tray or cross the divider. *Passed: also
+  run with 5,000 throws (10,000 dice), a third aimed straight at walls,
+  corners and the divider, checked at every step. None escaped.*
+- [x] **0.7 Check D — determinism.** 20 recorded throws replayed in desktop
   Chrome, Firefox and Safari, iOS Safari and Android Chrome produce
-  bit-identical final positions and orientations.
-- [ ] **0.8** Bundle check: `npm run build` still produces a working artifact
+  bit-identical final positions and orientations. *(Per D14: Node, desktop
+  Chromium and Android Chrome for now; Firefox, Safari and iOS post-MVP.)*
+  - [x] 20 real throws recorded from the game (`tools/phase0/throws.json`)
+    replay bit-identically in Node and headless Chromium, and both match what
+    the live game reached.
+  - [x] Android Chrome (Pixel 9 Pro): `/tools/phase0/determinism.html` from
+    the dev server passes.
+- [x] **0.8** Bundle check: `npm run build` still produces a working artifact
   with Rapier loaded from the CDN.
-- [ ] **0.9 Decision.** All checks pass: adopt Rapier, update D10 and Q3, and
-  delete R4.3b and task 7.5b. Any check fails: stay on cannon-es, record which
-  check failed in D10, and delete R4.3a and task 7.5a. Either way, keep 0.2
-  (fixed-step loop) and 0.3 (recording harness).
-- [ ] **0.10** Docs refresh. If Rapier is adopted: `CLAUDE.md`, `README.md`
+  - [x] The built file plays a full round in Chromium, with Rapier loaded from
+    jsdelivr.
+  - [x] Works on claude.ai: published as a separate, private trial artifact
+    (https://claude.ai/artifact/6fibqTnv6n2rVWrSMgF9nL), so the main artifact
+    stays on cannon-es until 0.9. Its sandbox has to allow WebAssembly.
+- [x] **0.8a** Zen mode and a back-to-menu button *(D15)*, checked by
+  `npm run verify`.
+  - Dice now start each match **placed** flat on a face, not dropped. Dropped
+    from rest in their default orientation, they landed exactly on a level
+    edge and stayed balanced there (deterministic, so nothing tips them).
+    That held the opening "settle" for the full 4 s timeout, and the die
+    couldn't be picked up in that time.
+  - Known issue for later: the layout on a real phone (Pixel 9 Pro) needs
+    work.
+- [x] **0.9 Decision.** All checks pass: adopt Rapier, update D10 and Q3, and
+  delete R4.3b and task 7.5b. *Done: Rapier adopted (D10).*
+- [x] **0.10** Docs refresh. If Rapier is adopted: `CLAUDE.md`, `README.md`
   and code comments stop referring to cannon-es, and the `clampToArena` entry
-  is re-evaluated (it may stay as a cheap safety net).
+  is re-evaluated (it may stay as a cheap safety net). *Done. It stays, as a
+  safety net only; the on-screen limit is now colliders. `CLAUDE.md` also
+  gains the Phase 0 traps (fresh world per throw, Rapier sleep off,
+  rest-on-face settling, no `Math.hypot`, dice placed not dropped).*
 
 ### Phase 1 — Core refactor
 
@@ -453,8 +527,7 @@ Behaviour is unchanged: 1d20 vs. AI plays exactly as it does today.
 
 ### Phase 7 — Multiplayer
 
-Blocked on **Q1** for the protocol and on **Q3** (Phase 0) for how throws are
-shared; 7.1–7.3 can start before Q1 is settled.
+Blocked on **Q1** for the protocol; 7.1–7.3 can start before Q1 is settled.
 
 - [ ] **7.1** PeerJS connection: host creates a room, code and `?join=` link,
   guest joins (R4.1).
@@ -463,11 +536,9 @@ shared; 7.1–7.3 can start before Q1 is settled.
 - [ ] **7.2** Host catalogue selection; guest sees the choice and rules (R4.2).
 - [ ] **7.3** Shared seed and config handshake.
 - [ ] **7.4** Throw protocol (simultaneous or turn-based, per Q1).
-- [ ] **7.5a** *(If Rapier)* Send release state; the other client simulates the
-  throw using the Phase 0 harness; both sides check the face values match
-  (R4.3a).
-- [ ] **7.5b** *(If cannon-es)* Trajectory compression and replay of the
-  opponent's throw (R4.3b).
+- [ ] **7.5** Send the release record; the other client simulates the throw
+  with the Phase 0 harness (`replayThrow`); both sides check the face values
+  match (R4.3).
 - [ ] **7.6** Both clients evaluate the rules engine; mismatch detection (R4.4).
 - [ ] **7.7** Disconnect handling and rejoin window (R4.5, Q2).
 - [ ] **7.8** Interactive Spice in multiplayer: Second Wind, Dice Poker reroll,
@@ -482,12 +553,21 @@ shared; 7.1–7.3 can start before Q1 is settled.
   dependency on PeerJS's public signalling server, a third party that can be
   unavailable.
 
+### Post-MVP — Browser compatibility *(D14)*
+
+- [ ] **P.1** Run the verification checklist in Firefox and WebKit as well as
+  Chromium. Unexamined so far: during Phase 0, one early run in Firefox timed
+  out on check 4 and one in WebKit failed check 3, the second probably the
+  same test flakiness that was fixed for Chromium.
+- [ ] **P.2** Check D (0.7) in desktop Firefox and Safari, and iOS Safari.
+  Required before multiplayer is offered to players on iOS.
+
 ---
 
 ## 8. Verification checklist
 
 Run after any change to dice, camera, input or match flow (extends the list in
-`CLAUDE.md`). From Phase 1 these are scripted in Playwright (R5.6); each item is
+`CLAUDE.md`). Chromium only until the post-MVP compatibility step *(D14)*. From Phase 1 these are scripted in Playwright (R5.6); each item is
 added to the script as the feature it checks lands. Run `npm test` alongside.
 
 1. Each die type shows its full set of numerals, and at rest at least one

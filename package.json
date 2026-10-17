@@ -2,14 +2,19 @@
   "name": "super-rollies",
   "version": "0.1.0",
   "private": true,
-  "description": "A d20 roll-off game. Grab your die, throw it, roll higher than your opponent.",
+  "description": "A d20 roll-off game. Grab your die, throw it, roll higher than your opponent - or just roll, in Zen.",
   "type": "module",
   "scripts": {
     "dev": "serve . --listen 8000",
-    "build": "node tools/build-artifact.mjs"
+    "build": "node tools/build-artifact.mjs",
+    "verify": "node tools/phase0/verify.mjs",
+    "phase0": "node tools/phase0/check-d10.mjs && node tools/phase0/check-tunnelling.mjs && node tools/phase0/check-determinism.mjs"
   },
   "devDependencies": {
+    "@dimforge/rapier3d-deterministic-compat": "0.21.0",
     "esbuild": "^0.25.0",
-    "serve": "^14.2.4"
+    "playwright": "1.64.1",
+    "serve": "^14.2.4",
+    "three": "0.160.0"
   }
 }

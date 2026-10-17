@@ -4,7 +4,6 @@
 // drives a mouse drag on desktop and a finger drag on a phone.
 
 import * as THREE from 'three';
-import * as CANNON from 'cannon-es';
 import {
   HELD_HEIGHT, HISTORY_MS, THROW_POWER, MIN_DRAG_DISTANCE,
   MAX_THROW_SPEED, MAX_LIFT_SPEED, LIFT_FACTOR, SPIN_POWER,
@@ -44,11 +43,6 @@ export function createThrowControls({
     canvas.setPointerCapture(evt.pointerId);
     canvas.classList.add('dragging');
 
-    const body = die.body;
-    body.type = CANNON.Body.KINEMATIC;
-    body.velocity.set(0, 0, 0);
-    body.angularVelocity.set(0, 0, 0);
-
     const p = pointOnHeldPlane(evt);
     // startX/startZ are the grab point itself and never get trimmed away
     // (unlike samples, pruned to a recent window below) - they're what the
@@ -69,7 +63,7 @@ export function createThrowControls({
     evt.preventDefault();
     const p = pointOnHeldPlane(evt);
     const { x, z } = clampToTray(p.x, p.z);
-    die.body.position.set(x, HELD_HEIGHT, z);
+    die.mesh.position.set(x, HELD_HEIGHT, z);
 
     const now = performance.now();
     dragState.samples.push({ t: now, x, z });
@@ -91,7 +85,13 @@ export function createThrowControls({
     let vx = ((last.x - first.x) / dt) * THROW_POWER;
     let vz = ((last.z - first.z) / dt) * THROW_POWER;
 
-    const body = die.body;
+    // Where and how the die is let go - the simulation picks it up from here.
+    const release = (v, w) => ({
+      p: die.mesh.position.toArray(),
+      q: die.mesh.quaternion.toArray(),
+      v,
+      w,
+    });
 
     // A real toss needs the die to actually have gone somewhere. This is checked
     // by total distance travelled (grab point to release point), not by how fast
@@ -107,11 +107,7 @@ export function createThrowControls({
     // - a free reroll of a result you like rather than a genuine throw.
     const dragDistance = Math.hypot(last.x - startX, last.z - startZ);
     if (dragDistance < MIN_DRAG_DISTANCE) {
-      body.type = CANNON.Body.DYNAMIC;
-      body.velocity.set(0, 0, 0);
-      body.angularVelocity.set(0, 0, 0);
-      body.wakeUp();
-      onFumble();
+      onFumble(release([0, 0, 0], [0, 0, 0]));
       return;
     }
 
@@ -123,16 +119,11 @@ export function createThrowControls({
     }
     const vy = Math.min(speed * LIFT_FACTOR, MAX_LIFT_SPEED);
 
-    body.type = CANNON.Body.DYNAMIC;
-    body.velocity.set(vx, vy, vz);
-    body.angularVelocity.set(
+    onThrow(release([vx, vy, vz], [
       -vz * SPIN_POWER + (Math.random() - 0.5) * 6,
       (Math.random() - 0.5) * 6,
-      vx * SPIN_POWER + (Math.random() - 0.5) * 6
-    );
-    body.wakeUp();
-
-    onThrow();
+      vx * SPIN_POWER + (Math.random() - 0.5) * 6,
+    ]));
   }
 
   canvas.addEventListener('pointerdown', beginGrab);

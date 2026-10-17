@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Determinism check</title>
+  <style>
+    body { font: 15px/1.5 system-ui, sans-serif; background: #12111a; color: #f5f1ff; margin: 0; padding: 16px; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    #verdict { font-size: 28px; font-weight: 700; margin: 16px 0; }
+    .pass { color: #7be38b; }
+    .fail { color: #ff5470; }
+    table { border-collapse: collapse; font-size: 13px; }
+    td, th { padding: 2px 10px 2px 0; text-align: left; }
+    code { font-size: 12px; word-break: break-all; }
+    .dim { color: #b3abc9; }
+  </style>
+  <!-- The same import map as the game, read out of index.html so there is
+       still only one place that pins versions. It must be in place before the
+       module script below runs, hence the synchronous request. -->
+  <script>
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', '../../index.html', false);
+    xhr.send();
+    const map = document.createElement('script');
+    map.type = 'importmap';
+    map.textContent = xhr.responseText.match(/<script type="importmap">([\s\S]*?)<\/script>/)[1];
+    document.currentScript.after(map);
+  </script>
+</head>
+<body>
+<h1>Super Rollies: determinism check</h1>
+<p class="dim">Check D, DEV_PLAN 0.7. Replays the recorded throws in
+  <code>throws.json</code> and compares every final position and orientation, bit
+  for bit, with what the game reached when they were recorded.</p>
+<p class="dim" id="agent"></p>
+<div id="verdict">Running…</div>
+<table id="rows"><tr><th>#</th><th>faces</th><th>match</th></tr></table>
+
+<script type="module">
+  import { initPhysics } from '../../src/physics.js';
+  import { replayThrow } from '../../src/replay.js';
+
+  const verdict = document.getElementById('verdict');
+  const rows = document.getElementById('rows');
+  document.getElementById('agent').textContent = navigator.userAgent;
+
+  try {
+    const [{ throws, recordedIn }] = await Promise.all([
+      fetch('./throws.json').then((r) => r.json()),
+      initPhysics(),
+    ]);
+    const mismatches = [];
+    throws.forEach(({ record, digest, faces }, i) => {
+      const result = replayThrow(record);
+      const ok = result.digest === digest;
+      if (!ok) mismatches.push({ index: i, expected: digest, actual: result.digest });
+      rows.insertAdjacentHTML('beforeend',
+        `<tr><td>${i + 1}</td><td>${result.dice.map((d) => d.face).join(' / ')}` +
+        `${ok ? '' : ` (recorded ${faces.join(' / ')})`}</td>` +
+        `<td class="${ok ? 'pass' : 'fail'}">${ok ? 'identical' : 'DIFFERENT'}</td></tr>`);
+    });
+    const pass = mismatches.length === 0;
+    verdict.className = pass ? 'pass' : 'fail';
+    verdict.textContent = pass
+      ? `PASS: all ${throws.length} throws bit-identical to ${recordedIn}`
+      : `FAIL: ${mismatches.length} of ${throws.length} throws differ from ${recordedIn}`;
+    window.determinismResult = { pass, total: throws.length, mismatches, userAgent: navigator.userAgent };
+  } catch (e) {
+    verdict.className = 'fail';
+    verdict.textContent = 'ERROR: ' + e.message;
+    window.determinismResult = { pass: false, error: e.message };
+  }
+</script>
+</body>
+</html>

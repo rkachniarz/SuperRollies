@@ -128,10 +128,52 @@
     box-shadow:0 6px 0 var(--player-edge);
     transition:transform 120ms ease, box-shadow 120ms ease;
   }
-  .menu-btn:active{
+  .menu-buttons{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:16px;
+  }
+  .menu-buttons .menu-btn{ min-width:220px; }
+  .menu-btn.secondary{
+    color:var(--ink);
+    background:var(--opponent-accent);
+    box-shadow:0 6px 0 var(--opponent-edge);
+  }
+  .menu-btn.secondary:active:not(:disabled){
+    box-shadow:0 2px 0 var(--opponent-edge);
+  }
+  .menu-btn:disabled{
+    opacity:0.6;
+    cursor:progress;
+    transform:none;
+  }
+  .menu-status{
+    margin:16px 0 0;
+    color:var(--ink-dim);
+    font-size:14px;
+  }
+  .menu-btn:active:not(:disabled){
     transform:translateY(4px);
     box-shadow:0 2px 0 var(--player-edge);
   }
+
+  .back-btn{
+    position:fixed;
+    top:calc(12px + env(safe-area-inset-top,0px));
+    left:calc(12px + env(safe-area-inset-left,0px));
+    z-index:4;
+    font-family:'Karla', system-ui, sans-serif;
+    font-size:14px;
+    font-weight:700;
+    color:var(--ink);
+    background:var(--card-bg);
+    border:1px solid var(--card-border);
+    border-radius:10px;
+    padding:8px 14px;
+    cursor:pointer;
+  }
+  .back-btn[hidden]{ display:none; }
 
   #result{
     position:fixed;
@@ -151,7 +193,24 @@
     transition:opacity 220ms ease;
   }
   @media (prefers-reduced-motion: reduce){
-    #result{ transition:none; }
+    .back-btn{
+    position:fixed;
+    top:calc(12px + env(safe-area-inset-top,0px));
+    left:calc(12px + env(safe-area-inset-left,0px));
+    z-index:4;
+    font-family:'Karla', system-ui, sans-serif;
+    font-size:14px;
+    font-weight:700;
+    color:var(--ink);
+    background:var(--card-bg);
+    border:1px solid var(--card-border);
+    border-radius:10px;
+    padding:8px 14px;
+    cursor:pointer;
+  }
+  .back-btn[hidden]{ display:none; }
+
+  #result{ transition:none; }
   }
   /* Deliberately still pointer-events:none while showing. The card sits dead
      centre of the screen, which is exactly where the player's die can come to

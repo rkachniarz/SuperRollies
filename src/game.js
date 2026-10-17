@@ -1,62 +1,68 @@
 // Match flow: what a round is, what winning and losing one costs, and when the
 // match is over.
 //
-// A round: both dice are thrown, whoever rolls higher wins it, and the loser
-// empties a heart (a tie costs nobody one). Lose all three and the match ends.
+// Quick Game: both dice are thrown, whoever rolls higher wins the round, and
+// the loser empties a heart (a tie costs nobody one). Lose all three and the
+// match ends.
+//
+// Zen: no opponent, no divider, no score - one die and the whole tray, for
+// throwing for the sake of it.
 
-import { TRAY_DEPTH, TRAY_HALF_WIDTH, SETTLE_TIMEOUT_MS, GAME_OVER_LINGER_MS } from './config.js';
-import { readFaceUp, throwDie } from './dice.js';
+import { TRAY_DEPTH, TRAY_HALF_WIDTH, GAME_OVER_LINGER_MS } from './config.js';
+import { randomThrow } from './dice.js';
 
-function waitForSleep(body, timeoutMs) {
-  return new Promise((resolve) => {
-    let done = false;
-    const finish = () => {
-      if (done) return;
-      done = true;
-      body.removeEventListener('sleep', onSleep);
-      resolve();
-    };
-    const onSleep = () => finish();
-    body.addEventListener('sleep', onSleep);
-    setTimeout(finish, timeoutMs);
-  });
-}
-
-export function createGame({ hud, playerDie, opponentDie }) {
+export function createGame({ hud, roller, arena, setTable }) {
   let state = 'menu'; // 'menu' | 'playing' | 'ended'
+  let mode = 'quick'; // 'quick' | 'zen'
   let rolling = false;
+  // Every round's throw record and outcome, newest last. Kept so any round can
+  // be replayed exactly (see replay.js); the test tools read it from the page.
+  const rounds = [];
 
-  function startQuickGame() {
+  function recordFor(dice) {
+    return { v: 1, arenaHalfWidth: arena.arenaHalfWidth, divider: arena.divider, dice };
+  }
+
+  function start(newMode) {
+    mode = newMode;
+    rolling = false;
+    // Dice back to their starting spots, and the divider in or out.
+    setTable(mode);
     hud.resetHearts();
     state = 'playing';
-    hud.showBoard();
+    hud.showBoard(mode);
     hud.showResult('Pick up your die and throw it', '');
   }
 
   function returnToMenu() {
+    // Leaving mid-throw just abandons it; the next match resets the table.
+    roller.cancel();
+    rolling = false;
     state = 'menu';
     hud.showMenu();
   }
 
-  async function runRound() {
-    // The player's die already has its velocity set (from the throw gesture) by
-    // the time this runs - only the opponent's needs a throw of its own.
-    throwDie(opponentDie, -TRAY_DEPTH / 2, -1, { trayHalfWidth: TRAY_HALF_WIDTH, trayDepth: TRAY_DEPTH });
+  async function runZenThrow(playerRelease) {
+    const record = recordFor([{ id: 'player', type: 'd20', ...playerRelease }]);
+    const result = await roller.start(record);
+    rounds.push({ record, result });
+    hud.showResult(`You rolled ${result.dice[0].face}`, '');
+    rolling = false;
+  }
 
-    await Promise.all([
-      waitForSleep(opponentDie.body, SETTLE_TIMEOUT_MS),
-      waitForSleep(playerDie.body, SETTLE_TIMEOUT_MS),
+  async function runRound(playerRelease) {
+    // The player's release comes from the throw gesture; the opponent's die is
+    // thrown at random from its own half.
+    const record = recordFor([
+      { id: 'opponent', type: 'd20', ...randomThrow(-TRAY_DEPTH / 2, -1, { trayHalfWidth: TRAY_HALF_WIDTH, trayDepth: TRAY_DEPTH }) },
+      { id: 'player', type: 'd20', ...playerRelease },
     ]);
-    // Anything that never settled (rare - e.g. balanced on an edge) is forced to
-    // a stop, so the game can never soft-lock waiting on physics.
-    [opponentDie.body, playerDie.body].forEach((b) => {
-      b.velocity.set(0, 0, 0);
-      b.angularVelocity.set(0, 0, 0);
-      b.sleep();
-    });
+    const result = await roller.start(record);
+    rounds.push({ record, result });
 
-    const opponentRoll = readFaceUp(opponentDie.body);
-    const youRoll = readFaceUp(playerDie.body);
+    const face = (id) => result.dice.find((d) => d.id === id).face;
+    const opponentRoll = face('opponent');
+    const youRoll = face('player');
     const detail = `You rolled ${youRoll} · Opponent rolled ${opponentRoll}`;
 
     let headline;
@@ -92,7 +98,9 @@ export function createGame({ hud, playerDie, opponentDie }) {
     rolling = false;
   }
 
-  hud.onQuickGame(startQuickGame);
+  hud.onQuickGame(() => start('quick'));
+  hud.onZen(() => start('zen'));
+  hud.onBack(returnToMenu);
 
   // The match-over card is the one that takes pointer events, so tapping it
   // heads straight back to the menu instead of waiting out the timer.
@@ -103,21 +111,28 @@ export function createGame({ hud, playerDie, opponentDie }) {
 
   return {
     get state() { return state; },
+    get mode() { return mode; },
+    rounds,
     // The die can only be picked up between rounds of a match in progress.
     canGrab: () => state === 'playing' && !rolling,
     onGrab() {
+      // A die still dropping from a fumble is caught again mid-fall.
+      roller.cancel();
       hud.showResult('Let go to throw', '');
     },
-    onFumble() {
+    onFumble(playerRelease) {
+      // Let go of it without a throw: it just drops back onto the table.
+      roller.start(recordFor([{ id: 'player', type: 'd20', ...playerRelease }]));
       hud.showResult('Make a proper throw!', 'That was too gentle to count - give it a real toss.');
     },
-    onThrow() {
+    onThrow(playerRelease) {
       // Clear the "let go to throw" prompt now that they have - it would
       // otherwise sit there, stale, while the dice settle.
       hud.hideResult();
       if (!rolling) {
         rolling = true;
-        runRound();
+        if (mode === 'zen') runZenThrow(playerRelease);
+        else runRound(playerRelease);
       }
     },
     onBoardTap() {

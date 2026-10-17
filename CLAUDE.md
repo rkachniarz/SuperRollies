@@ -1,7 +1,8 @@
 # Super Rollies — notes for Claude
 
-A d20 roll-off game: three.js for rendering, cannon-es for physics, no framework,
-no build step to run it. See README.md for the file-by-file map.
+A d20 roll-off game: three.js for rendering, Rapier (deterministic build) for
+physics, no framework, no build step to run it. See README.md for the
+file-by-file map.
 
 ## Development plan
 
@@ -16,7 +17,11 @@ record new decisions in its log rather than silently changing requirements.
 npm install
 npm run dev     # http://localhost:8000 - must be served, ES modules don't load over file://
 npm run build   # -> dist/artifact.html, the single-file copy for claude.ai only
+npm run verify  # the browser checks below, in headless Chromium (needs npm run dev)
+npm run phase0  # physics checks: d10 settling, tunnelling, determinism (needs npm run dev)
 ```
+
+Browser checks run in Chromium only until after the MVP (DEV_PLAN.md, D14).
 
 ## The published artifact
 
@@ -54,14 +59,41 @@ someone (or something) tidying with good intentions.
 - **`src/input.js` — a throw is judged by drag *distance*, not speed.** Speed was
   derived from timestamps a couple of pointer events apart and became unreliable
   whenever the browser was briefly busy, wrongly rejecting genuine slow throws.
-- **`src/arena.js` — the die is confined to what's actually on screen.** The
-  camera's FOV is vertical, so a narrow phone screen sees less of the tray's
-  width; a die resting off screen cannot be tapped, and with no reset button the
-  match is stranded. On wide screens the limit equals the full tray, so this
-  costs nothing there.
-- **`src/arena.js` — `clampToArena` is a backstop, not redundancy.** cannon-es
-  has no continuous collision detection, so a fast tumbling die can tunnel
-  through a thin wall in one step.
+- **`src/arena.js` + `src/physics.js` — the die is confined to what's actually
+  on screen.** The camera's FOV is vertical, so a narrow phone screen sees less
+  of the tray's width; a die resting off screen cannot be tapped, and the match
+  is stranded. `arena.js` works out the limit; `physics.js` (`sideWallFace`)
+  moves the side-wall colliders in to it, as invisible walls at the screen's
+  edges. On wide screens they are the tray's own walls, so this costs nothing
+  there. **The limit must stay a collider, never a position clamp:** clamping
+  by moving the die made an invisible frictionless wall that dice leaned on
+  and crawled down for seconds.
+- **`src/physics.js` — `clampToArena` is only a safety net.** Rapier's
+  continuous collision detection stops tunnelling (Check C has never seen a
+  die escape), but the clamp costs nothing. It sits at the walls' inner
+  faces, so in normal play it never fires.
+- **`src/physics.js` — a fresh physics world for every throw.** The engine
+  keeps internal state between steps (contact caches, warm-starting) that a
+  release record can't capture. A new world plus the record is the whole
+  story, which is why a replay is bit-identical, and why multiplayer can send a
+  throw's record instead of its trajectory. Don't "optimise" this into one
+  long-lived world.
+- **`src/physics.js` — Rapier's own sleeping is off (`setCanSleep(false)`).**
+  Its default thresholds froze dice that were still slowly toppling off an
+  edge, leaving them balanced at an angle. The settle check in `step()` is the
+  only thing that puts a die to sleep.
+- **`src/physics.js` — settled means slow *and* resting on a face
+  (`restsOnFace`).** A die toppling off an edge pauses at the tipping point;
+  speed alone called that settled. The touching points must span an area.
+  Counting them doesn't work: Rapier reports several along a single edge.
+- **`src/physics.js` — squared magnitudes, not `Math.hypot`, in anything that
+  decides when a simulation stops.** `hypot`'s last bit may differ between
+  JavaScript engines; determinism needs bit-exact decisions everywhere.
+- **`src/dice.js` — dice start each match *placed* flat on a face, never
+  dropped.** Dropped from rest in the default orientation, a d20 lands exactly
+  on a level edge and, the simulation being deterministic, stays balanced
+  there; the opening settle then waited out the 4 s timeout, and the die
+  couldn't be picked up in that time.
 - **`styles.css` — `#result` stays `pointer-events: none` except when it's the
   match-over card.** It sits dead centre, which is where the die rests against
   the divider; if it took pointer events, the tap that should pick up the die
@@ -79,10 +111,19 @@ lighting, z-fighting and camera precision were all blamed before the actual caus
 Chromium via Playwright works well: drive a real throw, then read the scene graph
 or sample pixels instead of trusting a screenshot.
 
-Worth re-checking after any change to dice, camera or input:
+Worth re-checking after any change to dice, camera, input or physics. All of
+these are scripted in `npm run verify` (`tools/phase0/verify.mjs`):
 
 1. 20 decals per die, and at rest at least one squarely faces the camera.
 2. A micro-nudge is refused ("Make a proper throw!"); a genuine drag throws.
 3. The die is grabbable on the first tap even when the result card overlaps it.
 4. On a 390×844 viewport the die is still reachable at its sideways limit.
 5. A full match drains hearts to 0, announces the result, returns to the menu.
+6. A fresh match's die is grabbable at once; a fumbled die can be caught
+   mid-fall.
+7. Zen: no opponent, the die reaches the far half, the back button is clear of
+   every spot a die can rest, and Quick Game afterwards restores the table.
+
+After a change to physics, also run `npm run phase0`. If throw outcomes change
+on purpose (tuning, colliders), re-record the determinism fixtures with
+`node tools/phase0/record-throws.mjs` (needs `npm run dev`).
