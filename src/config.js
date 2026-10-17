@@ -21,6 +21,7 @@ export const TRAY_DEPTH = 3.4; // depth of ONE side; the whole tray is twice thi
 // Half-thickness of a wall - thick enough to read as a real tray wall, not a
 // line, and thick enough that a fast die is far less likely to tunnel through.
 export const WALL_T = 0.2;
+export const DIVIDER_T = WALL_T * 1.4; // the wall between the two halves is a little heavier
 // Walls are tall enough that even the hardest possible throw (bounded by
 // MAX_THROW_SPEED / LIFT_FACTOR below) can't sail over them - the middle one
 // included, so the two dice truly can't cross into each other's zone. The

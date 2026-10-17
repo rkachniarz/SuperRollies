@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import {
   SCENE_BACKGROUND, OPPONENT_FLOOR_COLOR, PLAYER_FLOOR_COLOR, WALL_COLOR,
-  TRAY_HALF_WIDTH, TRAY_DEPTH, WALL_T, WALL_VISIBLE_HALF_HEIGHT,
+  TRAY_HALF_WIDTH, TRAY_DEPTH, WALL_T, DIVIDER_T, WALL_VISIBLE_HALF_HEIGHT,
   DIE_RADIUS, CAMERA_FOV, CAMERA_NEAR, CAMERA_FAR, CAMERA_POSITION, CAMERA_LOOK_AT,
 } from './config.js';
 
@@ -85,7 +85,7 @@ export function createArena(canvas) {
   addWall(TRAY_HALF_WIDTH + WALL_T, 0, WALL_T, TRAY_DEPTH + WALL_T * 2); // right
   addWall(0, -TRAY_DEPTH - WALL_T, TRAY_HALF_WIDTH + WALL_T * 2, WALL_T); // far edge
   addWall(0, TRAY_DEPTH + WALL_T, TRAY_HALF_WIDTH + WALL_T * 2, WALL_T); // near edge
-  const dividerMesh = addWall(0, 0, TRAY_HALF_WIDTH + WALL_T * 2, WALL_T * 1.4);
+  const dividerMesh = addWall(0, 0, TRAY_HALF_WIDTH + WALL_T * 2, DIVIDER_T);
 
   // Zen mode takes the divider out, giving one die the whole tray - and paints
   // the floor one colour, so it reads as one tray rather than two halves.
@@ -131,11 +131,27 @@ export function createArena(canvas) {
   // so nothing would stop it at the solid divider wall on its own - clamp it to
   // the player's own zone, and to the same sideways limit a thrown die gets, so
   // it can't be dragged through the divider or out past the edge of the screen.
+  //
+  // DIE_RADIUS is the die's circumradius, so a die this far from a wall clears
+  // it in any orientation. Any closer and the throw would start inside the
+  // wall's collider, and Rapier's push back out of it would fling the die the
+  // other way before the throw had even begun.
   function clampToTray(x, z) {
-    const zMin = divider ? WALL_T * 1.4 + DIE_RADIUS * 0.6 : -TRAY_DEPTH + DIE_RADIUS;
+    const zMin = divider ? DIVIDER_T + DIE_RADIUS : -TRAY_DEPTH + DIE_RADIUS;
     return {
       x: Math.max(-arenaHalfWidth, Math.min(arenaHalfWidth, x)),
       z: Math.max(zMin, Math.min(TRAY_DEPTH - DIE_RADIUS, z)),
+    };
+  }
+
+  // Where the opponent's die may be released from: the middle of its own half,
+  // clear of the divider and within the side walls - which on a narrow screen
+  // are the invisible ones at its edges (sideWallFace in physics.js).
+  function opponentZone() {
+    return {
+      halfWidth: Math.min(TRAY_HALF_WIDTH * 0.55, arenaHalfWidth),
+      zNear: -(DIVIDER_T + DIE_RADIUS),
+      zFar: -TRAY_DEPTH * 0.75,
     };
   }
 
@@ -154,7 +170,7 @@ export function createArena(canvas) {
 
   return {
     renderer, scene, camera,
-    clampToTray, resize, setDivider,
+    clampToTray, opponentZone, resize, setDivider,
     get divider() { return divider; },
     get arenaHalfWidth() { return arenaHalfWidth; },
   };

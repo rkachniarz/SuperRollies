@@ -67,19 +67,44 @@ export function createThrowControls({
     const { x, z } = clampToTray(p.x, p.z);
     die.mesh.position.set(x, HELD_HEIGHT, z);
 
+    // The samples follow the hand, not the die: a die pinned against the
+    // divider or an edge still gets thrown as hard as the hand moved - into
+    // that wall, to bounce off it - rather than being judged by the clamped
+    // die, which barely moved, and refused as a fumble.
     const now = performance.now();
-    dragState.samples.push({ t: now, x, z });
+    dragState.samples.push({ t: now, x: p.x, z: p.z });
     while (dragState.samples.length > 2 && now - dragState.samples[0].t > HISTORY_MS) {
       dragState.samples.shift();
     }
   }
 
-  function endGrab(evt) {
-    if (!dragState || evt.pointerId !== dragState.pointerId) return;
-    const { samples, startX, startZ } = dragState;
-    dragState = null;
+  // Where and how the die is let go - the simulation picks it up from here.
+  function release(v, w) {
+    return {
+      p: die.mesh.position.toArray(),
+      q: die.mesh.quaternion.toArray(),
+      v,
+      w,
+    };
+  }
+
+  /** Lets go of the die. Returns the finished drag, or null if this pointer wasn't holding it. */
+  function letGo(evt) {
+    if (!dragState || evt.pointerId !== dragState.pointerId) return null;
+    const held = dragState;
     canvas.classList.remove('dragging');
     try { canvas.releasePointerCapture(evt.pointerId); } catch (e) { /* already released */ }
+    dragState = null;
+    return held;
+  }
+
+  function endGrab(evt) {
+    if (!dragState || evt.pointerId !== dragState.pointerId) return;
+    // A sample at the moment of release, not just at the last pointermove: a
+    // pointer held still sends no moves, so without it a fast drag that then
+    // paused would still be thrown at the speed it had before the pause.
+    updateGrab(evt);
+    const { samples, startX, startZ } = letGo(evt);
 
     const first = samples[0];
     const last = samples[samples.length - 1];
@@ -87,15 +112,7 @@ export function createThrowControls({
     let vx = ((last.x - first.x) / dt) * THROW_POWER;
     let vz = ((last.z - first.z) / dt) * THROW_POWER;
 
-    // Where and how the die is let go - the simulation picks it up from here.
-    const release = (v, w) => ({
-      p: die.mesh.position.toArray(),
-      q: die.mesh.quaternion.toArray(),
-      v,
-      w,
-    });
-
-    // A real toss needs the die to actually have gone somewhere. This is checked
+    // A real toss needs the hand to actually have gone somewhere. This is checked
     // by total distance travelled (grab point to release point), not by how fast
     // that happened: an earlier version gated on velocity instead, computed from
     // timestamps a couple of pointermove events apart, and that turned out to be
@@ -128,10 +145,18 @@ export function createThrowControls({
     ]));
   }
 
+  // The browser took the gesture away mid-drag (a system gesture, an incoming
+  // call): the die just drops back where it is. Not a throw - the player never
+  // let go - and not a fumble to scold them for either.
+  function cancelGrab(evt) {
+    if (!letGo(evt)) return;
+    onFumble(release([0, 0, 0], [0, 0, 0]), { cancelled: true });
+  }
+
   canvas.addEventListener('pointerdown', beginGrab);
   canvas.addEventListener('pointermove', updateGrab);
   canvas.addEventListener('pointerup', endGrab);
-  canvas.addEventListener('pointercancel', endGrab);
+  canvas.addEventListener('pointercancel', cancelGrab);
 
   // Runs after beginGrab (registered first), so if the tap actually picked up
   // the die, dragState is already set and its "Let go to throw" prompt is left

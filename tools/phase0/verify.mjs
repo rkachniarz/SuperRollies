@@ -102,8 +102,12 @@ await withMatch(DESKTOP, '3', async (page) => {
       await page.waitForSelector('#menu:not([hidden])');
       await startQuickGame(page);
     }
+    // Slow and short: a throw is as hard as the hand moved, so a fast drag
+    // would bounce the die off the divider and back towards you.
     const from = await dieScreenPos(page);
-    await throwAndWait(page, page.viewportSize().width / 2 - from.x, -160 - (i % 3) * 60);
+    const before = await page.evaluate(() => window.superRollies.rounds.length);
+    await drag(page, page.viewportSize().width / 2 - from.x, -90 - (i % 3) * 40, 30);
+    await page.waitForFunction((n) => window.superRollies.rounds.length > n, before, { timeout: 15000 });
     const card = await page.locator('#result').boundingBox();
     const die = await dieScreenPos(page);
     // A point that is on the die AND inside the card's box.
@@ -136,6 +140,8 @@ await withMatch(PHONE, '4', async (page) => {
 await withMatch(DESKTOP, '5', async (page) => {
   let announced = null;
   for (let i = 0; i < 40 && !announced; i++) {
+    // Always forward, even when the die rests against the divider: a flick
+    // into the wall is still a throw.
     await throwAndWait(page, (i % 5 - 2) * 30, -260);
     if (await page.locator('#result.game-over').count()) announced = await page.textContent('#resultHeadline');
   }

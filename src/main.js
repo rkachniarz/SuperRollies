@@ -66,6 +66,16 @@ window.superRollies = {
   roller,
 };
 
+// The on-screen strip narrows when the window does (a phone turned upright), and
+// a die already at rest past its new edge couldn't be tapped, stranding the
+// match. Between throws, such a die is slid back in.
+function keepDiceOnScreen() {
+  const limit = arena.arenaHalfWidth;
+  for (const { mesh } of [playerDie, opponentDie]) {
+    mesh.position.x = Math.max(-limit, Math.min(limit, mesh.position.x));
+  }
+}
+
 let lastTime = performance.now();
 
 function animate(now) {
@@ -73,6 +83,7 @@ function animate(now) {
   const dt = (now - lastTime) / 1000;
   lastTime = now;
   roller.frame(dt);
+  if (!roller.busy) keepDiceOnScreen();
   arena.renderer.render(arena.scene, arena.camera);
 }
 

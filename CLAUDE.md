@@ -69,6 +69,11 @@ someone (or something) tidying with good intentions.
   there. **The limit must stay a collider, never a position clamp:** clamping
   by moving the die made an invisible frictionless wall that dice leaned on
   and crawled down for seconds.
+- **`src/arena.js` — a die is released at least `DIE_RADIUS` from any wall.**
+  That's the d20's circumradius, so it clears the wall in every orientation
+  (`clampToTray` for the held die, `opponentZone` for the opponent's). Any
+  closer and the throw starts inside the wall's collider, and Rapier's push out
+  of it flings the die backwards before the throw has begun.
 - **`src/physics.js` — `clampToArena` is only a safety net.** Rapier's
   continuous collision detection stops tunnelling (Check C has never seen a
   die escape), but the clamp costs nothing. It sits at the walls' inner

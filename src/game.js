@@ -9,7 +9,7 @@
 // Zen: no opponent, no divider, no score - one die and the whole tray, for
 // throwing for the sake of it.
 
-import { TRAY_DEPTH, TRAY_HALF_WIDTH, GAME_OVER_LINGER_MS } from './config.js';
+import { GAME_OVER_LINGER_MS } from './config.js';
 import { randomThrow } from './dice.js';
 import { createRng, deriveSeed, randomSeed } from './rng.js';
 import { matchConfig, resolveRules, startMatch, beginRound, playRound } from './rules/engine.js';
@@ -19,8 +19,9 @@ export function createGame({ hud, roller, arena, setTable }) {
   let state = 'menu'; // 'menu' | 'playing' | 'ended'
   let mode = 'quick'; // 'quick' | 'zen'
   let rolling = false;
-  // Every round's throw record and outcome, newest last. Kept so any round can
+  // This match's throw records and outcomes, newest last. Kept so any round can
   // be replayed exactly (see replay.js); the test tools read it from the page.
+  // Emptied, not replaced, for each new match, so a reference to it stays good.
   const rounds = [];
 
   // The match being played: its config, the rules it names, and where it
@@ -53,6 +54,7 @@ export function createGame({ hud, roller, arena, setTable }) {
     mode = newMode;
     rolling = false;
     newMatch(seed);
+    rounds.length = 0;
     // Dice back to their starting spots, and the divider in or out.
     setTable(mode);
     hud.showBoard(mode);
@@ -89,8 +91,7 @@ export function createGame({ hud, roller, arena, setTable }) {
   async function runRound(playerRelease) {
     // The player's release comes from the throw gesture; the opponent's die is
     // thrown at random from its own half.
-    const opponentRelease = randomThrow(-TRAY_DEPTH / 2, -1,
-      { trayHalfWidth: TRAY_HALF_WIDTH, trayDepth: TRAY_DEPTH }, () => opponentRng.next());
+    const opponentRelease = randomThrow(arena.opponentZone(), () => opponentRng.next());
     const record = recordFor([
       { id: 'opponent', type: dieType(), ...opponentRelease },
       { id: 'player', type: dieType(), ...playerRelease },
@@ -147,10 +148,12 @@ export function createGame({ hud, roller, arena, setTable }) {
       roller.cancel();
       hud.showResult('Let go to throw', '');
     },
-    onFumble(playerRelease) {
-      // Let go of it without a throw: it just drops back onto the table.
+    onFumble(playerRelease, { cancelled = false } = {}) {
+      // Let go of it without a throw: it just drops back onto the table. If the
+      // browser took the gesture away (cancelled), there's nobody to scold.
       roller.start(recordFor([{ id: 'player', type: dieType(), ...playerRelease }]));
-      hud.showResult('Make a proper throw!', 'That was too gentle to count - give it a real toss.');
+      if (cancelled) hud.hideResult();
+      else hud.showResult('Make a proper throw!', 'That was too gentle to count - give it a real toss.');
     },
     onThrow(playerRelease) {
       // Clear the "let go to throw" prompt now that they have - it would

@@ -15,7 +15,7 @@
 
 import RAPIER from '@dimforge/rapier3d-deterministic-compat';
 import {
-  TRAY_HALF_WIDTH, TRAY_DEPTH, WALL_T, WALL_HALF_HEIGHT, DIE_RADIUS,
+  TRAY_HALF_WIDTH, TRAY_DEPTH, WALL_T, DIVIDER_T, WALL_HALF_HEIGHT, DIE_RADIUS,
   PHYSICS_STEP, GRAVITY, SETTLE_SPEED, SETTLE_TIME, SETTLE_TIMEOUT_MS,
   DIE_FRICTION, DIE_RESTITUTION, FLOOR_FRICTION, FLOOR_RESTITUTION,
   WALL_FRICTION, WALL_RESTITUTION, DIE_LINEAR_DAMPING, DIE_ANGULAR_DAMPING,
@@ -105,7 +105,7 @@ function addTray(world, divider, sideFace) {
   addWall(sideFace + WALL_T, 0, WALL_T, TRAY_DEPTH + WALL_T * 2); // right
   addWall(0, -TRAY_DEPTH - WALL_T, TRAY_HALF_WIDTH + WALL_T * 2, WALL_T); // far edge
   addWall(0, TRAY_DEPTH + WALL_T, TRAY_HALF_WIDTH + WALL_T * 2, WALL_T); // near edge
-  if (divider) addWall(0, 0, TRAY_HALF_WIDTH + WALL_T * 2, WALL_T * 1.4);
+  if (divider) addWall(0, 0, TRAY_HALF_WIDTH + WALL_T * 2, DIVIDER_T);
 }
 
 /**
