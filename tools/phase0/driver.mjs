@@ -18,22 +18,29 @@ export async function openGame(engine = 'chromium', viewport = { width: 1280, he
   return { browser, page, errors };
 }
 
-/** Waits for the physics engine to load and starts a Quick Game with `diceSet` (an id). */
-export function startQuickGame(page, diceSet = 'classic') {
-  return startMode(page, '#quickGameBtn', { pick: diceSet });
+/** Waits for the physics engine to load and starts a Quick Game with `diceSet` (an id) and `spice`. */
+export function startQuickGame(page, diceSet = 'classic', spice = 'vanilla') {
+  return startMode(page, '#quickGameBtn', { pick: diceSet, spice });
 }
 
 /**
- * Waits for the physics engine to load and starts the mode behind `button`,
- * choosing `pick` from the picker it opens: a dice set's id (either mode),
- * or `die:<type>` for one die alone in Zen. The default is The Classic.
+ * Waits for the physics engine to load and starts the mode behind `button`.
+ * Zen: picks `pick` from its catalogue, a dice set's id or `die:<type>` for
+ * one die alone. Quick Game: opens the draft, which deals two random dice
+ * sets, so the match is then started with `pick` and `spice` directly (the
+ * draft itself has a check of its own). The default is The Classic, Vanilla.
  */
-export async function startMode(page, button, { pick, pickAfter = false, waitForRest = true } = {}) {
+export async function startMode(page, button, { pick, spice = 'vanilla', pickAfter = false, waitForRest = true } = {}) {
   await page.waitForSelector(`${button}:not([disabled])`, { timeout: 30000 });
   await page.click(button);
   // `pickAfter` leaves the picker open, for a check that looks at it first.
   if (pickAfter) return;
-  await page.click(`#pickerOptions [data-pick="${pick ?? 'classic'}"]`);
+  if (button === '#quickGameBtn') {
+    await page.evaluate(([diceSet, spice]) => window.superRollies.game.start('quick', { diceSet, spice }),
+      [pick ?? 'classic', spice]);
+  } else {
+    await page.click(`#pickerOptions [data-pick="${pick ?? 'classic'}"]`);
+  }
   if (waitForRest) await waitForDiceAtRest(page);
 }
 

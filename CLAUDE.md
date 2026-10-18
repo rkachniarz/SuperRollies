@@ -1,7 +1,8 @@
 # Super Rollies — notes for Claude
 
-A dice roll-off game (one die up to 8 a side, d4 to d20 and percentile): three.js for rendering, Rapier
-(deterministic build) for physics, no framework, no build step to run it. See README.md for the
+A dice roll-off game (one die up to 8 a side, d4 to d20 and percentile, and a Spice that bends the
+rules each match): three.js for rendering, Rapier (deterministic build) for physics, no framework, no
+build step to run it. See README.md for the
 file-by-file map.
 
 ## Development plan
@@ -120,6 +121,12 @@ someone (or something) tidying with good intentions.
     towered and bounced out.
   - **Stiffer contacts in the hold's world only**: dice squeezed together in
     a bowl sink into each other more than in any throw.
+  - **A held die is speed-limited relative to the palm**
+    (`HOLD_MAX_DIE_SPEED`). Those stiff contacts fired d8s, whose sides
+    slope like ramps, out of the bowl at 10-16 units/s when they wedged
+    into each other: 4d8 (Divine Smite plus Underdog's extra die) lost a
+    die in 6% of holds. Only where the dice are at release comes from the
+    hold, so this never touches a throw.
   - On release, `settle()` lets overlaps push apart, **damped, not with
     velocities zeroed** (zeroing stalls it). It bottoms out at a few cm, which
     Rapier separates at a few cm/s; `check-handfuls.mjs` measures that shove.
@@ -158,6 +165,16 @@ someone (or something) tidying with good intentions.
   by raising the floor's 1 cm `TOUCHING` to 3 cm: measured, that froze d20s
   that were still slowly toppling flat off a wall (`check-dice.mjs`'s cocked
   count rose). A cocked die is read as it lies (DEV_PLAN.md D24).
+- **`src/rules/engine.js` — a side's hand for the round (`handOf`) depends on
+  the match state only.** Underdog and Inspiration give a side an extra die
+  for a round. The game asks `handOf` before the round, to put that die on the
+  table (`table.setHand`), and the engine asks again after it, to score the
+  faces; if a Spice's `hand` hook read anything else, the two could disagree
+  and `playRound` throws on a dice count that doesn't match.
+- **`src/rules/` — a Spice's random draws for each side go player first**
+  (Exploding Dice, Brutal Critical). So in multiplayer both clients must
+  evaluate the engine from the same seat, the host as `player`, and the guest
+  mirror the result for display (DEV_PLAN.md D27), not each from its own side.
 - **`src/rules/` — the rules engine stays pure.** No DOM, physics, clock or
   `Math.random()`: a round's outcome is a function of the match config, the
   match state and both sides' faces, and nothing else. Multiplayer depends on
@@ -181,6 +198,17 @@ someone (or something) tidying with good intentions.
   on a level edge and, the simulation being deterministic, stays balanced
   there; the opening settle then waited out the 4 s timeout, and the die
   couldn't be picked up in that time.
+- **Nothing tappable may sit where a die can come to rest** (DEV_PLAN.md
+  4.6a). A control over a resting die steals the tap meant to pick it up. So
+  the back button and the match's Dice/Spice label sit in the top corners,
+  outside the tray as drawn on every screen shape, and `npm run verify`
+  measures each against the nearest resting spot. The label is two lines at
+  most, each cut short with an ellipsis rather than wrapping: on 390×844 it
+  is ~40 px clear, but wrapped to three or four lines (as it was with the
+  dice notation in it) it came within ~11 px, and longer names would cover a die. Anything else on
+  the board (the announcement pill, edge badges, hearts) takes no pointer
+  events. Six hearts go two rows of three on a phone, to stay clear of both
+  corners.
 - **`styles.css` — `#result` stays `pointer-events: none` except when it's the
   match-over card.** It sits dead centre, which is where the die rests against
   the divider; if it took pointer events, the tap that should pick up the die
@@ -211,7 +239,8 @@ these are scripted in `npm run verify` (`tools/phase0/verify.mjs`):
 4. On a 390×844 viewport every die is still reachable at its sideways limit,
    for one die, for 8, and for The Whole Bag (the biggest dice). Dice at rest stay exactly where they landed (against
    the side walls too), and narrowing the window slides them back on screen.
-5. A full match drains hearts to 0, announces the result, returns to the menu.
+5. A full match runs its win condition to the end (Hearts: a side drained
+   to 0), announces the result, and returns to the menu.
 6. A fresh match's die is grabbable at once; a fumbled die can be caught
    mid-fall.
 7. Zen: no opponent, the die reaches the far half, the back button is clear of
@@ -223,6 +252,15 @@ these are scripted in `npm run verify` (`tools/phase0/verify.mjs`):
    they're thrown together, and the result card adds each side up, greying out
    dice that don't count (Advantage, Heroic Stats), and writing percentile as
    `40 + 7`, `00 + 0` = 100.
+10. The Quick Game draft deals two dice cards, then two Spice cards eligible
+    for the set picked, and starts that match; the same seed deals the same
+    cards (§8, 7).
+11. The match label names the dice and Spice, opens their full rules, and is
+    clear of every resting spot, on desktop and 390×844; Marathon's six hearts
+    clear both corners.
+12. Underdog puts an extra die on the table for the side behind, which is
+    thrown and scored, and badges that side; Cursed Number's number is
+    announced before every round and a die showing it counts 0.
 
 Run `npm test` alongside; it needs no server.
 

@@ -132,6 +132,9 @@ export const HOLD_CALM_SPEED = 1.5;
 export const HOLD_HOP_CHANCE = 0.008; // per die per step
 export const HOLD_HOP = 1.3; // upward speed: ~4 cm high
 export const HOLD_HOP_SPIN = 2;
+// A held die never moves faster than this relative to the palm (units/s): a
+// hop is 1.3, a die rolling across the bowl ~1-2. See createHoldSim.
+export const HOLD_MAX_DIE_SPEED = 3;
 // When let go, the held dice are given up to this many steps, unseen and
 // heavily damped, to push apart until nothing overlaps by more than
 // HOLD_RELEASE_OVERLAP. In practice it stalls at a few cm in the worst cases,

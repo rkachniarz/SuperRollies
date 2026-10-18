@@ -1,10 +1,12 @@
 # Super Rollies
 
-A dice roll-off game. Pick your dice - a single d20, 3d4, a percentile roll,
-all the way up to a Fireball's 8d6 - pick them up, throw them, roll higher than
-your opponent. Lose
-a round and you lose a heart; lose three and the match is over. Or pick **Zen**
-and just throw: any of the dice, the whole tray, no score.
+A dice roll-off game. Draft your dice - a single d20, 3d4, a percentile roll,
+all the way up to a Fireball's 8d6 - then a **Spice** that bends the rules for
+the match: the lowest total wins, dice explode on their highest number, a
+natural 20 hits twice as hard, whoever's behind throws an extra die. Pick them
+up, throw them, roll higher than your opponent. Lose a round and you lose a
+heart; lose them all and the match is over. Or pick **Zen** and just throw: any
+of the dice, the whole tray, no score.
 
 Real rigid-body physics (Rapier, in its deterministic build, so a throw replays
 identically on any machine), proper dice - every polyhedral from the d4 to the
@@ -39,7 +41,7 @@ CDN at runtime.
 
 ```
 index.html    the page: markup, and the import map pinning three.js / Rapier
-styles.css    all styling - HUD, hearts, menu and pickers, result card
+styles.css    all styling - HUD, hearts, menu, draft and cards, result card
 src/
   config.js   every tunable number and colour, in one place
   d4.js d6.js d8.js d10.js d12.js d20.js
@@ -59,19 +61,25 @@ src/
   roll.js     plays a throw on screen: fixed-step physics, smooth drawing
   replay.js   replays a recorded throw to rest; reads the faces
   input.js    grab / drag / release, and telling a throw from a fumble
-  hud.js      the match state (hearts), the message card, the menu and pickers
-  game.js     match flow: starts a match, throws, hands each round's dice to
-              the rules, and Zen
+  cards.js    a dice set, Spice or single die as a card: the draft, Zen's
+              catalogue and the rules popup all draw them
+  hud.js      the match state (hearts), the message card, the match label and
+              its rules popup, the menu, the draft and the catalogue
+  game.js     match flow: the draft, starting a match, throws, handing each
+              round's dice to the rules, and Zen
   rng.js      the seeded random number generator every outcome draws from
   rules/      the rules, as pure functions with no DOM or physics:
     engine.js         match config, and what a round's dice mean for the match
     dice-sets.js      what each side throws, how it's scored (sum, keep
                       highest, drop lowest, percentile), and its tray
-    spice.js          per-match rule changes (only Vanilla so far)
+    spice.js          per-match rule changes: what dice count for, who wins
+                      a round and what it costs, what each side throws
     win-conditions.js how a match is won (Hearts by default)
+    draft.js          the two cards offered at each step of the draft
     types.js          the JSDoc types they share
   main.js     wires it together and runs the frame loop
-test/         unit tests for the RNG, the rules, handfuls and die shapes (npm test)
+test/         unit tests for the RNG, the rules and every Spice, handfuls and
+              die shapes (npm test)
 tools/
   build-artifact.mjs   bundles everything into one file (see below)
   phase0/              browser checks and physics checks (see below)
@@ -134,5 +142,9 @@ at the point it matters:
   lets a body sent to sleep while touching one still moving sink through the
   floor.
 - **No `Math.random()` in anything that affects a result.** Every match has a
-  seed, and the opponent's throws, the spin on yours, and (later) Spice events
+  seed, and the cards the draft deals, the opponent's throws, the spin on
+  yours, and Spice events (an exploding die's extra roll, a cursed number)
   each draw from their own stream derived from it. Same seed, same match.
+- **Nothing tappable sits where a die can come to rest.** The back button and
+  the match label live in the top corners for that reason; a control over a
+  resting die would steal the tap meant to pick it up.

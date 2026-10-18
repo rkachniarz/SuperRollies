@@ -2,7 +2,7 @@
 // rest inside their own half, flat on a face or cocked against a wall or
 // another die - never sunk into the floor, never through a wall, and in time.
 //
-//   node tools/phase0/check-handfuls.mjs [throws per dice set=100]
+//   node tools/phase0/check-handfuls.mjs [throws per dice set=100] [only ids containing this]
 //
 // Each throw releases both sides' handfuls at once, laid out and scattered the
 // way the game does it (handful.js), from anywhere a held handful can be, at
@@ -24,7 +24,9 @@ import * as THREE from 'three';
 import { initPhysics, createRoundSim, createHoldSim, palmFor, TIMEOUT_STEPS } from '../../src/physics.js';
 import { SHAPES } from '../../src/die-shapes.js';
 import { handLayout, scatter, randomHandful } from '../../src/handful.js';
-import { DICE_SETS, dieTypes } from '../../src/rules/dice-sets.js';
+import { DICE_SETS, dieTypes, extraDieType } from '../../src/rules/dice-sets.js';
+import { SPICE } from '../../src/rules/spice.js';
+import { isEligible } from '../../src/rules/engine.js';
 import {
   DIVIDER_T, DIE_RADIUS, HELD_HEIGHT, MAX_THROW_SPEED, MAX_LIFT_SPEED, SPIN_POWER, PHYSICS_STEP,
 } from '../../src/config.js';
@@ -35,10 +37,25 @@ const MAX_TIMEOUT_RATE = 0.02;
 await initPhysics();
 const rand = mulberry32(0x8D6);
 
-let failures = 0;
+// Every set of two or more dice, and every handful a Spice makes one die
+// bigger than its set, in the set's own tray: Underdog's extra die,
+// Inspiration's advantage (DEV_PLAN.md 4.9).
+// `node check-handfuls.mjs 400 divine` runs only the cases whose id has "divine" in it.
+const ONLY = process.argv[3];
+const CASES = Object.values(DICE_SETS).map((set) => ({ set, id: set.id, notation: set.notation, types: dieTypes(set) }));
 for (const set of Object.values(DICE_SETS)) {
-  const types = dieTypes(set);
-  if (types.length < 2) continue;
+  for (const [spice, type] of [['underdog', extraDieType(set)], ['inspiration', 'd20']]) {
+    if (!isEligible(SPICE[spice], set)) continue;
+    const types = [...dieTypes(set), type];
+    // The Classic plus a d20 is Advantage's handful in Advantage's tray.
+    if (CASES.some((c) => c.set.tray.halfWidth === set.tray.halfWidth && c.types.join() === types.join())) continue;
+    CASES.push({ set, id: `${set.id}+${spice}`, notation: `${set.notation} + 1${type}`, types });
+  }
+}
+
+let failures = 0;
+for (const { set, id, notation, types } of CASES) {
+  if (types.length < 2 || (ONLY && !id.includes(ONLY))) continue;
   const { tray, dieScale } = set;
   const radius = Math.max(...types.map((t) => SHAPES[t].circumradius * dieScale));
   const { offsets, reach } = handLayout(types.length, radius);
@@ -101,18 +118,18 @@ for (const set of Object.values(DICE_SETS)) {
         const v = d.body.linvel(); const w = d.body.angvel();
         return `${d.id} at [${d.curr.p.map((n) => n.toFixed(2))}] v ${Math.hypot(v.x, v.y, v.z).toFixed(2)} w ${Math.hypot(w.x, w.y, w.z).toFixed(2)}`;
       });
-      console.log(`  ${set.id} throw ${i} timed out, not settled: ${stuck.join('; ')}`);
+      console.log(`  ${id} throw ${i} timed out, not settled: ${stuck.join('; ')}`);
     }
     steps += sim.steps;
     sim.free();
     if (problem) {
       problems++;
-      if (problems <= 3) console.log(`  ${set.id} throw ${i}: ${problem}\n  ${JSON.stringify(record)}`);
+      if (problems <= 3) console.log(`  ${id} throw ${i}: ${problem}\n  ${JSON.stringify(record)}`);
     }
   }
   const ok = problems === 0 && timeouts <= THROWS * MAX_TIMEOUT_RATE;
   if (!ok) failures++;
-  console.log(`${ok ? 'PASS' : 'FAIL'}  ${set.id} (${set.notation}): ${THROWS} throws, ${problems} with a die ` +
+  console.log(`${ok ? 'PASS' : 'FAIL'}  ${id} (${notation}): ${THROWS} throws, ${problems} with a die ` +
     `sunk or escaped, ${timeouts} timed out (${(TIMEOUT_STEPS * PHYSICS_STEP).toFixed(0)} s). ` +
     `Mean time to settle ${((steps / THROWS) * PHYSICS_STEP).toFixed(2)} s.`);
 }
@@ -132,9 +149,8 @@ const MAX_OVERLAP = 0.06;
 const MAX_RESCUE_RATE = 0.01;
 const MAX_SHOVE = 0.3; // sideways speed after one step
 const UP = new THREE.Vector3(0, 1, 0);
-for (const set of Object.values(DICE_SETS)) {
-  const types = dieTypes(set);
-  if (types.length < 2) continue;
+for (const { set, id, types } of CASES) {
+  if (types.length < 2 || (ONLY && !id.includes(ONLY))) continue;
   const { tray, dieScale } = set;
   const radius = Math.max(...types.map((t) => SHAPES[t].circumradius * dieScale));
   const { reach } = palmFor(types.length, radius);
@@ -179,7 +195,7 @@ for (const set of Object.values(DICE_SETS)) {
   }
   const ok = worstOverlap <= MAX_OVERLAP && worstShove <= MAX_SHOVE && rescued <= (THROWS / 2) * MAX_RESCUE_RATE;
   if (!ok) failures++;
-  console.log(`${ok ? 'PASS' : 'FAIL'}  ${set.id} held and let go: ${THROWS / 2} holds, deepest overlap at release ` +
+  console.log(`${ok ? 'PASS' : 'FAIL'}  ${id} held and let go: ${THROWS / 2} holds, deepest overlap at release ` +
     `${worstOverlap.toFixed(3)} (max ${MAX_OVERLAP}), fastest shove ${worstShove.toFixed(2)} (max ${MAX_SHOVE}), ` +
     `${rescued} dice put back in the palm.`);
 }

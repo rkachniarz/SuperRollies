@@ -2,7 +2,7 @@
   "name": "super-rollies",
   "version": "0.1.0",
   "private": true,
-  "description": "A dice roll-off game. Pick your dice, throw them, roll higher than your opponent - or just roll, in Zen.",
+  "description": "A dice roll-off game. Draft your dice and a Spice that bends the rules, throw them, roll higher than your opponent - or just roll, in Zen.",
   "type": "module",
   "scripts": {
     "dev": "serve . --listen 8000",

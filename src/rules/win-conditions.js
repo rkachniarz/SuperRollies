@@ -1,6 +1,7 @@
 // @ts-check
-// How a match is won (DEV_PLAN.md D7). Hearts is the default; Spice can bring
-// others (Hit Points, Race to N, Tug of War) from Phase 5.
+// How a match is won (DEV_PLAN.md D7). Hearts is the default; Sudden Death and
+// Marathon are Hearts with one and six; Spice can bring others (Hit Points,
+// Race to N, Tug of War) from Phase 5.
 
 import { HEARTS_PER_SIDE } from '../config.js';
 
@@ -30,6 +31,11 @@ export function hearts(count) {
       if (state.player <= 0 && state.opponent <= 0) return 'draw';
       if (state.player <= 0) return 'opponent';
       if (state.opponent <= 0) return 'player';
+      return null;
+    },
+    behind: (state) => {
+      if (state.player < state.opponent) return 'player';
+      if (state.opponent < state.player) return 'opponent';
       return null;
     },
     view: (state) => ({

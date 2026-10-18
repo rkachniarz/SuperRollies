@@ -85,37 +85,70 @@ export const percentile = Object.assign(
  * @param {string} id
  * @param {string} name
  * @param {DiceSet['dice']} dice
- * @param {{ scorer?: Scorer, dieScale?: number, tray?: number, notation?: string }} [options]
+ * @param {{ summary: string, range: string, scorer?: Scorer, dieScale?: number, tray?: number, notation?: string }} options
  * @returns {DiceSet}
  */
-function diceSet(id, name, dice, { scorer = sum, dieScale = 1, tray = 1, notation } = {}) {
+function diceSet(id, name, dice, { summary, range, scorer = sum, dieScale = 1, tray = 1, notation }) {
   notation ??= dice.map(({ type, count }) => `${count}${type}`).join(' + ') + scorer.suffix;
-  return { id, name, notation, dice, scorer, dieScale, tray: trayOf(tray) };
+  return { id, name, notation, summary, range, dice, scorer, dieScale, tray: trayOf(tray) };
 }
 
-export const THE_CLASSIC = diceSet('classic', 'The Classic', [{ type: 'd20', count: 1 }]);
+export const THE_CLASSIC = diceSet('classic', 'The Classic', [{ type: 'd20', count: 1 }],
+  { summary: 'One d20, the roll that settles everything.', range: '1–20' });
 
 /** Every dice set, in the order they're offered. */
 export const DICE_SETS = Object.fromEntries([
   THE_CLASSIC,
-  diceSet('advantage', 'Advantage', [{ type: 'd20', count: 2 }], { scorer: keepHighest(1) }),
-  diceSet('greatsword', 'Greatsword', [{ type: 'd6', count: 2 }]),
-  diceSet('greataxe', 'Greataxe', [{ type: 'd12', count: 1 }]),
-  diceSet('ability-score', 'Ability Score', [{ type: 'd6', count: 3 }], { tray: 1.15 }),
-  diceSet('heroic-stats', 'Heroic Stats', [{ type: 'd6', count: 4 }], { scorer: dropLowest(1), tray: 1.2 }),
-  diceSet('magic-missile', 'Magic Missile', [{ type: 'd4', count: 3 }], { tray: 1.15 }),
-  diceSet('swarm-of-daggers', 'Swarm of Daggers', [{ type: 'd4', count: 4 }], { tray: 1.2 }),
-  diceSet('guiding-bolt', 'Guiding Bolt', [{ type: 'd6', count: 4 }], { tray: 1.2 }),
-  diceSet('divine-smite', 'Divine Smite', [{ type: 'd8', count: 3 }], { tray: 1.15 }),
-  diceSet('fireball', 'Fireball', [{ type: 'd6', count: 8 }], { dieScale: 0.9, tray: 1.45 }),
+  diceSet('advantage', 'Advantage', [{ type: 'd20', count: 2 }],
+    { scorer: keepHighest(1), summary: 'Two d20s; only the higher counts.', range: '1–20' }),
+  diceSet('greatsword', 'Greatsword', [{ type: 'd6', count: 2 }],
+    { summary: 'Two d6s, added up.', range: '2–12' }),
+  diceSet('greataxe', 'Greataxe', [{ type: 'd12', count: 1 }],
+    { summary: 'One big d12.', range: '1–12' }),
+  diceSet('ability-score', 'Ability Score', [{ type: 'd6', count: 3 }],
+    { tray: 1.15, summary: 'Three d6s, added up, old-school style.', range: '3–18' }),
+  diceSet('heroic-stats', 'Heroic Stats', [{ type: 'd6', count: 4 }],
+    { scorer: dropLowest(1), tray: 1.2, summary: 'Four d6s; the lowest is dropped.', range: '3–18' }),
+  diceSet('magic-missile', 'Magic Missile', [{ type: 'd4', count: 3 }],
+    { tray: 1.15, summary: 'Three d4s: it never misses, it never hits hard.', range: '3–12' }),
+  diceSet('swarm-of-daggers', 'Swarm of Daggers', [{ type: 'd4', count: 4 }],
+    { tray: 1.2, summary: 'Four d4s, added up.', range: '4–16' }),
+  diceSet('guiding-bolt', 'Guiding Bolt', [{ type: 'd6', count: 4 }],
+    { tray: 1.2, summary: 'Four d6s, added up.', range: '4–24' }),
+  diceSet('divine-smite', 'Divine Smite', [{ type: 'd8', count: 3 }],
+    { tray: 1.15, summary: 'Three d8s, added up.', range: '3–24' }),
+  diceSet('fireball', 'Fireball', [{ type: 'd6', count: 8 }],
+    { dieScale: 0.9, tray: 1.45, summary: 'Eight d6s. Everything burns.', range: '8–48' }),
   diceSet('percentile', 'Percentile', [{ type: 'd%', count: 1 }, { type: 'd10', count: 1 }],
-    { scorer: percentile, notation: 'd% + d10' }),
-  diceSet('sneak-attack', 'Sneak Attack', [{ type: 'd20', count: 1 }, { type: 'd6', count: 3 }], { tray: 1.2 }),
+    { scorer: percentile, notation: 'd% + d10', summary: 'Tens and units: anything from 1 to 100.', range: '1–100' }),
+  diceSet('sneak-attack', 'Sneak Attack', [{ type: 'd20', count: 1 }, { type: 'd6', count: 3 }],
+    { tray: 1.2, summary: 'A d20 to hit and three d6s of sneak attack, all added up.', range: '4–38' }),
   diceSet('the-whole-bag', 'The Whole Bag', ['d4', 'd6', 'd8', 'd10', 'd12', 'd20'].map((type) => ({ type, count: 1 })),
-    { tray: 1.3 }),
+    { tray: 1.3, summary: 'One of every die, all added up.', range: '6–60' }),
   // Scored as a sum until poker hands arrive (DEV_PLAN.md 6.1).
-  diceSet('dice-poker', 'Dice Poker', [{ type: 'd6', count: 5 }], { tray: 1.25 }),
+  diceSet('dice-poker', 'Dice Poker', [{ type: 'd6', count: 5 }],
+    { tray: 1.25, summary: 'Five d6s, added up (poker hands are on the way).', range: '5–30' }),
 ].map((set) => [set.id, set]));
+
+/**
+ * The highest face of each die type, as it counts: a d10's "0" is 10, a
+ * percentile die's "00" is 100 (DEV_PLAN.md D25). What Exploding Dice and
+ * Cursed Number need to know about a die without its shape.
+ * @type {Record<string, number>}
+ */
+export const DIE_MAX = { d4: 4, d6: 6, d8: 8, d10: 10, 'd%': 100, d12: 12, d20: 20 };
+
+/**
+ * The die a Spice adds when it gives a side one more (Underdog): the set's
+ * commonest type, the smallest of those on a tie. Sneak Attack gets another
+ * d6, The Whole Bag a d4, The Classic a d20.
+ * @param {DiceSet} diceSet
+ */
+export function extraDieType(diceSet) {
+  const order = Object.keys(DIE_MAX);
+  return [...diceSet.dice]
+    .sort((a, b) => b.count - a.count || order.indexOf(a.type) - order.indexOf(b.type))[0].type;
+}
 
 /**
  * One side's dice, one entry per die, in the order their faces are scored.

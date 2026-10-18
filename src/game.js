@@ -2,33 +2,38 @@
 // rules engine (rules/engine.js), which decides what they mean. This file only
 // turns that into dice on the table and words on the screen.
 //
-// Quick Game: pick a dice set, then both sides throw their handful, the higher
-// score wins the round, and the loser empties a heart. Lose all three and the
-// match ends. (A pick from the full list for now; Phase 4 brings the two-card
-// draft and Spice.)
+// Quick Game: a two-step draft - two dice sets to pick from, then two Spice
+// that suit them (rules/draft.js) - then both sides throw their handful each
+// round and the rules, bent by the Spice, decide who wins it and what it
+// costs, until the win condition says the match is over.
 //
 // Zen: no opponent, no divider, no score - the whole tray, for throwing for
-// the sake of it. It's also the testbed: it offers every dice set Quick Game
-// does, and every die type on its own (DEV_PLAN.md D18).
+// the sake of it. It's also the testbed: its catalogue offers every dice set
+// Quick Game does, and every die type on its own (DEV_PLAN.md D18).
 
 import { GAME_OVER_LINGER_MS } from './config.js';
 import { randomHandful } from './handful.js';
 import { DIE_TYPES } from './die-shapes.js';
 import { createRng, deriveSeed, randomSeed } from './rng.js';
-import { matchConfig, resolveRules, startMatch, beginRound, playRound } from './rules/engine.js';
+import {
+  matchConfig, resolveRules, startMatch, beginRound, playRound, handOf, edgeOf, scoreDice,
+} from './rules/engine.js';
 import { DICE_SETS, THE_CLASSIC, dieTypes, sum } from './rules/dice-sets.js';
+import { SPICE } from './rules/spice.js';
+import { dealDice, dealSpice } from './rules/draft.js';
+import { diceSetCard, dieCard, spiceCard } from './cards.js';
 
-// Every dice set, as the pickers show them.
-const DICE_SET_OPTIONS = Object.values(DICE_SETS).map((set) => ({ id: set.id, label: set.name, detail: set.notation }));
-
-// Zen's picker: every dice set, then each die type a set doesn't already
+// Zen's catalogue: every dice set, then each die type a set doesn't already
 // throw on its own, so every die can be tried alone.
-const ZEN_OPTIONS = [
-  ...DICE_SET_OPTIONS,
+const ZEN_CARDS = [
+  ...Object.values(DICE_SETS).map(diceSetCard),
   ...DIE_TYPES
     .filter((type) => !Object.values(DICE_SETS).some((set) => dieTypes(set).join() === type))
-    .map((type) => ({ id: `die:${type}`, label: `One ${type}`, detail: `1${type}` })),
+    .map(dieCard),
 ];
+
+/** @type {('player' | 'opponent')[]} */
+const SIDES = ['player', 'opponent'];
 
 export function createGame({ hud, roller, arena, table }) {
   let state = 'menu'; // 'menu' | 'playing' | 'ended'
@@ -44,16 +49,17 @@ export function createGame({ hud, roller, arena, table }) {
   let config;
   let rules;
   let match;
-  // What each side throws this match, one entry per die, and at what scale.
-  let types = dieTypes(THE_CLASSIC);
-  let dieScale = 1;
+  // What the Spice announced for the round about to be thrown, if anything.
+  let announced;
   // Separate random streams for the AI's throws and for the spin jitter on the
   // player's, so neither can shift the other or the rules' own stream.
   let opponentRng;
   let throwRng;
+  // The seed the draft on screen is dealing from.
+  let draftSeed;
 
-  function newMatch(seed, diceSet) {
-    config = matchConfig({ seed, diceSet });
+  function newMatch(seed, diceSet, spice) {
+    config = matchConfig({ seed, diceSet, spice });
     rules = resolveRules(config);
     match = startMatch(rules);
     opponentRng = createRng(deriveSeed(seed, 'opponent'));
@@ -63,9 +69,10 @@ export function createGame({ hud, roller, arena, table }) {
 
   /** A throw record from each side's releases (each in its dice's order). */
   function recordFor(releases) {
-    const dice = Object.entries(releases).flatMap(([side, list]) => list.map((release, i) => ({
-      id: `${side}-${i}`, type: types[i], s: dieScale, ...release,
-    })));
+    const dice = Object.entries(releases).flatMap(([side, list]) => list.map((release, i) => {
+      const die = table.sides[side][i];
+      return { id: die.id, type: die.type, s: die.scale, ...release };
+    }));
     return { v: 1, arenaHalfWidth: arena.arenaHalfWidth, divider: arena.divider, tray: arena.tray, dice };
   }
 
@@ -76,41 +83,72 @@ export function createGame({ hud, roller, arena, table }) {
   let zenScorer = sum;
 
   /**
-   * Starts a match. Both modes play `diceSet` (an id); Zen can instead throw
-   * one die of `dieType`. `seed` is for tests: the same seed plays the same
-   * match.
+   * Starts a match. Both modes play `diceSet` (an id), Quick Game with
+   * `spice`; Zen can instead throw one die of `dieType`. `seed` is for tests:
+   * the same seed plays the same match.
    */
-  function start(newMode, { seed = randomSeed(), diceSet = THE_CLASSIC.id, dieType } = {}) {
+  function start(newMode, { seed = randomSeed(), diceSet = THE_CLASSIC.id, spice, dieType } = {}) {
     mode = newMode;
     rolling = false;
     roller.cancel();
-    newMatch(seed, diceSet);
+    newMatch(seed, diceSet, spice);
     rounds.length = 0;
     const zen = mode === 'zen';
     const alone = zen && dieType;
-    if (alone) {
-      types = [dieType];
-      dieScale = 1;
-      zenScorer = sum;
-    } else {
-      types = dieTypes(rules.diceSet);
-      dieScale = rules.diceSet.dieScale;
-      zenScorer = rules.diceSet.scorer;
-    }
-    table.setup({ types, scale: dieScale, tray: alone ? THE_CLASSIC.tray : rules.diceSet.tray, opponent: !zen });
+    const types = alone ? [dieType] : dieTypes(rules.diceSet);
+    zenScorer = alone ? sum : rules.diceSet.scorer;
+    table.setup({
+      types,
+      scale: alone ? 1 : rules.diceSet.dieScale,
+      tray: alone ? THE_CLASSIC.tray : rules.diceSet.tray,
+      opponent: !zen,
+    });
     hud.showBoard(mode);
+    hud.showMatchInfo(diceSetCard(rules.diceSet), zen ? null : spiceCard(rules.spice));
     if (mode === 'quick') {
       hud.showMatch(rules.winCondition.view(match.win));
-      announceRound();
+      prepareRound();
     }
     state = 'playing';
-    hud.showResult(types.length > 1 ? 'Pick up your dice and throw them' : 'Pick up your die and throw it', '');
+    hud.showResult(table.sides.player.length > 1 ? 'Pick up your dice and throw them' : 'Pick up your die and throw it',
+      announced ?? '');
   }
 
-  // Lets the Spice set up the coming round. Vanilla has nothing to say yet;
-  // what a Spice announces gets shown once one does (Phase 4).
-  function announceRound() {
-    ({ state: match } = beginRound(rules, match));
+  // Readies the coming round: lets the Spice set it up (and say so), puts each
+  // side's dice for it on the table (Underdog's extra die, Inspiration's
+  // advantage), and marks who holds an edge in it.
+  function prepareRound() {
+    let announce;
+    ({ state: match, announce } = beginRound(rules, match));
+    announced = announce;
+    for (const side of SIDES) table.setHand(side, handOf(rules, match, side).types);
+    hud.showAnnounce(announce);
+    hud.showEdge(edgeOf(rules, match));
+  }
+
+  /**
+   * The Quick Game draft (R1.1-R1.3): two dice sets, then two Spice eligible
+   * for the one picked, both dealt from the match's seed (R1.6), then the
+   * match. `seed` is for tests.
+   */
+  function openDraft(seed = randomSeed()) {
+    draftSeed = seed;
+    const pickDice = () => hud.showDraft({
+      step: 'Step 1 of 2',
+      title: 'Choose your dice',
+      cards: dealDice(seed).map((id) => diceSetCard(DICE_SETS[id])),
+      onPick: pickSpice,
+      onBack: () => hud.showMenu(),
+    });
+    const pickSpice = (diceSet) => hud.showDraft({
+      step: 'Step 2 of 2',
+      title: 'Choose your Spice',
+      chosen: `${DICE_SETS[diceSet].name} · ${DICE_SETS[diceSet].notation}`,
+      cards: dealSpice(seed, diceSet).map((id) => spiceCard(SPICE[id])),
+      onPick: (spice) => start('quick', { seed, diceSet, spice }),
+      onBack: pickDice,
+    });
+    pickDice();
   }
 
   function returnToMenu() {
@@ -126,18 +164,17 @@ export function createGame({ hud, roller, arena, table }) {
     const result = await roller.start(record);
     rounds.push({ record, result });
     const faces = facesOf(result, 'player');
-    const kept = zenScorer.kept?.(faces) ?? faces.map(() => true);
-    const score = zenScorer(faces);
+    const { dice, score } = scoreDice(zenScorer, faces);
     // The total up top; with several dice, how it was made up below.
     if (faces.length === 1) hud.showResult(`You rolled ${score}`, '');
-    else hud.showRound(`You rolled ${score}`, [{ side: 'player', faces, kept, score, labels: zenScorer.labels?.(faces) }]);
+    else hud.showRound(`You rolled ${score}`, [{ side: 'player', dice, score }]);
     rolling = false;
   }
 
   async function runRound(playerReleases) {
     // The player's handful comes from the throw gesture; the opponent's is
     // thrown at random from its own half.
-    const { offsets, reach } = table.hand;
+    const { offsets, reach } = table.hands.opponent;
     const opponentReleases = randomHandful(arena.opponentZone(reach), offsets, () => opponentRng.next());
     const record = recordFor({ opponent: opponentReleases, player: playerReleases });
     const result = await roller.start(record);
@@ -150,33 +187,32 @@ export function createGame({ hud, roller, arena, table }) {
     rounds.push({ record, result, outcome });
     hud.showMatch(rules.winCondition.view(match.win));
 
-    const breakdown = ['player', 'opponent'].map((side) => ({
+    const breakdown = SIDES.map((side) => ({
       side,
-      faces: outcome.faces[side],
-      kept: outcome.kept[side],
+      dice: outcome.dice[side],
+      adjustments: outcome.adjustments[side],
       score: outcome.scores[side],
-      labels: rules.diceSet.scorer.labels?.(outcome.faces[side]),
     }));
 
     if (outcome.matchWinner) {
       // Match over: announce it, then head back to the main menu after a beat
       // (or immediately if they tap the card).
       state = 'ended';
-      hud.showRound(MATCH_HEADLINES[outcome.matchWinner], breakdown, { gameOver: true });
+      hud.showAnnounce(undefined);
+      hud.showEdge(null);
+      hud.showRound(MATCH_HEADLINES[outcome.matchWinner], breakdown, { gameOver: true, notes: [outcome.note] });
       rolling = false;
       setTimeout(() => { if (state === 'ended') returnToMenu(); }, GAME_OVER_LINGER_MS);
       return;
     }
 
-    announceRound();
-    hud.showRound(ROUND_HEADLINES[outcome.winner ?? 'tie'], breakdown);
+    prepareRound();
+    hud.showRound(ROUND_HEADLINES[outcome.winner ?? 'tie'], breakdown, { notes: [outcome.note, announced] });
     rolling = false;
   }
 
-  // Both menu buttons lead to a choice of dice first.
-  hud.onQuickGame(() => hud.showPicker('Choose your dice', DICE_SET_OPTIONS,
-    (diceSet) => start('quick', { diceSet })));
-  hud.onZen(() => hud.showPicker('Zen: choose your dice', ZEN_OPTIONS,
+  hud.onQuickGame(() => openDraft());
+  hud.onZen(() => hud.showPicker('Zen: choose your dice', ZEN_CARDS,
     (id) => start('zen', id.startsWith('die:') ? { dieType: id.slice(4) } : { diceSet: id })));
   hud.onBack(returnToMenu);
 
@@ -192,8 +228,12 @@ export function createGame({ hud, roller, arena, table }) {
     get mode() { return mode; },
     get config() { return config; },
     get match() { return match; },
+    get rules() { return rules; },
+    /** The seed the draft on screen deals from. */
+    get draftSeed() { return draftSeed; },
     rounds,
     start,
+    openDraft,
     /** Spin jitter for the player's throws, from the match's seed. */
     random: () => throwRng.next(),
     // The dice can only be picked up between rounds of a match in progress.

@@ -4,9 +4,11 @@
 // `// @ts-check`; there is no build step (DEV_PLAN.md, D13).
 
 /**
- * The two sides of the table, from this screen's point of view. Rules never
- * favour a side by identity (R1.7), so in multiplayer each client can evaluate
- * a round from its own side and both reach the same outcome, mirrored.
+ * The two sides of the table. Rules never favour a side by identity (R1.7),
+ * but a Spice that draws random numbers for each side (Exploding Dice, Brutal
+ * Critical) draws the player's first, so in multiplayer both clients must
+ * evaluate the round from the same seat - the host's as 'player' - and the
+ * guest mirror the outcome for display (DEV_PLAN.md D27).
  * @typedef {'player' | 'opponent'} Side
  */
 
@@ -49,6 +51,8 @@
  * @property {string} id
  * @property {string} name
  * @property {string} notation  As printed on its card, e.g. `8d6`.
+ * @property {string} summary  One line, for its card.
+ * @property {string} range  The totals it can make, e.g. `8–48`.
  * @property {{ type: string, count: number }[]} dice  Per side, in order.
  * @property {Scorer} scorer
  * @property {number} dieScale  Die size relative to the die type's own.
@@ -57,10 +61,41 @@
  */
 
 /**
+ * What one side throws in a round, and how it's totalled: the dice set's,
+ * unless a Spice changes it for the round (Underdog's extra die, Inspiration's
+ * advantage).
+ * @typedef {Object} Hand
+ * @property {string[]} types  One entry per die, in the order faces are scored.
+ * @property {Scorer} scorer
+ */
+
+/**
+ * What a Spice says one die counts for, when that isn't just its face. `text`
+ * is how the result card writes it (`(6+6+2)` for a die that exploded twice);
+ * `tag` marks it for the card to style ('exploded', 'cursed').
+ * @typedef {{ value: number, text?: string, tag?: string }} DieValue
+ */
+
+/**
+ * One die in the breakdown on the result card (R2.5).
+ * @typedef {{ text: string, kept: boolean, tag?: string }} DieTerm
+ */
+
+/**
+ * Something a Spice adds to or takes off a side's total, named on the card
+ * (Caltrops: `- 2 caltrops`).
+ * @typedef {{ label: string, value: number }} Adjustment
+ */
+
+/**
  * What happened in a round, before the win condition has its say.
  * @typedef {Object} Round
- * @property {PerSide<number[]>} faces
- * @property {PerSide<boolean[]>} kept  Which dice counted, per the dice set's scorer.
+ * @property {PerSide<number[]>} faces  As thrown.
+ * @property {PerSide<number[]>} values  What each die counted for, once a
+ *   Spice has had its say (an exploded die, a cursed one). Usually the faces.
+ * @property {PerSide<boolean[]>} kept  Which dice counted, per the hand's scorer.
+ * @property {PerSide<DieTerm[]>} dice  Each die as the result card writes it.
+ * @property {PerSide<Adjustment[]>} adjustments
  * @property {PerSide<number>} scores
  * @property {Side | null} winner  null for a tie.
  */
@@ -81,6 +116,8 @@
  *   each side by default, in this win condition's own units.
  * @property {(state: S, round: Round, damage: PerSide<number>) => S} apply
  * @property {(state: S) => MatchResult | null} matchWinner  null while play goes on.
+ * @property {(state: S) => Side | null} behind  Who is losing, if anyone
+ *   (Underdog helps them).
  * @property {(state: S) => MatchView} view
  */
 
@@ -92,6 +129,7 @@
  * @property {number} [maxDice]
  * @property {string[]} [dieTypes]  All of these must be in the set.
  * @property {string[]} [diceSets]  Only these sets, by id.
+ * @property {string[]} [excludeDiceSets]  Never these sets, by id.
  * @property {string[]} [incompatible]  Spice ids it can't be combined with.
  */
 
@@ -106,12 +144,37 @@
  */
 
 /**
+ * A hook context without the random stream, for hooks that only look at where
+ * the match stands and may be asked any number of times (`hand`, `edge`,
+ * `explain`).
+ * @typedef {Object} StateContext
+ * @property {Rules} rules
+ * @property {MatchState} state
+ */
+
+/**
+ * A hook context for one side's dice in a round.
+ * @typedef {HookContext & { side: Side, hand: Hand }} SideContext
+ */
+
+/**
+ * A state-based advantage one side holds this round (R1.7, R3.5), named for
+ * the HUD: `+1 die`.
+ * @typedef {{ side: Side, label: string }} Edge
+ */
+
+/**
  * A rule change for one match (R3.1). Every hook is optional; leaving one out
  * keeps the default behaviour.
  * @typedef {Object} Spice
  * @property {string} id
  * @property {string} name
+ * @property {string} icon  An emoji, for its card.
+ * @property {'rule' | 'win' | 'comeback' | 'dice'} kind  What sort of change
+ *   it is, written on its card: a rule, a win condition, a comeback rule, or
+ *   one for particular dice.
  * @property {string} summary  One line, for its card.
+ * @property {string} rules  The full rules, for the in-match rules popup (R1.5).
  * @property {Eligibility} eligibility
  * @property {WinCondition<any>} [winCondition]  Replaces Hearts.
  * @property {(ctx: HookContext) => unknown} [setup]  Starting state for this
@@ -122,12 +185,23 @@
  *   nudge, remove or re-throw them. Physical, so the game calls it around the
  *   simulation rather than the rules engine (wired up with the first Spice that
  *   needs it, Phase 5).
- * @property {(faces: number[], score: number, ctx: HookContext) => number} [score]
- *   Transforms the dice set's score for one side.
- * @property {(scores: PerSide<number>, ctx: HookContext) => Side | null} [compare]
+ * @property {(side: Side, base: Hand, ctx: StateContext) => Hand} [hand]
+ *   What a side throws this round, given the dice set's. Asked by the game
+ *   before the round (to lay the dice out) and by the engine after it (to
+ *   score them), so it must depend on the match state only.
+ * @property {(ctx: StateContext) => Edge | null} [edge]  Who holds a
+ *   state-based advantage this round, if anyone (R3.5).
+ * @property {(faces: number[], ctx: SideContext) => DieValue[]} [values]
+ *   What each of a side's dice counts for, one entry per die, before the
+ *   scorer totals them.
+ * @property {(round: Pick<Round, 'faces' | 'values'>, ctx: SideContext) => Adjustment[]} [adjust]
+ *   Added to (or taken off) a side's total after the scorer.
+ * @property {(round: Omit<Round, 'winner'>, ctx: HookContext) => Side | null} [compare]
  *   Decides the round winner. Default: higher score wins, equal is a tie.
  * @property {(round: Round, damage: PerSide<number>, ctx: HookContext) => PerSide<number>} [applyDamage]
  *   Changes what the round costs, given the win condition's default.
+ * @property {(round: Round & { damage: PerSide<number> }, ctx: StateContext) => string | undefined} [explain]
+ *   A line for the result card when the Spice decided something (`Boxcars!`).
  */
 
 /**
@@ -147,11 +221,17 @@
  * @property {number} rng  State of the rules stream (see rng.js).
  * @property {unknown} win  The win condition's own state.
  * @property {unknown} spice  The Spice's own state.
+ * @property {{ winner: Side | null } | null} previous  How the last round
+ *   went; null before the first.
  * @property {MatchResult | null} winner  Set once the match is over.
  */
 
 /**
- * @typedef {Round & { damage: PerSide<number>, matchWinner: MatchResult | null }} RoundOutcome
+ * @typedef {Round & {
+ *   damage: PerSide<number>,
+ *   matchWinner: MatchResult | null,
+ *   note?: string,
+ * }} RoundOutcome
  */
 
 export {};

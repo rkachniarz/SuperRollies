@@ -19,7 +19,7 @@ import {
   PHYSICS_STEP, GRAVITY, SETTLE_SPEED, SETTLE_TIME, STILL_SPEED, STILL_TIME, SETTLE_TIMEOUT_MS,
   DIE_FRICTION, DIE_RESTITUTION, FLOOR_FRICTION, FLOOR_RESTITUTION,
   WALL_FRICTION, WALL_RESTITUTION, DIE_LINEAR_DAMPING, DIE_ANGULAR_DAMPING,
-  HELD_HEIGHT, HOLD_PALM_SIZE, HOLD_PALM_FLAT, HOLD_PALM_SLOPE, HOLD_PALM_LIP, HOLD_PALM_LIP_SLOPE, HOLD_PALM_FINGERS, HOLD_PALM_FRICTION, HOLD_PALM_RESTITUTION,
+  HELD_HEIGHT, HOLD_PALM_SIZE, HOLD_PALM_FLAT, HOLD_PALM_SLOPE, HOLD_PALM_LIP, HOLD_PALM_LIP_SLOPE, HOLD_PALM_FINGERS, HOLD_PALM_FRICTION, HOLD_PALM_RESTITUTION, HOLD_MAX_DIE_SPEED,
   HOLD_FOLLOW, HOLD_MAX_ACCEL, HOLD_SWAY, HOLD_SWAY_HZ, HOLD_TILT, HOLD_CALM_SPEED, HOLD_HOP_CHANCE, HOLD_HOP, HOLD_HOP_SPIN,
   HOLD_SETTLE_STEPS, HOLD_SETTLE_DAMPING, HOLD_RELEASE_OVERLAP,
 } from './config.js';
@@ -457,6 +457,18 @@ export function createHoldSim({ arenaHalfWidth, divider, tray, dice, centre }, r
           body.setTranslation({ x: at[0], y: PALM_Y + palmHeight(size.reach.x) + radius * 2, z: at[1] }, true);
           body.setLinvel({ x: speed[0], y: 0, z: speed[1] }, true);
           rescued++;
+        }
+        // No faster than a die in a hand ever goes, relative to the hand.
+        // Dice that wedge into each other on the bowl's slope - d8s above all,
+        // whose sides slope like ramps - were fired out of it at 10-16 units/s
+        // by the stiff contacts above, against a palm moving at 5 at most.
+        const v = body.linvel();
+        const rx = v.x - speed[0];
+        const rz = v.z - speed[1];
+        const rSq = rx * rx + v.y * v.y + rz * rz;
+        if (rSq > HOLD_MAX_DIE_SPEED * HOLD_MAX_DIE_SPEED) {
+          const f = HOLD_MAX_DIE_SPEED / Math.sqrt(rSq);
+          body.setLinvel({ x: speed[0] + rx * f, y: v.y * f, z: speed[1] + rz * f }, true);
         }
         if (rand() >= HOLD_HOP_CHANCE) continue;
         const m = body.mass();

@@ -16,6 +16,10 @@ Since Phase 1 (2026-10-17): a seeded RNG, and the rules in a pure engine
 Since Phase 2 (2026-10-17): the d6, handfuls of up to 8 dice a side, and eight
 dice sets, picked from a list for now (D19); Zen offers all of them, and each
 die type alone (D18).
+Since Phase 3 (2026-10-18): every die type, d4 to d20 and percentile.
+Since Phase 4 (2026-10-18): the two-card draft (dice, then Spice), sixteen
+rules-only Spice, the in-match Dice/Spice label with its rules, and Zen's
+catalogue of cards.
 
 ---
 
@@ -76,6 +80,10 @@ Some Spice works with any dice; some only makes sense with particular dice
 | D23 | 2026-10-17 | **A held handful lies in a palm.** Playtesting said D22's floating, jolted bunch looked strange next to real dice, which lie in one layer on the hand; some roll back and forth as it's shaken, the outer ones most, and some just hop a little without turning over. So the hold is now a cupped palm under gravity: a shallow bowl, a steep lip, and fingers standing up round it with their tips curled in, all unseen. It follows the pointer (a critically damped spring, its acceleration capped) and is gently shaken side to side and rocked, less the faster the hand moves; now and then a die is bumped into a small hop. The dice start packed flat in the bowl, any that don't fit one layer up in the dips between the others. Still not deterministic, still released from wherever the dice are, still using the player's `throw` stream. |
 | D24 | 2026-10-18 | **A cocked die is read as it lies**, not re-thrown: its most upward face (a d4: its most downward). It is what a glance at the table says, it needs no extra throw (which multiplayer would have to agree on), and the reading is deterministic like everything else. About 1–4% of throws end cocked against a wall, depending on the die. A die that is **dead still for 0.5 s** counts as settled even if it doesn't quite rest on a face, so a cocked die doesn't keep the round waiting for the 4 s timeout. |
 | D25 | 2026-10-18 | **A d10's "0" counts as 10, a percentile die's "00" as 100**, as when either is rolled alone in D&D, so The Whole Bag sums to 6–60. Together, as Percentile, they read as tens plus units, with "00" and "0" making 100: `(tens % 100 + units % 10) \|\| 100`, written on the card as `00 + 0 = 100`. A scorer may say how each die is written on the card (`labels`). |
+| D26 | 2026-10-18 | **d20 Spice read "the d20 that counts", and also play with Advantage.** Critical Hit, Critical Fumble and Inspiration are offered with The Classic and Advantage (§6.5 says 1d20; Advantage is a 1d20 roll made with advantage). A natural 20 or 1 is the kept d20, so under Advantage a fumble needs both dice on 1. **Critical Fumble costs an extra heart** on top of the round (two if you lost it, one even on a tie): read literally, "costs you a heart" only ever mattered on a 1–1 tie, since a 1 can't win. |
+| D27 | 2026-10-18 | **Random draws for each side happen player first.** Exploding Dice and Brutal Critical roll their extra dice from the rules stream, the player's side before the opponent's. So in multiplayer **both clients evaluate the engine from the same seat** (the host as `player`) and the guest mirrors the outcome for display, rather than each evaluating from its own side as `types.js` used to suggest. Settles part of Phase 7's protocol early (7.6). |
+| D28 | 2026-10-18 | **Phase 4's Spice hooks.** Beyond R3.1: `hand` (what a side throws this round: Underdog's extra die, Inspiration's advantage; it depends on the match state only, so the game asks it before the throw and the engine after), `values` (what each die counts for: exploded, cursed), `adjust` (named additions to a total: Caltrops), `edge` (who holds a state-based advantage, R3.5) and `explain` (a line for the result card). `score` is replaced by `values`; `compare` gets the whole round, faces included (Snake Eyes, Triples). The engine records the previous round's winner (`state.previous`) for Revenge, Inspiration and Raising the Stakes. Extra rolls (Exploding Dice, Brutal Critical) are **drawn, not thrown**: rules-only, as Phase 4 is; a thrown version would be Phase 5 `afterSettle` work. **Underdog's extra die** is the set's commonest die type, the smallest on a tie (a d4 for The Whole Bag, a d6 for Sneak Attack). **Cursed Number** is drawn from 1 to the smallest die's highest face, so it can land on any die. Eligibility gains `excludeDiceSets`; Exploding Dice, Cursed Number and Underdog exclude Percentile, whose two dice are digits rather than a total. |
+| D29 | 2026-10-18 | **The draft is the only way into a Quick Game; Zen's picker is the catalogue.** D19's interim list is gone. Quick Game always deals two dice cards, then two Spice cards (R1.2), with no "see all"; the catalogue screen (4.3) is the same cards as a list, used by Zen now and the multiplayer host in Phase 7. The draft deals from its own streams (`draft-dice`, `draft-spice`) of the match seed, and the match is played with that seed. |
 
 ---
 
@@ -270,7 +278,7 @@ Some Spice works with any dice; some only makes sense with particular dice
 | Dice | Spice | Rule |
 |---|---|---|
 | 1d20 | Critical Hit | A natural 20 that wins the round deals double damage. |
-| 1d20 | Critical Fumble | A natural 1 costs you a heart, even if you won the round. |
+| 1d20 | Critical Fumble | A natural 1 costs you an extra heart, on top of whatever the round costs (D26). |
 | 1d20 | Death Saves | Roll 10 or more or record a fail. Three fails ends the match, regardless of the opponent's roll. |
 | 1d20 | Inspiration | The loser of the previous round rolls with advantage. |
 | 2d6 | Snake Eyes / Boxcars | 1-1 loses the round automatically; 6-6 wins it. |
@@ -611,29 +619,77 @@ Behaviour is unchanged: 1d20 vs. AI plays exactly as it does today.
 
 ### Phase 4 — Setup screen and rules-only Spice
 
-- [ ] **4.1** Card component (name, notation, summary, icon) (R1.4).
-- [ ] **4.2** Two-step draft screen: 2 random dice cards, then 2 eligible Spice
-  cards (R1.1–R1.3).
-- [ ] **4.3** Catalogue screen (full list, used by the multiplayer host in
-  Phase 7) sharing the card component.
-- [ ] **4.4** In-match Dice/Spice label with a full-rules popup (R1.5).
-- [ ] **4.5** Eligibility filtering (R3.2).
-- [ ] **4.6** State-based advantage indicator (R3.5).
-- [ ] **4.6a** Tappable board UI placement. The `#result` card is
+- [x] **4.1** Card component (name, notation, summary, icon) (R1.4).
+  *`src/cards.js`: one renderer for dice sets, Spice and single dice. Dice
+  cards are orange, with each die type drawn as an outline (The Whole Bag
+  shows all six, smaller); Spice cards are purple, with an emoji and what kind
+  of Spice it is ("Rule change", "How to win", "Comeback", "For these dice").
+  Dice sets gain a `summary` and `range`; Spice an `icon`, `kind`, and full
+  `rules`.*
+- [x] **4.2** Two-step draft screen: 2 random dice cards, then 2 eligible Spice
+  cards (R1.1–R1.3). *`src/rules/draft.js` deals them from the match seed
+  (R1.6); back from the Spice step returns to the same two dice cards. D29.*
+- [x] **4.3** Catalogue screen (full list, used by the multiplayer host in
+  Phase 7) sharing the card component. *Compact cards in a scrolling list;
+  Zen's picker for now (D29). The menu overlay scrolls (`touch-action:
+  pan-y` on it alone, so a drag on the table is still only ever a throw).*
+- [x] **4.4** In-match Dice/Spice label with a full-rules popup (R1.5).
+  *Top-right, mirroring the back button: the set's and the Spice's names,
+  one line each. Tapped, it shows both cards with their full rules (Escape,
+  a tap outside, or "Back to the table" closes it). Not shown in Zen.*
+- [x] **4.5** Eligibility filtering (R3.2). *`isEligible` in `engine.js`,
+  reading every field, plus `excludeDiceSets` (D28). Every set has at least
+  two Spice to offer.*
+- [x] **4.6** State-based advantage indicator (R3.5). *A Spice's `edge`
+  names who holds it; the HUD shows it as a badge by that side's name ("+1
+  die", "Inspired: advantage", "Revenge: a win costs double"). What a Spice
+  announces for the round (a cursed number, the stakes) is a pill under the
+  opponent's hearts, and a line on the result card.*
+- [x] **4.6a** Tappable board UI placement. The `#result` card is
   `pointer-events: none` because it sits where the die rests against the
   divider. Extend that principle to all new on-board UI (the Dice/Spice label
   here; the Second Wind button and Dice Poker reroll selection later): nothing
   tappable may sit where dice come to rest. Record the rule in `CLAUDE.md`.
-- [ ] **4.7** Spice: Sudden Death, Marathon, Mutual Destruction, Lowball,
-  Exploding Dice, Raising the Stakes, Cursed Number.
-- [ ] **4.8** Spice: Critical Hit, Critical Fumble, Inspiration, Brutal
-  Critical, Snake Eyes / Boxcars, Triples, Caltrops.
-- [ ] **4.9** Spice: Underdog, Revenge.
-- [ ] **4.9a** Unit tests for every Spice above, including interactions with
+  *The label is checked like the back button: ~40 px clear of the nearest
+  resting die on 390×844. It is two lines, names only, each cut short with
+  an ellipsis rather than wrapping: with the dice notation in it, it wrapped
+  to three lines and came within 11 px, and Marathon's six hearts ran into it. The announcement pill and
+  edge badges take no pointer events. Marathon's six hearts go two rows of
+  three on a phone, clear of both corners.*
+- [x] **4.7** Spice: Sudden Death, Marathon, Mutual Destruction, Lowball,
+  Exploding Dice, Raising the Stakes, Cursed Number. *An exploded die is
+  written `(6+6+2)` on the card, a cursed one struck through (D28).*
+- [x] **4.8** Spice: Critical Hit, Critical Fumble, Inspiration, Brutal
+  Critical, Snake Eyes / Boxcars, Triples, Caltrops. *D26 for the d20 ones.
+  Caltrops shows on the card as `− 2 caltrops`.*
+- [x] **4.9** Spice: Underdog, Revenge. *Underdog's and Inspiration's extra
+  die is put down between rounds in the clearest spot of that side's half
+  (`table.setHand`), and taken away again when the edge goes.
+  `check-handfuls.mjs` now also holds and throws each set with the die either
+  would add, in the set's own tray. That found 4d8 (Divine Smite plus an
+  extra d8) losing a die from the palm in 6% of holds, against a limit of 1%:
+  d8s wedged on the bowl's slope and the hold's stiff contacts fired them out
+  at 10-16 units/s. Held dice are now speed-limited relative to the palm
+  (`HOLD_MAX_DIE_SPEED`, 3 units/s; a hop is 1.3): 0 in 400 holds. A bigger
+  tray made no difference.*
+- [x] **4.9a** Unit tests for every Spice above, including interactions with
   limits (e.g. Underdog at the 8-dice cap, Exploding Dice under Lowball). The
   same applies to every Spice and scorer added in Phases 5 and 6.
-- [ ] **4.10** Verification checklist passes; artifact republished.
-- [ ] **4.11** Docs refresh. `CLAUDE.md` check 5 ("drains hearts to 0")
+  *`test/spice.test.js`. Exploding Dice under Lowball can't happen with one
+  Spice a match (D9); the limits tested instead: Underdog at the cap and with
+  a dropped die, exploding chains (finite, on a d4 most of all) and the d10's
+  "0", Exploding through Heroic Stats' drop, Cursed Number under Advantage,
+  Caltrops at its floor, Mutual Destruction ending in a draw, Raising the
+  Stakes ending a match with three hearts at once, a tie breaking Revenge.
+  Also: every Spice plays a whole match with every set it suits, the same way
+  twice, and leaves the state it's given untouched.*
+- [x] **4.10** Verification checklist passes; artifact republished.
+  *`npm test` (159), `npm run phase0` and `npm run verify` all pass. New
+  verify checks: the draft and its seed (§8, 7), the match label (names,
+  popup, clearance on desktop and 390×844, Marathon's hearts), Underdog's
+  extra die and edge badge, Cursed Number's announcement. Republished as
+  version 24.*
+- [x] **4.11** Docs refresh. `CLAUDE.md` check 5 ("drains hearts to 0")
   becomes "runs its win condition to the end", matching §8.
 
 ### Phase 5 — Physical Spice and win conditions

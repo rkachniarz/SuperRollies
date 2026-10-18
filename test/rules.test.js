@@ -214,7 +214,7 @@ describe('Vanilla', () => {
   test('is eligible for every dice set and declares no hooks', () => {
     assert.deepEqual(VANILLA.eligibility, {});
     assert.equal(SPICE.vanilla, VANILLA);
-    const hooks = ['winCondition', 'setup', 'beforeThrow', 'afterSettle', 'score', 'compare', 'applyDamage'];
+    const hooks = ['winCondition', 'setup', 'beforeThrow', 'afterSettle', 'hand', 'edge', 'values', 'adjust', 'compare', 'applyDamage', 'explain'];
     assert.deepEqual(hooks.filter((h) => h in VANILLA), []);
   });
 });
@@ -255,13 +255,13 @@ describe('rules engine', () => {
     eligibility: {},
     setup: ({ rng }) => ({ cursed: 1 + rng.int(20) }),
     beforeThrow: ({ state, rng }) => ({ spice: { ...state.spice, cursed: 1 + rng.int(20) }, announce: 'cursed' }),
-    score: (faces, score, { state }) => (faces.includes(state.spice.cursed) ? 0 : score),
-    compare: ({ player, opponent }) => higherWins({ player: opponent, opponent: player }),
+    values: (faces, { state }) => faces.map((f) => ({ value: f === state.spice.cursed ? 0 : f })),
+    compare: ({ scores }) => higherWins({ player: scores.opponent, opponent: scores.player }),
     applyDamage: (_round, damage) => ({ player: damage.player * 2, opponent: damage.opponent * 2 }),
   };
   const testRules = () => ({ ...classic(), spice: LOWBALL_DOUBLE });
 
-  test('Spice hooks: setup, beforeThrow, score, compare and applyDamage all take effect', () => {
+  test('Spice hooks: setup, beforeThrow, values, compare and applyDamage all take effect', () => {
     const rules = testRules();
     let state = startMatch(rules);
     assert.ok(state.spice.cursed >= 1 && state.spice.cursed <= 20);

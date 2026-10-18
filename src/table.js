@@ -1,6 +1,8 @@
 // The dice on the table: what each side throws this match, and where they wait
 // between throws. Rebuilt for every match, since the dice set decides how many
-// dice there are, of which types, and how big the tray is.
+// dice there are, of which types, and how big the tray is. Between rounds a
+// side can gain a die or lose one again, when a Spice changes its hand
+// (Underdog's extra die, Inspiration's advantage).
 
 import * as THREE from 'three';
 import { THEMES } from './config.js';
@@ -35,30 +37,41 @@ export function createTable(arena) {
   /** @type {{ player: ReturnType<typeof createDie>[], opponent: ReturnType<typeof createDie>[] }} */
   const sides = { player: [], opponent: [] };
   const byId = new Map();
-  // How a side's dice sit together while held, and how far that reaches.
-  let hand = handLayout(1, 1);
+  // How each side's dice sit together while held, and how far that reaches.
+  const hands = { player: handLayout(1, 1), opponent: handLayout(1, 1) };
+  // This match's die scale, for dice added between rounds.
+  let scale = 1;
+
+  function addDie(side, type, i) {
+    const die = createDie({ type, theme: THEMES[side], scale, scene: arena.scene });
+    const id = `${side}-${i}`;
+    byId.set(id, die.mesh);
+    return { ...die, id };
+  }
+
+  // Mixed sets (a d20 with d6s) are spaced for the biggest die.
+  function measureHand(side) {
+    const dice = sides[side];
+    if (dice.length) hands[side] = handLayout(dice.length, Math.max(...dice.map((d) => d.radius)));
+  }
 
   /**
    * Lays the table out for a match: `types` is one side's dice (dieTypes in
    * rules/dice-sets.js), at the dice set's `scale`, in its `tray`. Without an
    * `opponent` there's no opponent's dice and no divider (Zen).
    */
-  function setup({ types, scale, tray, opponent }) {
+  function setup({ types, scale: dieScale, tray, opponent }) {
     for (const die of [...sides.player, ...sides.opponent]) die.remove();
     byId.clear();
+    scale = dieScale;
     arena.setTray(tray);
     arena.setDivider(opponent);
     for (const side of /** @type {const} */ (['player', 'opponent'])) {
-      sides[side] = side === 'opponent' && !opponent ? [] : types.map((type, i) => {
-        const die = createDie({ type, theme: THEMES[side], scale, scene: arena.scene });
-        const id = `${side}-${i}`;
-        byId.set(id, die.mesh);
-        return { ...die, id };
-      });
+      sides[side] = side === 'opponent' && !opponent ? [] : types.map((type, i) => addDie(side, type, i));
+      measureHand(side);
     }
-    // Mixed sets (a d20 with d6s) are spaced for the biggest die.
+    const hand = hands.player;
     const radius = Math.max(...sides.player.map((d) => d.radius));
-    hand = handLayout(types.length, radius);
 
     // Waiting on the table, the dice are spaced out a little more than in
     // the hand, unless that wouldn't fit.
@@ -75,6 +88,52 @@ export function createTable(arena) {
         die.placeAt(centre.x + ox, mirror * (centre.z + oz), i * 0.9);
       });
     }
+  }
+
+  /**
+   * Gives `side` the dice in `types` for the coming round. The ones it already
+   * has stay where they lie; any it no longer throws (always the last, as a
+   * Spice only ever adds dice at the end) are taken away, and any new ones are
+   * put down in the clearest spot in that side's half.
+   * @param {'player' | 'opponent'} side
+   * @param {string[]} types
+   */
+  function setHand(side, types) {
+    const dice = sides[side];
+    let keep = 0;
+    while (keep < dice.length && keep < types.length && dice[keep].type === types[keep]) keep++;
+    for (const die of dice.splice(keep)) {
+      die.remove();
+      byId.delete(die.id);
+    }
+    for (let i = keep; i < types.length; i++) {
+      const die = addDie(side, types[i], i);
+      const { x, z } = clearestSpot(side, die.radius);
+      die.placeAt(x, z, i * 0.9);
+      dice.push(die);
+    }
+    measureHand(side);
+  }
+
+  // The spot in `side`'s half furthest from any of its dice, for a die of
+  // circumradius `radius` to be put down on. A coarse grid is plenty: it only
+  // decides where a die waits, never how a throw goes.
+  function clearestSpot(side, radius) {
+    const mirror = side === 'player' ? 1 : -1;
+    const reach = { x: radius, z: radius };
+    const far = arena.clampToTray(0, Infinity, reach).z;
+    const near = arena.clampToTray(0, 0, reach).z;
+    const wide = arena.clampToTray(Infinity, 0, reach).x;
+    let best = { x: 0, z: mirror * near, clear: -Infinity };
+    for (let i = 0; i <= 8; i++) {
+      for (let j = 0; j <= 6; j++) {
+        const x = -wide + (2 * wide * i) / 8;
+        const z = mirror * (near + ((far - near) * j) / 6);
+        const clear = Math.min(...sides[side].map((d) => Math.hypot(d.mesh.position.x - x, d.mesh.position.z - z)));
+        if (clear > best.clear) best = { x, z, clear };
+      }
+    }
+    return best;
   }
 
   // The on-screen strip narrows when the window does (a phone turned upright),
@@ -96,10 +155,13 @@ export function createTable(arena) {
 
   return {
     setup,
+    setHand,
     keepOnScreen,
     sides,
     /** The mesh of the die with this id (as in a throw record), e.g. 'player-0'. */
     meshFor: (id) => byId.get(id),
-    get hand() { return hand; },
+    /** How the player's dice sit in the hand. */
+    get hand() { return hands.player; },
+    hands,
   };
 }

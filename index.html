@@ -7,7 +7,7 @@
        padding in the HUD styles actually resolve on notched screens. -->
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#12111a">
-  <meta name="description" content="Pick your dice, from a d20 to a Fireball's 8d6, and roll higher than your opponent: lose three rounds and it's over. Or just roll, in Zen.">
+  <meta name="description" content="Draft your dice, from a d20 to a Fireball's 8d6, add a pinch of Spice that bends the rules, and roll higher than your opponent. Or just roll, in Zen.">
   <title>Super Rollies</title>
 
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Karla:wght@400;600;700&display=swap">
@@ -33,14 +33,26 @@
      steal the tap meant to pick it up). -->
 <button class="back-btn" id="backBtn" hidden aria-label="Back to the menu">&larr; Menu</button>
 
+<!-- The match's dice and Spice; tapping it shows their full rules. Top-right,
+     mirroring the back button, for the same reason: no die can rest under it
+     (DEV_PLAN.md 4.6a). -->
+<button class="match-info" id="matchInfo" hidden aria-label="This match's rules">
+  <span class="match-info-dice" id="matchInfoDice"></span>
+  <span class="match-info-spice" id="matchInfoSpice"></span>
+</button>
+
 <div class="hud top" id="opponentHud" hidden>
-  <div class="label">Opponent</div>
+  <div class="label">Opponent <span class="edge" id="opponentEdge" hidden></span></div>
   <div class="hearts" id="opponentHearts"></div>
 </div>
 
+<!-- What the Spice says about the coming round (a cursed number, the stakes).
+     Not tappable, so it may sit over the tray. -->
+<div class="announce" id="announce" hidden></div>
+
 <div class="hud bottom" id="youHud" hidden>
   <div class="hearts" id="youHearts"></div>
-  <div class="label">You</div>
+  <div class="label">You <span class="edge" id="youEdge" hidden></span></div>
 </div>
 
 <div id="result">
@@ -51,17 +63,32 @@
 <div class="menu-overlay" id="menu">
   <div class="menu-card" id="menuMain">
     <h1 class="menu-title">Super Rollies</h1>
-    <p class="menu-subtitle">Quick Game: pick your dice, roll higher to win the round, lose 3 and it's over.<br>Zen: just roll.</p>
+    <p class="menu-subtitle">Quick Game: draft your dice and a Spice that bends the rules, then roll higher than your opponent.<br>Zen: just roll.</p>
     <div class="menu-buttons">
       <button class="menu-btn" id="quickGameBtn" disabled>Loading…</button>
       <button class="menu-btn secondary" id="zenBtn" disabled>Zen</button>
     </div>
     <p class="menu-status" id="menuStatus" hidden></p>
   </div>
-  <div class="menu-card" id="picker" hidden>
+  <div class="menu-card" id="draft" hidden>
+    <p class="draft-step" id="draftStep"></p>
+    <h2 class="picker-title" id="draftTitle"></h2>
+    <p class="draft-chosen" id="draftChosen" hidden></p>
+    <div class="draft-cards" id="draftCards"></div>
+    <button class="picker-back" id="draftBack">&larr; Back</button>
+  </div>
+  <div class="menu-card wide" id="picker" hidden>
     <h2 class="picker-title" id="pickerTitle"></h2>
     <div class="picker-options" id="pickerOptions"></div>
     <button class="picker-back" id="pickerBack">&larr; Back</button>
+  </div>
+</div>
+
+<div class="rules-overlay" id="rulesPopup" hidden role="dialog" aria-modal="true" aria-labelledby="rulesTitle">
+  <div class="rules-card">
+    <h2 class="picker-title" id="rulesTitle">This match</h2>
+    <div class="rules-cards" id="rulesCards"></div>
+    <button class="menu-btn" id="rulesClose">Back to the table</button>
   </div>
 </div>
 

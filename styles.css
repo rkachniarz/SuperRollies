@@ -90,20 +90,28 @@
   }
 
   /* ---------- Main menu ---------- */
+  /* Scrolls when what's on it is taller than the screen (Zen's catalogue on
+     a phone). The page itself never scrolls: touch-action is none everywhere
+     else, so a drag on the table is only ever a throw. */
   .menu-overlay{
     position:fixed;
     inset:0;
     z-index:5;
     display:flex;
-    align-items:center;
-    justify-content:center;
     background:var(--bg);
+    overflow-y:auto;
+    touch-action:pan-y;
+    overscroll-behavior:contain;
   }
   .menu-overlay[hidden]{ display:none; }
+  /* margin:auto centres it while it fits, and lets it scroll from its top
+     when it doesn't (align-items:center would cut the top off). */
   .menu-card{
+    margin:auto;
     text-align:center;
-    padding:32px;
+    padding:32px 16px;
   }
+  .menu-card.wide{ width:100%; max-width:780px; }
   .menu-title{
     font-family:'Bungee', system-ui, sans-serif;
     font-size:clamp(32px, 10vw, 52px);
@@ -158,44 +166,136 @@
     box-shadow:0 2px 0 var(--player-edge);
   }
 
-  /* ---------- Pickers: which dice, which die ---------- */
+  /* ---------- The draft, the catalogue, and cards ---------- */
   .menu-card[hidden]{ display:none; }
   .picker-title{
     font-family:'Bungee', system-ui, sans-serif;
     font-size:22px;
     margin:0 0 20px;
   }
+  .draft-step{
+    margin:0 0 6px;
+    font-size:12px;
+    font-weight:700;
+    letter-spacing:0.14em;
+    text-transform:uppercase;
+    color:var(--ink-dim);
+  }
+  .draft-chosen{
+    margin:-12px 0 20px;
+    font-size:14px;
+    color:var(--player-accent);
+    font-weight:700;
+  }
+  .draft-cards{
+    display:flex;
+    flex-wrap:wrap;
+    justify-content:center;
+    gap:16px;
+  }
   .picker-options{
     display:grid;
-    grid-template-columns:repeat(2, minmax(0, 150px));
-    justify-content:center;
-    gap:12px;
+    grid-template-columns:repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+    gap:10px;
+    text-align:left;
   }
-  .pick-btn{
-    font-family:'Bungee', system-ui, sans-serif;
-    font-size:15px;
-    color:var(--bg);
-    background:var(--player-accent);
-    border:none;
-    border-radius:12px;
-    padding:12px 10px;
-    cursor:pointer;
-    box-shadow:0 5px 0 var(--player-edge);
+
+  /* A card: icon, name, dice notation (or kind of Spice), one-line summary.
+     Dice are orange like your side of the table, Spice purple. */
+  .card{
+    --accent:var(--player-accent);
+    --accent-edge:var(--player-edge);
+    font:inherit;
+    color:var(--ink);
+    text-align:center;
+    width:min(200px, calc(50vw - 24px));
+    padding:18px 14px 16px;
     display:flex;
     flex-direction:column;
     align-items:center;
-    gap:2px;
+    gap:6px;
+    background:linear-gradient(180deg, #221d31, #17141f);
+    border:1px solid var(--card-border);
+    border-top:4px solid var(--accent);
+    border-radius:16px;
+    box-shadow:0 6px 0 rgba(0,0,0,0.35);
   }
-  .pick-btn small{
-    font-family:'Karla', system-ui, sans-serif;
-    font-size:13px;
-    font-weight:700;
-    opacity:0.75;
+  .card.spice{
+    --accent:var(--opponent-accent);
+    --accent-edge:var(--opponent-edge);
   }
-  .pick-btn:active{
+  button.card{
+    cursor:pointer;
+    transition:transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+  }
+  button.card:hover, button.card:focus-visible{
+    border-color:var(--accent);
+    transform:translateY(-2px);
+    outline:none;
+  }
+  button.card:active{
     transform:translateY(3px);
-    box-shadow:0 2px 0 var(--player-edge);
+    box-shadow:0 2px 0 rgba(0,0,0,0.35);
   }
+  .card-icon{
+    min-height:44px;
+    display:flex;
+    flex-wrap:wrap;
+    justify-content:center;
+    align-items:center;
+    gap:2px;
+    color:var(--accent);
+  }
+  .die-icon{
+    width:40px;
+    height:40px;
+    fill:color-mix(in srgb, currentColor 18%, transparent);
+    stroke:currentColor;
+    stroke-width:1.6;
+    stroke-linejoin:round;
+    stroke-linecap:round;
+  }
+  /* A set of four or more die types (The Whole Bag) draws them smaller. */
+  .card-icon:has(.die-icon:nth-child(4)) .die-icon{ width:26px; height:26px; }
+  .card-icon .emoji{ font-size:38px; line-height:44px; }
+  .card-name{
+    font-family:'Bungee', system-ui, sans-serif;
+    font-size:17px;
+    line-height:1.15;
+  }
+  .card-tag{
+    font-size:12px;
+    font-weight:700;
+    letter-spacing:0.06em;
+    color:var(--accent);
+    font-variant-numeric:tabular-nums;
+  }
+  .card-summary{
+    font-size:14px;
+    line-height:1.35;
+    color:var(--ink-dim);
+  }
+  /* Compact: a row in a long list (the catalogue). */
+  .card.compact{
+    width:auto;
+    display:grid;
+    grid-template-columns:52px 1fr;
+    grid-template-areas:'icon name' 'icon tag' 'icon summary';
+    align-items:center;
+    column-gap:12px;
+    row-gap:2px;
+    text-align:left;
+    padding:12px 14px;
+    border-top:1px solid var(--card-border);
+    border-left:4px solid var(--accent);
+    box-shadow:none;
+  }
+  .card.compact .card-icon{ grid-area:icon; min-height:0; }
+  .card.compact .die-icon{ width:32px; height:32px; }
+  .card.compact .card-icon:has(.die-icon:nth-child(4)) .die-icon{ width:16px; height:16px; }
+  .card.compact .card-name{ grid-area:name; font-size:15px; }
+  .card.compact .card-tag{ grid-area:tag; }
+  .card.compact .card-summary{ grid-area:summary; font-size:13px; }
   .picker-back{
     margin-top:24px;
     font-family:'Karla', system-ui, sans-serif;
@@ -225,6 +325,108 @@
     cursor:pointer;
   }
   .back-btn[hidden]{ display:none; }
+
+  /* The match's dice and Spice, top-right: mirrors the back button, outside
+     the tray as drawn on every screen shape, so no die can rest under it
+     (DEV_PLAN.md 4.6a). Kept narrow enough to stay clear of the hearts. */
+  .match-info{
+    position:fixed;
+    top:calc(12px + env(safe-area-inset-top,0px));
+    right:calc(12px + env(safe-area-inset-right,0px));
+    z-index:4;
+    max-width:min(220px, calc(50vw - 78px));
+    display:flex;
+    flex-direction:column;
+    align-items:flex-end;
+    gap:1px;
+    font-family:'Karla', system-ui, sans-serif;
+    font-size:12px;
+    font-weight:700;
+    line-height:1.25;
+    text-align:right;
+    color:var(--ink);
+    background:var(--card-bg);
+    border:1px solid var(--card-border);
+    border-radius:10px;
+    padding:6px 10px;
+    cursor:pointer;
+  }
+  .match-info[hidden]{ display:none; }
+  .match-info span{
+    max-width:100%;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .match-info-dice{ color:var(--player-accent); }
+  .match-info-spice{ color:#b9a6ff; }
+
+  /* What the Spice says about the coming round. Over the tray, so it takes no
+     pointer events. */
+  .announce{
+    position:fixed;
+    left:50%;
+    top:calc(84px + env(safe-area-inset-top,0px));
+    transform:translateX(-50%);
+    z-index:2;
+    pointer-events:none;
+    max-width:calc(100vw - 32px);
+    font-size:14px;
+    font-weight:700;
+    color:var(--ink);
+    background:rgba(124,92,255,0.85);
+    border-radius:999px;
+    padding:6px 14px;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .announce[hidden]{ display:none; }
+
+  /* A side's state-based advantage, by its name (R3.5). */
+  .hud .label{ display:flex; align-items:center; gap:8px; }
+  .edge{
+    font-size:11px;
+    letter-spacing:0.04em;
+    text-transform:none;
+    color:var(--bg);
+    background:#7ee0a1;
+    border-radius:999px;
+    padding:2px 8px;
+  }
+  .edge[hidden]{ display:none; }
+  .hearts.many{ gap:5px; }
+  .hearts.many .heart{ width:22px; height:22px; }
+  /* On a phone, six in a row would reach the corners: two rows of three. */
+  @media (max-width:520px){
+    .hearts.many{ display:grid; grid-template-columns:repeat(3, 22px); gap:2px 5px; }
+  }
+
+  /* ---------- The rules popup ---------- */
+  .rules-overlay{
+    position:fixed;
+    inset:0;
+    z-index:6;
+    display:flex;
+    background:rgba(10,9,16,0.82);
+    backdrop-filter:blur(4px);
+    overflow-y:auto;
+    touch-action:pan-y;
+  }
+  .rules-overlay[hidden]{ display:none; }
+  .rules-card{
+    margin:auto;
+    padding:28px 16px;
+    text-align:center;
+  }
+  .rules-cards{
+    display:flex;
+    flex-wrap:wrap;
+    justify-content:center;
+    gap:16px;
+    margin-bottom:24px;
+  }
+  .rules-cards .card{ width:min(280px, calc(100vw - 32px)); }
 
   #result{
     position:fixed;
@@ -276,6 +478,12 @@
   #result .breakdown{ display:block; }
   #result .breakdown strong{ color:var(--ink); }
   #result .dropped{ opacity:0.45; text-decoration:line-through; }
+  /* A die a Spice changed: one that exploded, one that was cursed to 0. */
+  #result .exploded{ color:var(--player-accent); font-weight:700; }
+  #result .cursed{ color:#ff5470; text-decoration:line-through; }
+  #result .adjustment{ color:#ff8a9d; }
+  /* What the Spice decided, or announces for the next round. */
+  #result .note{ display:block; margin-top:4px; color:#b9a6ff; font-weight:700; }
   #result.game-over .headline{
     font-size:28px;
   }

@@ -10,6 +10,9 @@
 
 import { TRAY_DEPTH, TRAY_HALF_WIDTH, DIE_RADIUS } from '../../src/config.js';
 import { DICE_SETS } from '../../src/rules/dice-sets.js';
+import { SPICE } from '../../src/rules/spice.js';
+import { isEligible } from '../../src/rules/engine.js';
+import { dealDice, dealSpice } from '../../src/rules/draft.js';
 import { openGame, startQuickGame, startMode, waitForDiceAtRest, dieScreenPos, drag, throwAndWait } from './driver.mjs';
 
 const engine = process.argv[2] ?? 'chromium';
@@ -179,7 +182,8 @@ for (const set of ['classic', 'fireball', 'the-whole-bag']) {
   }, '#quickGameBtn', { pick: set });
 }
 
-// 5. A full match drains hearts to 0, announces the result, returns to the menu.
+// 5. A full match runs its win condition to the end (Hearts: a side drained to
+// 0), announces the result, and returns to the menu.
 await withMatch(DESKTOP, '5', async (page) => {
   let announced = null;
   for (let i = 0; i < 40 && !announced; i++) {
@@ -194,7 +198,7 @@ await withMatch(DESKTOP, '5', async (page) => {
   ));
   await page.waitForSelector('#menu:not([hidden])', { timeout: 6000 }).catch(() => null);
   const backAtMenu = await page.locator('#menu:not([hidden])').count() === 1;
-  report('5. full match ends and returns to the menu', !!announced && outOfHearts && backAtMenu,
+  report('5. full match runs its win condition to the end and returns to the menu', !!announced && outOfHearts && backAtMenu,
     `"${announced}", ${outOfHearts ? 'a side out of hearts' : 'NO side out of hearts'}, ` +
     `${backAtMenu ? 'back at menu' : 'NOT back at menu'}`);
 });
@@ -396,6 +400,148 @@ for (const [name, viewport] of [['desktop', DESKTOP], ['390x844', PHONE]]) {
       atMenu && restored.opponent && restored.divider && restored.playerZ > 0);
   }, '#zenBtn');
 }
+
+// The Quick Game draft (R1.1-R1.3): two dice cards, then two Spice cards that
+// suit the set picked, and picking the second starts that match.
+await withMatch(DESKTOP, 'draft', async (page) => {
+  const cards = () => page.$$eval('#draftCards [data-pick]', (els) => els.map((el) => el.dataset.pick));
+  const step = () => page.textContent('#draftStep');
+  const dice = await cards();
+  const firstStep = await step();
+  await page.click(`#draftCards [data-pick="${dice[1]}"]`);
+  const spice = await cards();
+  const secondStep = await step();
+  const eligible = spice.every((id) => isEligible(SPICE[id], DICE_SETS[dice[1]]));
+  // Back goes to the dice again, the same two; then on to the match.
+  await page.click('#draftBack');
+  const again = await cards();
+  await page.click(`#draftCards [data-pick="${dice[1]}"]`);
+  await page.click(`#draftCards [data-pick="${spice[0]}"]`);
+  await waitForDiceAtRest(page);
+  const config = await page.evaluate(() => ({ ...window.superRollies.game.config, draftSeed: window.superRollies.game.draftSeed }));
+  report('Draft: two dice sets, then two Spice eligible for the one picked, then that match',
+    dice.length === 2 && dice.every((id) => DICE_SETS[id]) && spice.length === 2 && eligible &&
+      firstStep === 'Step 1 of 2' && secondStep === 'Step 2 of 2' && again.join() === dice.join() &&
+      config.diceSet === dice[1] && config.spice === spice[0] && config.seed === config.draftSeed,
+    `dice ${dice.join(', ')}; Spice ${spice.join(', ')}; played ${config.diceSet} + ${config.spice}`);
+}, '#quickGameBtn', { pickAfter: true });
+
+// §8, 7: the same seed deals the same cards, on screen as in the rules.
+await withMatch(DESKTOP, 'draft seed', async (page) => {
+  const deal = async (seed) => {
+    await page.evaluate((seed) => window.superRollies.game.openDraft(seed), seed);
+    const dice = await page.$$eval('#draftCards [data-pick]', (els) => els.map((el) => el.dataset.pick));
+    await page.click(`#draftCards [data-pick="${dice[0]}"]`);
+    const spice = await page.$$eval('#draftCards [data-pick]', (els) => els.map((el) => el.dataset.pick));
+    return `${dice.join()} / ${spice.join()}`;
+  };
+  // Two seeds whose offers differ, found from the rules themselves.
+  let other = 2;
+  while (dealDice(other).join() === dealDice(1).join()) other++;
+  const first = await deal(1);
+  const same = await deal(1);
+  const different = await deal(other);
+  const expected = `${dealDice(1).join()} / ${dealSpice(1, dealDice(1)[0]).join()}`;
+  report('7. Same seed, same offers (on screen and in the rules); another seed, others',
+    first === same && first === expected && different !== first, `${first} | ${different}`);
+}, '#quickGameBtn', { pickAfter: true });
+
+// The match label (R1.5): names the dice and the Spice; tapped, shows both
+// cards with their full rules; and (4.6a) sits clear of every spot a die can
+// rest, as the back button does, with Marathon's six hearts clear of both.
+for (const [name, viewport] of [['desktop', DESKTOP], ['390x844', PHONE]]) {
+  await withMatch(viewport, `label (${name})`, async (page) => {
+    const label = await page.textContent('#matchInfo');
+    await page.click('#matchInfo');
+    const popup = await page.$$eval('#rulesCards .card', (els) => els.map((el) => ({
+      name: el.querySelector('.card-name').textContent,
+      text: el.querySelector('.card-summary').textContent,
+    })));
+    await page.click('#rulesClose');
+    const closed = await page.locator('#rulesPopup[hidden]').count() === 1;
+    report(`Label (${name}): names the dice and Spice; its popup shows both in full, and closes`,
+      label.includes('Swarm of Daggers') && label.includes('Raising the Stakes') && closed &&
+        popup.length === 2 && popup[1].name === 'Raising the Stakes' && popup[1].text === SPICE['raising-the-stakes'].rules,
+      `"${label.trim().replace(/\s+/g, ' ')}"`);
+
+    // As for the back button (see Zen below), mirrored: the far corner of the
+    // tray on the label's side, scaled with the tray, is the nearest resting spot.
+    const clearance = await page.evaluate(({ TRAY_HALF_WIDTH, DIE_RADIUS }) => {
+      const { arena, dice } = window.superRollies;
+      const k = arena.tray.halfWidth / TRAY_HALF_WIDTH;
+      const xMax = Math.min(arena.tray.halfWidth, arena.arenaHalfWidth + DIE_RADIUS) - 0.45 * k;
+      const r = arena.renderer.domElement.getBoundingClientRect();
+      const toScreen = (v) => { v.project(arena.camera); return { x: (v.x + 1) / 2 * r.width, y: (1 - v.y) / 2 * r.height }; };
+      const p = dice.player[0].mesh.position.clone().set(xMax, DIE_RADIUS * k, -arena.tray.depth + 0.45 * k);
+      const centre = toScreen(p.clone());
+      const radius = Math.abs(toScreen(p.clone().setX(p.x - DIE_RADIUS * k)).x - centre.x);
+      const box = document.getElementById('matchInfo').getBoundingClientRect();
+      const dx = Math.max(box.left - centre.x, 0, centre.x - box.right);
+      const dy = Math.max(box.top - centre.y, 0, centre.y - box.bottom);
+      return Math.hypot(dx, dy) - radius;
+    }, { TRAY_HALF_WIDTH, DIE_RADIUS });
+    report(`Label (${name}): clear of the nearest resting die`, clearance > 0, `${clearance.toFixed(0)}px clear`);
+
+    await page.evaluate(() => window.superRollies.game.start('quick', { diceSet: 'classic', spice: 'marathon' }));
+    const overlaps = await page.evaluate(() => {
+      const box = (id) => document.getElementById(id).getBoundingClientRect();
+      const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+      const hearts = box('opponentHearts');
+      return {
+        count: document.querySelectorAll('#opponentHearts .heart').length,
+        hit: hit(hearts, box('matchInfo')) || hit(hearts, box('backBtn')),
+      };
+    });
+    report(`Label (${name}): Marathon's six hearts clear of the label and the back button`,
+      overlaps.count === 6 && !overlaps.hit, `${overlaps.count} hearts${overlaps.hit ? ', OVERLAPPING' : ''}`);
+  }, '#quickGameBtn', { pick: 'swarm-of-daggers', spice: 'raising-the-stakes' });
+}
+
+// Underdog (4.9, R3.5): whoever falls behind gets an extra die on the table,
+// throws it, and has it scored; the HUD marks their edge; and it goes again
+// once they catch up.
+await withMatch(DESKTOP, 'underdog', async (page) => {
+  let behind = null;
+  for (let i = 0; i < 10 && !behind; i++) {
+    const round = await throwAndWait(page);
+    if (round.outcome.winner) behind = round.outcome.winner === 'player' ? 'opponent' : 'player';
+  }
+  if (!behind) throw new Error('ten ties in a row');
+  const table = await page.evaluate(() => ({
+    player: window.superRollies.dice.player.length,
+    opponent: window.superRollies.dice.opponent.length,
+    edges: [...document.querySelectorAll('.edge:not([hidden])')].map((el) => el.id + ':' + el.textContent),
+  }));
+  const edgeId = behind === 'player' ? 'youEdge' : 'opponentEdge';
+  // Its extra die is thrown and counted: grab whatever the player has.
+  const round = await throwAndWait(page);
+  const thrown = round.record.dice.filter((d) => d.id.startsWith(behind)).length;
+  const scored = round.outcome.dice[behind].length;
+  report('Underdog: the side behind gets a third die, thrown and scored, and the HUD marks its edge',
+    table[behind] === 3 && table[behind === 'player' ? 'opponent' : 'player'] === 2 &&
+      table.edges.join() === `${edgeId}:+1 die` && thrown === 3 && scored === 3,
+    `${behind} behind: ${table.player} v ${table.opponent} dice on the table, edge "${table.edges.join()}", ` +
+      `${thrown} thrown, ${scored} scored`);
+}, '#quickGameBtn', { pick: 'greatsword', spice: 'underdog' });
+
+// Cursed Number: the coming round's number is announced, and stays up while
+// the dice are thrown.
+await withMatch(PHONE, 'cursed', async (page) => {
+  const shown = async () => ({
+    text: await page.textContent('#announce'),
+    visible: await page.locator('#announce:not([hidden])').count() === 1,
+    cursed: await page.evaluate(() => window.superRollies.game.match.spice.cursed),
+  });
+  const before = await shown();
+  const round = await throwAndWait(page);
+  const after = await shown();
+  const ok = [before, after].every((s) => s.visible && s.text === `Cursed number: ${s.cursed}`);
+  // A die showing the cursed number counted for nothing.
+  const cursedFaces = round.outcome.faces.player.filter((f) => f === before.cursed).length;
+  report('Cursed Number: announced before every round, and a die showing it counts as 0',
+    ok && round.outcome.values.player.filter((v, i) => round.outcome.faces.player[i] === before.cursed).every((v) => v === 0),
+    `"${before.text}", then "${after.text}"; ${cursedFaces} of the player's dice cursed`);
+}, '#quickGameBtn', { pick: 'classic', spice: 'cursed-number' });
 
 console.log(failures ? `\n${failures} check(s) failed (${engine})` : `\nAll checks passed (${engine})`);
 process.exit(failures ? 1 : 0);
