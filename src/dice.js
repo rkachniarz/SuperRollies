@@ -41,15 +41,14 @@ function dieGeometry(shape, themeColor) {
 }
 
 // ---------- Etched face numbers ----------
-// Each number (or a d6's pips) is a small flat decal (a plane with a
-// canvas-drawn label, transparent everywhere else) sitting just off the face's
-// surface, oriented to that face's own normal. Flat/unlit on purpose: a version
-// of this that used a lit material (to "catch the light" like the body does)
-// backfired badly - on faces angled away from the key light the numeral
-// darkened along with the facet under it, and a dark numeral colour (the player
-// die's near-black digits) over an already-darkened facet became nearly
-// unreadable. An unlit numeral renders at the same full contrast on every face,
-// which is what "printed on" actually needs.
+// Each number (or a d6's pips) is a small flat decal: a plane with a
+// canvas-drawn label, transparent everywhere else, just off its face.
+// Flat/unlit on purpose: a version of this that used a lit material (to "catch
+// the light" like the body does) backfired badly - on faces angled away from
+// the key light the numeral darkened along with the facet under it, and a dark
+// numeral colour (the player die's near-black digits) over an already-darkened
+// facet became nearly unreadable. An unlit numeral renders at the same full
+// contrast on every face, which is what "printed on" actually needs.
 const labelTextureCache = new Map();
 
 // Where the pips go on a 3x3 grid (column, row), for each value.
@@ -62,8 +61,12 @@ const PIPS = {
   6: [[0, 0], [2, 0], [0, 1], [2, 1], [0, 2], [2, 2]],
 };
 
-function labelTexture(value, style, colorHex) {
-  const key = value + '|' + style + '|' + colorHex;
+// A lone 6 or 9 is underlined, as on real dice, so the two can be told apart
+// whichever way up the die lies.
+const UNDERLINED = new Set(['6', '9']);
+
+function labelTexture(value, text, style, colorHex, fill = 0.68) {
+  const key = (style === 'pips' ? value : text) + '|' + style + '|' + colorHex + '|' + fill;
   let tex = labelTextureCache.get(key);
   if (tex) return tex;
   const size = 256;
@@ -79,10 +82,19 @@ function labelTexture(value, style, colorHex) {
       ctx.fill();
     }
   } else {
-    ctx.font = '700 ' + Math.round(size * 0.68) + 'px system-ui, -apple-system, "Segoe UI", sans-serif';
+    // Shrunk to fit if it's wide ("00" on a percentile die).
+    const font = (px) => '700 ' + Math.round(px) + 'px system-ui, -apple-system, "Segoe UI", sans-serif';
+    let px = size * fill;
+    ctx.font = font(px);
+    const width = ctx.measureText(text).width;
+    if (width > size * 0.9) {
+      px *= (size * 0.9) / width;
+      ctx.font = font(px);
+    }
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(String(value), size / 2, size / 2 + size * 0.02);
+    ctx.fillText(text, size / 2, size / 2 + size * 0.02);
+    if (UNDERLINED.has(text)) ctx.fillRect(size / 2 - px * 0.22, size / 2 + px * 0.42, px * 0.44, px * 0.07);
   }
   tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -90,64 +102,20 @@ function labelTexture(value, style, colorHex) {
   return tex;
 }
 
+// Where each decal goes is worked out with the shape (decalsOf in
+// die-shapes.js), including why its size and orientation are what they are.
 function addFaceNumbers(mesh, shape, numberColor) {
   const colorHex = '#' + new THREE.Color(numberColor).getHexString();
-  for (const { normal, centroid, inradius, number } of shape.faces) {
-    // No single "upright" direction is possible for every face on a shape like
-    // this (same reason real dice have numbers at no shared consistent
-    // rotation), but leaning each face's "up" toward the die's own vertical
-    // axis - rather than an arbitrary mesh-authoring choice like "toward this
-    // face's first vertex" - keeps every numeral close to upright instead of
-    // landing at random-looking angles. Falls back to the Z axis for any face
-    // whose normal is nearly parallel to Y (up projects to ~zero there).
-    const axisUp = new THREE.Vector3(0, 1, 0);
-    let up = axisUp.clone().sub(normal.clone().multiplyScalar(normal.dot(axisUp)));
-    if (up.lengthSq() < 1e-4) {
-      const axisFallback = new THREE.Vector3(0, 0, 1);
-      up = axisFallback.clone().sub(normal.clone().multiplyScalar(normal.dot(axisFallback)));
-    }
-    up.normalize();
-
-    // right x up must equal normal for this to be a proper rotation (det +1).
-    // crossVectors(normal, up) gives normal x up = -(up x normal), which is the
-    // MIRROR of that - a left-handed basis. Quaternion.setFromRotationMatrix
-    // can't represent a reflection (quaternions only encode proper rotations),
-    // so it silently produced a wrong, unrelated orientation for every single
-    // face - the actual root cause behind numbers looking jumbled, rotated
-    // oddly, or simply missing (a decal facing the wrong way is backface-culled,
-    // i.e. invisible, even on a face pointed straight at the camera). Building
-    // right = up x normal keeps the basis right-handed.
-    const right = new THREE.Vector3().crossVectors(up, normal).normalize();
-    up = new THREE.Vector3().crossVectors(normal, right).normalize();
-    const quaternion = new THREE.Quaternion().setFromRotationMatrix(
-      new THREE.Matrix4().makeBasis(right, up, normal)
-    );
-
-    // A SQUARE decal's own corner sits size/2 * sqrt(2) from its centre. Since
-    // each face's "up" leans toward the die's vertical axis (see above) rather
-    // than toward one of the face's own vertices, that corner can point in
-    // ANY direction relative to the face - including straight at the nearest
-    // edge, whose closest point is only `inradius` away. So for the corner
-    // never to cross the face's own boundary, size/2*sqrt(2) must stay under
-    // inradius, i.e. size under inradius*sqrt(2) (~1.414). An earlier 1.55
-    // multiplier overshot that, which is exactly why numerals used to bleed
-    // past their face's edges onto neighbouring faces. Each die type sets its
-    // own multiplier under that cap (shape.decalSize; 1.0 on the d20).
-    const size = inradius * shape.decalSize;
-
+  for (const { number, text, size, position, quaternion } of shape.decals) {
     const decal = new THREE.Mesh(
       new THREE.PlaneGeometry(size, size),
       new THREE.MeshBasicMaterial({
-        map: labelTexture(number, shape.label, colorHex),
+        map: labelTexture(number, text, shape.label, colorHex, shape.numeralFill),
         transparent: true,
         depthWrite: false,
       })
     );
-    // Offset well clear of the face itself (not just a hair off it) - paired
-    // with the tight camera near/far, this keeps the decal and its own face far
-    // enough apart in the depth buffer that which one wins a z-fight isn't a
-    // coin flip per GPU.
-    decal.position.copy(centroid).addScaledVector(normal, 0.02);
+    decal.position.copy(position);
     decal.quaternion.copy(quaternion);
     decal.renderOrder = 1;
     // For the checks (tools/phase0/verify.mjs): the number this decal shows.

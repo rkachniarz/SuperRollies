@@ -65,6 +65,11 @@ export const DIE_ANGULAR_DAMPING = 0.43;
 // on a face (see restsOnFace in physics.js).
 export const SETTLE_SPEED = 0.22;
 export const SETTLE_TIME = 0.22;
+// Or, whatever it touches, once it has been all but motionless (both speeds
+// under STILL_SPEED) for STILL_TIME: a die cocked against a wall can be
+// perfectly still yet not quite count as resting on a face.
+export const STILL_SPEED = 0.02;
+export const STILL_TIME = 0.5;
 
 // ---------- Camera ----------
 // Placed for The Classic's tray; a bigger tray is framed from further back

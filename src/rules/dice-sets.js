@@ -66,14 +66,30 @@ export function dropLowest(n) {
 const trayOf = (k) => ({ halfWidth: TRAY_HALF_WIDTH * k, depth: TRAY_DEPTH * k });
 
 /**
+ * A d100 roll from a percentile die and a d10, in that order: the tens and
+ * the units, "00" and "0" together making 100. Their faces count as 100 and 10
+ * (their full value, as when either is thrown alone), so the tens are the
+ * percentile die's face mod 100 and the units the d10's mod 10.
+ * @type {Scorer}
+ */
+export const percentile = Object.assign(
+  (/** @type {number[]} */ [tens, units]) => (tens % 100) + (units % 10) || 100,
+  {
+    id: 'percentile',
+    suffix: '',
+    labels: (/** @type {number[]} */ [tens, units]) => [String(tens % 100).padStart(2, '0'), String(units % 10)],
+  }
+);
+
+/**
  * @param {string} id
  * @param {string} name
  * @param {DiceSet['dice']} dice
- * @param {{ scorer?: Scorer, dieScale?: number, tray?: number }} [options]
+ * @param {{ scorer?: Scorer, dieScale?: number, tray?: number, notation?: string }} [options]
  * @returns {DiceSet}
  */
-function diceSet(id, name, dice, { scorer = sum, dieScale = 1, tray = 1 } = {}) {
-  const notation = dice.map(({ type, count }) => `${count}${type}`).join(' + ') + scorer.suffix;
+function diceSet(id, name, dice, { scorer = sum, dieScale = 1, tray = 1, notation } = {}) {
+  notation ??= dice.map(({ type, count }) => `${count}${type}`).join(' + ') + scorer.suffix;
   return { id, name, notation, dice, scorer, dieScale, tray: trayOf(tray) };
 }
 
@@ -84,12 +100,21 @@ export const DICE_SETS = Object.fromEntries([
   THE_CLASSIC,
   diceSet('advantage', 'Advantage', [{ type: 'd20', count: 2 }], { scorer: keepHighest(1) }),
   diceSet('greatsword', 'Greatsword', [{ type: 'd6', count: 2 }]),
+  diceSet('greataxe', 'Greataxe', [{ type: 'd12', count: 1 }]),
   diceSet('ability-score', 'Ability Score', [{ type: 'd6', count: 3 }], { tray: 1.15 }),
   diceSet('heroic-stats', 'Heroic Stats', [{ type: 'd6', count: 4 }], { scorer: dropLowest(1), tray: 1.2 }),
+  diceSet('magic-missile', 'Magic Missile', [{ type: 'd4', count: 3 }], { tray: 1.15 }),
+  diceSet('swarm-of-daggers', 'Swarm of Daggers', [{ type: 'd4', count: 4 }], { tray: 1.2 }),
   diceSet('guiding-bolt', 'Guiding Bolt', [{ type: 'd6', count: 4 }], { tray: 1.2 }),
+  diceSet('divine-smite', 'Divine Smite', [{ type: 'd8', count: 3 }], { tray: 1.15 }),
+  diceSet('fireball', 'Fireball', [{ type: 'd6', count: 8 }], { dieScale: 0.9, tray: 1.45 }),
+  diceSet('percentile', 'Percentile', [{ type: 'd%', count: 1 }, { type: 'd10', count: 1 }],
+    { scorer: percentile, notation: 'd% + d10' }),
+  diceSet('sneak-attack', 'Sneak Attack', [{ type: 'd20', count: 1 }, { type: 'd6', count: 3 }], { tray: 1.2 }),
+  diceSet('the-whole-bag', 'The Whole Bag', ['d4', 'd6', 'd8', 'd10', 'd12', 'd20'].map((type) => ({ type, count: 1 })),
+    { tray: 1.3 }),
   // Scored as a sum until poker hands arrive (DEV_PLAN.md 6.1).
   diceSet('dice-poker', 'Dice Poker', [{ type: 'd6', count: 5 }], { tray: 1.25 }),
-  diceSet('fireball', 'Fireball', [{ type: 'd6', count: 8 }], { dieScale: 0.9, tray: 1.45 }),
 ].map((set) => [set.id, set]));
 
 /**

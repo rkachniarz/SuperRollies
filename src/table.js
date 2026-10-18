@@ -13,13 +13,22 @@ import { handLayout } from './handful.js';
 const WALL_GIVE = 0.02;
 const corner = new THREE.Vector3();
 
-/** How far a die reaches sideways from its centre, as it is turned right now. */
+/**
+ * How far a die reaches to its left and to its right from its centre, as it
+ * is turned right now. Each side separately: a d4 lying against a wall on a
+ * face reaches only a third as far towards it as its top corner reaches the
+ * other way, and taking the larger for both slid every d4 resting against a
+ * side wall half a die inwards, often into its neighbour.
+ */
 function sideReach(die) {
-  let reach = 0;
+  let left = 0;
+  let right = 0;
   for (const v of SHAPES[die.type].verts) {
-    reach = Math.max(reach, Math.abs(corner.fromArray(v).applyQuaternion(die.mesh.quaternion).x));
+    const x = corner.fromArray(v).applyQuaternion(die.mesh.quaternion).x;
+    left = Math.max(left, -x);
+    right = Math.max(right, x);
   }
-  return reach * die.scale;
+  return { left: left * die.scale, right: right * die.scale };
 }
 
 export function createTable(arena) {
@@ -79,8 +88,9 @@ export function createTable(arena) {
   function keepOnScreen() {
     const wall = arena.xLimit(0);
     for (const die of [...sides.player, ...sides.opponent]) {
-      const limit = wall - sideReach(die) + WALL_GIVE;
-      die.mesh.position.x = Math.max(-limit, Math.min(limit, die.mesh.position.x));
+      const { left, right } = sideReach(die);
+      const x = die.mesh.position.x;
+      die.mesh.position.x = Math.max(-(wall - left + WALL_GIVE), Math.min(wall - right + WALL_GIVE, x));
     }
   }
 

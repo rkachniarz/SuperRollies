@@ -1,13 +1,15 @@
 # Super Rollies
 
-A dice roll-off game. Pick your dice - a single d20, 2d6, all the way up to a
-Fireball's 8d6 - pick them up, throw them, roll higher than your opponent. Lose
+A dice roll-off game. Pick your dice - a single d20, 3d4, a percentile roll,
+all the way up to a Fireball's 8d6 - pick them up, throw them, roll higher than
+your opponent. Lose
 a round and you lose a heart; lose three and the match is over. Or pick **Zen**
 and just throw: any of the dice, the whole tray, no score.
 
 Real rigid-body physics (Rapier, in its deterministic build, so a throw replays
-identically on any machine), proper dice - a twenty-sided die with its numbers
-etched on in the standard (non-spindown) layout, six-sided ones with pips - and
+identically on any machine), proper dice - every polyhedral from the d4 to the
+d20, plus the percentile die, numbered the standard way (the d4 read from its
+top corner), six-sided ones with pips - and
 a throw driven by an actual drag-and-release gesture that works the same with a
 mouse or a finger. Grab any one of your dice and the whole handful comes up,
 rolling about in your palm until you throw it.
@@ -40,11 +42,13 @@ index.html    the page: markup, and the import map pinning three.js / Rapier
 styles.css    all styling - HUD, hearts, menu and pickers, result card
 src/
   config.js   every tunable number and colour, in one place
-  d20.js      the icosahedron, and which number goes on which face
-  d6.js       the cube (corners cut off a little), and its numbering
+  d4.js d6.js d8.js d10.js d12.js d20.js
+              each die type's shape and numbering (d10.js also has the
+              percentile die, 00-90)
+  polyhedra.js  helpers for those: faces from vertices, standard numbering
   die-shapes.js  every die type, and what's derived from its shape: normals,
-              rest pose, which face is up
-  dice.js     building a die of any type: faceted body, etched numbers or pips
+              rest pose, which face is up, where its numbers are printed
+  dice.js     drawing a die of any type: faceted body, etched numbers or pips
   handful.js  several dice as one handful: how they sit together, how they
               scatter when thrown, and the opponent's throw
   table.js    the dice on the table this match, and where they wait
@@ -62,12 +66,12 @@ src/
   rules/      the rules, as pure functions with no DOM or physics:
     engine.js         match config, and what a round's dice mean for the match
     dice-sets.js      what each side throws, how it's scored (sum, keep
-                      highest, drop lowest), and its tray
+                      highest, drop lowest, percentile), and its tray
     spice.js          per-match rule changes (only Vanilla so far)
     win-conditions.js how a match is won (Hearts by default)
     types.js          the JSDoc types they share
   main.js     wires it together and runs the frame loop
-test/         unit tests for the RNG, the rules and handfuls (npm test)
+test/         unit tests for the RNG, the rules, handfuls and die shapes (npm test)
 tools/
   build-artifact.mjs   bundles everything into one file (see below)
   phase0/              browser checks and physics checks (see below)
@@ -85,14 +89,14 @@ single file. Nothing about running or deploying the site needs it.
 ## Checks
 
 ```bash
-npm test         # unit tests: RNG, rules engine, scorers, handfuls (node:test, no server needed)
+npm test         # unit tests: RNG, rules engine, scorers, handfuls, die shapes (node:test, no server needed)
 ```
 
 With `npm run dev` running:
 
 ```bash
 npm run verify   # plays the game in headless Chromium and checks it behaves
-npm run phase0   # physics: d10 settling, tunnelling, handfuls, bit-identical replays
+npm run phase0   # physics: every die settles flat, tunnelling, handfuls, bit-identical replays
 ```
 
 `npm run phase0`'s determinism check replays the throws recorded in
@@ -105,10 +109,12 @@ The first `npm install` also needs `npx playwright install chromium`.
 Several details here look arbitrary but are load-bearing — each one is commented
 at the point it matters:
 
-- **Face numbering is computed, not hard-coded.** On the d20, opposite faces
-  summing to 21 is derived from the geometry itself, so it can't silently
-  disagree with the mesh. Every die type's normals, rest pose and face reader
-  come from its own vertices, in `die-shapes.js`.
+- **Face numbering is computed, not hard-coded.** Opposite faces summing to
+  the same total (21 on a d20, 13 on a d12) is derived from the geometry
+  itself, so it can't silently disagree with the mesh. Every die type's normals,
+  rest pose, face reader and decal layout come from its own vertices, in
+  `die-shapes.js`, and `test/dice.test.js` checks every numeral stays on its
+  own face.
 - **The number decals' orientation basis must stay right-handed.** Building it
   the other way round produces a mirror, which a quaternion cannot represent —
   the numbers then render at wrong angles or vanish entirely.

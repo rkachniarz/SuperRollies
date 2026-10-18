@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { matchConfig, resolveRules, startMatch, beginRound, playRound, higherWins } from '../src/rules/engine.js';
-import { THE_CLASSIC, DICE_SETS, sum, keepHighest, dropLowest, dieTypes } from '../src/rules/dice-sets.js';
+import { THE_CLASSIC, DICE_SETS, sum, keepHighest, dropLowest, percentile, dieTypes } from '../src/rules/dice-sets.js';
 import { VANILLA, SPICE } from '../src/rules/spice.js';
 import { HEARTS, hearts } from '../src/rules/win-conditions.js';
 
@@ -88,12 +88,38 @@ describe('dice sets', () => {
       classic: '1d20',
       advantage: '2d20kh1',
       greatsword: '2d6',
+      greataxe: '1d12',
       'ability-score': '3d6',
       'heroic-stats': '4d6dl1',
+      'magic-missile': '3d4',
+      'swarm-of-daggers': '4d4',
       'guiding-bolt': '4d6',
-      'dice-poker': '5d6',
+      'divine-smite': '3d8',
       fireball: '8d6',
+      percentile: 'd% + d10',
+      'sneak-attack': '1d20 + 3d6',
+      'the-whole-bag': '1d4 + 1d6 + 1d8 + 1d10 + 1d12 + 1d20',
+      'dice-poker': '5d6',
     });
+  });
+
+  test('percentile reads tens and units, 00 and 0 making 100', () => {
+    // The percentile die's faces are worth 10-100, the d10's 1-10 ("00" and "0").
+    assert.equal(percentile([40, 7]), 47);
+    assert.equal(percentile([100, 7]), 7);
+    assert.equal(percentile([40, 10]), 40);
+    assert.equal(percentile([100, 10]), 100);
+    assert.equal(percentile([90, 9]), 99);
+    assert.deepEqual(percentile.labels([100, 10]), ['00', '0']);
+    assert.deepEqual(percentile.labels([30, 4]), ['30', '4']);
+    // Every result from 1 to 100, once each.
+    const all = [];
+    for (let t = 10; t <= 100; t += 10) for (let u = 1; u <= 10; u++) all.push(percentile([t, u]));
+    assert.deepEqual(all.sort((a, b) => a - b), Array.from({ length: 100 }, (_, i) => i + 1));
+  });
+
+  test('a die thrown alone counts its 0 as its full value', () => {
+    assert.equal(DICE_SETS['the-whole-bag'].scorer([4, 6, 8, 10, 12, 20]), 60);
   });
 
   test("every set has 1 to 8 dice a side (D6), of known types, and a tray at least The Classic's", async () => {

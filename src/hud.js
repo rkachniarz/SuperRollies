@@ -93,8 +93,9 @@ export function createHud() {
    * A round's result, with how each side's score was made up (R2.5): every
    * die, then the total, with dice that didn't count (a dropped lowest, the
    * lower of two under advantage) greyed out. With one die a side there's
-   * nothing to break down, so it's just the two rolls.
-   * @param {{ side: string, faces: number[], kept: boolean[], score: number }[]} sides
+   * nothing to break down, so it's just the two rolls. `labels`, if given, is
+   * how each die is written (the dice set's scorer.labels).
+   * @param {{ side: string, faces: number[], kept: boolean[], score: number, labels?: string[] }[]} sides
    */
   function showRound(headline, sides, options) {
     showResult(headline, '', options);
@@ -102,14 +103,14 @@ export function createHud() {
       resultDetailEl.textContent = sides.map((s) => `${SIDE_NAMES[s.side]} rolled ${s.score}`).join(' · ');
       return;
     }
-    for (const { side, faces, kept, score } of sides) {
+    for (const { side, faces, kept, score, labels } of sides) {
       const line = document.createElement('span');
       line.className = 'breakdown';
       line.append(`${SIDE_NAMES[side]}: `);
       faces.forEach((face, i) => {
         if (i > 0) line.append(' + ');
         const die = document.createElement('span');
-        die.textContent = String(face);
+        die.textContent = labels?.[i] ?? String(face);
         if (!kept[i]) die.className = 'dropped';
         line.append(die);
       });

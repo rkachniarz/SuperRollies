@@ -5,8 +5,12 @@
 // A cube with its eight corners slightly cut off: the convex-hull stand-in for
 // the rounded corners real dice have, which help them roll over rather than
 // tip once and stop. The cuts are small enough that the six faces are still
-// nearly the whole die (octagons with short diagonal sides), and a die can't
-// rest on a corner: its centre is far outside that small triangle.
+// nearly the whole die (octagons with short diagonal sides). A die can
+// balance on one of those small triangles - its centre is right above it - but
+// only precariously, and it soon topples; ~1 throw in 5000 waits out the
+// settle timeout first (tools/phase0/check-dice.mjs).
+
+import { dot, polygon } from './polyhedra.js';
 
 // Half the side. A real d6 is about 0.8 the size of a d20 across its faces,
 // and the d20's centre-to-face distance is ~0.49 (DIE_RADIUS 0.62 x 0.795).
@@ -39,33 +43,13 @@ for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
   }
 }
 
-const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-
-/**
- * The vertices lying on the plane facing `normal` at distance `d`, in
- * counter-clockwise order seen from outside.
- */
-function polygon(normal, d) {
-  const on = VERTS.map((p, i) => i).filter((i) => Math.abs(dot(VERTS[i], normal) - d) < 1e-9);
-  const centre = [0, 1, 2].map((k) => on.reduce((s, i) => s + VERTS[i][k], 0) / on.length);
-  // Any two directions in the plane, right-handed with the normal.
-  const u = cross(normal, Math.abs(normal[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0]);
-  const w = cross(normal, u);
-  const angle = (i) => {
-    const r = VERTS[i].map((x, k) => x - centre[k]);
-    return Math.atan2(dot(r, w), dot(r, u));
-  };
-  return on.sort((a, b) => angle(a) - angle(b));
-}
-
-const FACES = AXES.map(({ axis }) => polygon(axis, H));
+const FACES = AXES.map(({ axis }) => polygon(VERTS, axis, H));
 
 // The cut corners: each a small triangle facing out along a diagonal.
 const CORNERS = [];
 for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
   const n = [sx, sy, sz].map((x) => x / Math.sqrt(3));
-  CORNERS.push(polygon(n, dot(n, [sx * H, sy * H, sz * (H - CUT)])));
+  CORNERS.push(polygon(VERTS, n, dot(n, [sx * H, sy * H, sz * (H - CUT)])));
 }
 
 /** @type {import('./die-shapes.js').ShapeSpec} */

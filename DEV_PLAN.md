@@ -74,6 +74,8 @@ Some Spice works with any dice; some only makes sense with particular dice
 | D21 | 2026-10-17 | **Trays scale uniformly.** A dice set's tray is The Classic's times a factor, and the camera pulls back by the same factor along the same line, so every tray fills the screen the same way and the on-screen limit logic carries over unchanged. Handfuls are laid out with each die at least two circumradii (plus a gap) from the next, so they never start a throw overlapping. The throw record gains optional `tray` and per-die `s` (scale); records without them are The Classic's, so the Phase 0 fixtures still replay. |
 | D22 | 2026-10-17 | **A held handful jiggles.** Several dice held at once are simulated while held (`createHoldSim`): drawn into a loose, restless bunch round the pointer, tumbling, jolted and knocking into each other, as if shaken in a hand. The throw is released from wherever they are, so the bunch can be tighter than `handLayout` spaces dice and the throw still never starts with them overlapping. The hold isn't deterministic (it follows the pointer and frame rate) and doesn't need to be: like the pointer, it only decides the release, which the record captures. Its jolts draw from the player's `throw` stream. One die alone is still held steady. *How it moves is superseded by D23.* |
 | D23 | 2026-10-17 | **A held handful lies in a palm.** Playtesting said D22's floating, jolted bunch looked strange next to real dice, which lie in one layer on the hand; some roll back and forth as it's shaken, the outer ones most, and some just hop a little without turning over. So the hold is now a cupped palm under gravity: a shallow bowl, a steep lip, and fingers standing up round it with their tips curled in, all unseen. It follows the pointer (a critically damped spring, its acceleration capped) and is gently shaken side to side and rocked, less the faster the hand moves; now and then a die is bumped into a small hop. The dice start packed flat in the bowl, any that don't fit one layer up in the dips between the others. Still not deterministic, still released from wherever the dice are, still using the player's `throw` stream. |
+| D24 | 2026-10-18 | **A cocked die is read as it lies**, not re-thrown: its most upward face (a d4: its most downward). It is what a glance at the table says, it needs no extra throw (which multiplayer would have to agree on), and the reading is deterministic like everything else. About 1–4% of throws end cocked against a wall, depending on the die. A die that is **dead still for 0.5 s** counts as settled even if it doesn't quite rest on a face, so a cocked die doesn't keep the round waiting for the 4 s timeout. |
+| D25 | 2026-10-18 | **A d10's "0" counts as 10, a percentile die's "00" as 100**, as when either is rolled alone in D&D, so The Whole Bag sums to 6–60. Together, as Percentile, they read as tens plus units, with "00" and "0" making 100: `(tens % 100 + units % 10) \|\| 100`, written on the card as `00 + 0 = 100`. A scorer may say how each die is written on the card (`labels`). |
 
 ---
 
@@ -359,7 +361,7 @@ and D); both need `npm run dev` running.
     Rapier can report several along a single edge.
   - About 1.3% of d10 throws come to rest **cocked** against a wall, as real
     dice do. Phase 3 (3.4) needs a rule for this: re-throw, or read the
-    most-upward face.
+    most-upward face. *Read as it lies (D24).*
   - `clampToArena` holds a die by moving it, which makes it an invisible,
     frictionless wall that a d10 can rest leaning against. On desktop it sits
     0.13 inside the real wall, on phones further in. Pre-existing (cannon-es
@@ -553,23 +555,59 @@ Behaviour is unchanged: 1d20 vs. AI plays exactly as it does today.
 
 ### Phase 3 — Remaining die types
 
-- [ ] **3.1** d4 (read from the top vertex). Its three numerals per face sit
+- [x] **3.1** d4 (read from the top vertex). Its three numerals per face sit
   near the corners, not one centred decal, so the `inradius × √2` decal-size
   rule does not apply; it needs its own bound (and its own `CLAUDE.md` entry)
-  to keep numerals off neighbouring faces.
-- [ ] **3.2** d8.
-- [ ] **3.3** d12.
-- [ ] **3.4** d10 (pentagonal trapezohedron, 0–9).
-- [ ] **3.5** Percentile d10 (00–90) and the percentile scorer.
-- [ ] **3.6** Decal sizing per face shape, keeping the decal inside its face.
+  to keep numerals off neighbouring faces. *`src/d4.js`. The game reads the
+  face it lies on (`reads: 'down'`), numbered with the corner it doesn't
+  touch. Numerals sit halfway to their corner, 0.68× the face's inradius
+  (the bound is 0.73×), and fill their decal: at first they were specks from
+  the game's camera, the faces sloping 70° away. Fair over 40,000 throws.*
+- [x] **3.2** d8. *`src/d8.js`: opposite faces sum to 9.*
+- [x] **3.3** d12. *`src/d12.js`: opposite faces sum to 13. It came to rest
+  cocked against a wall, perfectly still, yet never counted as settled (1
+  throw in 700 waited out the timeout): Rapier held one floor corner 1–2 cm
+  up, beyond what counts as touching. Fixed by D24's "dead still" rule, not
+  by loosening "touching", which froze d20s still toppling off a wall.*
+- [x] **3.4** d10 (pentagonal trapezohedron, 0–9). *`src/d10.js`: Check B's
+  shape to the bit. "0" counts as 10 (D25); opposite faces sum to 11, evens
+  round one point. A cocked die is read as it lies (D24).*
+- [x] **3.5** Percentile d10 (00–90) and the percentile scorer. *Same shape,
+  `d%`; `percentile` in `dice-sets.js` (D25).*
+- [x] **3.6** Decal sizing per face shape, keeping the decal inside its face.
   The `inradius × √2` bound holds for any face with an incircle (including the
-  d10's kites), provided the inradius is measured per die type.
-- [ ] **3.7** Dice sets enabled: Greataxe, Magic Missile, Swarm of Daggers,
-  Divine Smite, Percentile, Sneak Attack, The Whole Bag.
-- [ ] **3.8** Verification checklist passes for every die type; artifact
-  republished.
-- [ ] **3.9** Docs refresh. `README.md` file map no longer describes dice as
-  d20-only.
+  d10's kites), provided the inradius is measured per die type. *Decal layout
+  moved from `dice.js` into `die-shapes.js` as plain data, so
+  `test/dice.test.js` checks every decal's corners lie inside its face, and
+  no two on a face overlap, for every die type (and fails when either is
+  broken on purpose). Lone 6s and 9s are underlined; "00" is shrunk to fit.*
+- [x] **3.7** Dice sets enabled: Greataxe, Magic Missile, Swarm of Daggers,
+  Divine Smite, Percentile, Sneak Attack, The Whole Bag. *In the catalogue's
+  order. Notation `d% + d10` for Percentile.*
+- [x] **3.8** Verification checklist passes for every die type; artifact
+  republished. *`npm test` (107). `npm run phase0`: `check-d10.mjs` became
+  `check-dice.mjs`, 2,000 throws of every die type (fails on any die settled
+  off flat in the open, or over 1 in 1,000 timeouts; the d6 can balance on a
+  cut corner for a while, ~1 in 5,000); every new set in `check-handfuls`; the
+  20 recorded throws still replay bit-identically. `npm run verify`: check 1
+  for every die type (via The Whole Bag and Percentile), check 4 for The
+  Whole Bag, handfuls for Percentile, Magic Missile and The Whole Bag, each
+  die alone in Zen. The built file plays The Whole Bag in Chromium.
+  Republished as version 22.*
+  - *Fixed after playtesting: d4s at rest by a side wall jumped up to 0.45
+    inwards, often into their neighbours (which looked like dice sinking
+    into each other). Keeping dice on screen took a die's sideways reach as
+    the same both ways, true of every die but the d4: against a wall on a
+    face, its top corner reaches three times as far the other way. Now each
+    side is measured separately. Measured first: at rest, d4s overlap each
+    other by at most 3 cm, the same as d6s; mid-flight no deep overlap lasts
+    over 5 steps. The "stay put" check now runs Swarm of Daggers too, and
+    failed on the old code (6 dice moved). Check 1 no longer demands a cocked
+    die face the camera (D24), and allows a d4 0.4, which turned 60° from a
+    face is all it can manage. Republished as version 23.*
+- [x] **3.9** Docs refresh. `README.md` file map no longer describes dice as
+  d20-only. *Also `CLAUDE.md`: the decal entries now point at
+  `die-shapes.js`, a d4 entry, the settle rule, checks 1, 4, 7 and 9.*
 
 ### Phase 4 — Setup screen and rules-only Spice
 

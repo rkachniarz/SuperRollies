@@ -9,7 +9,7 @@
     "build": "node tools/build-artifact.mjs",
     "test": "node --test \"test/**/*.test.js\"",
     "verify": "node tools/phase0/verify.mjs",
-    "phase0": "node tools/phase0/check-d10.mjs && node tools/phase0/check-tunnelling.mjs && node tools/phase0/check-handfuls.mjs && node tools/phase0/check-determinism.mjs"
+    "phase0": "node tools/phase0/check-dice.mjs && node tools/phase0/check-tunnelling.mjs && node tools/phase0/check-handfuls.mjs && node tools/phase0/check-determinism.mjs"
   },
   "devDependencies": {
     "@dimforge/rapier3d-deterministic-compat": "0.21.0",

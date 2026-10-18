@@ -130,7 +130,7 @@ export function createGame({ hud, roller, arena, table }) {
     const score = zenScorer(faces);
     // The total up top; with several dice, how it was made up below.
     if (faces.length === 1) hud.showResult(`You rolled ${score}`, '');
-    else hud.showRound(`You rolled ${score}`, [{ side: 'player', faces, kept, score }]);
+    else hud.showRound(`You rolled ${score}`, [{ side: 'player', faces, kept, score, labels: zenScorer.labels?.(faces) }]);
     rolling = false;
   }
 
@@ -155,6 +155,7 @@ export function createGame({ hud, roller, arena, table }) {
       faces: outcome.faces[side],
       kept: outcome.kept[side],
       score: outcome.scores[side],
+      labels: rules.diceSet.scorer.labels?.(outcome.faces[side]),
     }));
 
     if (outcome.matchWinner) {

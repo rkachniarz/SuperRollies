@@ -16,7 +16,7 @@
 import RAPIER from '@dimforge/rapier3d-deterministic-compat';
 import {
   TRAY_HALF_WIDTH, TRAY_DEPTH, WALL_T, DIVIDER_T, WALL_HALF_HEIGHT, DIE_RADIUS,
-  PHYSICS_STEP, GRAVITY, SETTLE_SPEED, SETTLE_TIME, SETTLE_TIMEOUT_MS,
+  PHYSICS_STEP, GRAVITY, SETTLE_SPEED, SETTLE_TIME, STILL_SPEED, STILL_TIME, SETTLE_TIMEOUT_MS,
   DIE_FRICTION, DIE_RESTITUTION, FLOOR_FRICTION, FLOOR_RESTITUTION,
   WALL_FRICTION, WALL_RESTITUTION, DIE_LINEAR_DAMPING, DIE_ANGULAR_DAMPING,
   HELD_HEIGHT, HOLD_PALM_SIZE, HOLD_PALM_FLAT, HOLD_PALM_SLOPE, HOLD_PALM_LIP, HOLD_PALM_LIP_SLOPE, HOLD_PALM_FINGERS, HOLD_PALM_FRICTION, HOLD_PALM_RESTITUTION,
@@ -72,6 +72,8 @@ function radiusOf(type, scale) {
 }
 
 const SETTLE_STEPS = Math.ceil(SETTLE_TIME / PHYSICS_STEP);
+const STILL_SPEED_SQ = STILL_SPEED * STILL_SPEED;
+const STILL_STEPS = Math.ceil(STILL_TIME / PHYSICS_STEP);
 export const TIMEOUT_STEPS = Math.ceil(SETTLE_TIMEOUT_MS / 1000 / PHYSICS_STEP);
 const SETTLE_SPEED_SQ = SETTLE_SPEED * SETTLE_SPEED;
 
@@ -547,7 +549,7 @@ export function createRoundSim(record, { clamp = true } = {}) {
     );
     const pose = readPose(body);
     const radius = radiusOf(d.type, d.s ?? 1);
-    return { id: d.id, type: d.type, radius, body, collider, prev: pose, curr: pose, quietSteps: 0, settled: false, asleep: false };
+    return { id: d.id, type: d.type, radius, body, collider, prev: pose, curr: pose, quietSteps: 0, stillSteps: 0, settled: false, asleep: false };
   });
 
   const sim = {
@@ -572,13 +574,22 @@ export function createRoundSim(record, { clamp = true } = {}) {
         //
         // Slow is not enough on its own: a die toppling off an edge passes
         // through a slow moment at the tipping point, and stopping it there
-        // leaves it balanced at an angle. So it must also be resting on a face.
-        const isQuiet = () => {
+        // leaves it balanced at an angle. So it must also be resting on a face
+        // - or have been dead still for a good while, which a toppling die
+        // never is. That catches a die cocked against a wall that Rapier holds
+        // a hair off the floor at one corner, too far to count as touching:
+        // a d12 does it in ~1 throw in 700, and waited out the timeout.
+        const speedsSq = () => {
           const v = d.body.linvel();
           const w = d.body.angvel();
-          return v.x * v.x + v.y * v.y + v.z * v.z < SETTLE_SPEED_SQ &&
-            w.x * w.x + w.y * w.y + w.z * w.z < SETTLE_SPEED_SQ &&
-            restsOnFace(world, d.collider);
+          return [v.x * v.x + v.y * v.y + v.z * v.z, w.x * w.x + w.y * w.y + w.z * w.z];
+        };
+        const [vSq, wSq] = speedsSq();
+        d.stillSteps = vSq < STILL_SPEED_SQ && wSq < STILL_SPEED_SQ ? d.stillSteps + 1 : 0;
+        const isQuiet = () => {
+          const [v2, w2] = speedsSq();
+          return v2 < SETTLE_SPEED_SQ && w2 < SETTLE_SPEED_SQ &&
+            (d.stillSteps >= STILL_STEPS || restsOnFace(world, d.collider));
         };
 
         // A settled die stays settled until something moves it: one put to

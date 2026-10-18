@@ -33,11 +33,14 @@
 /**
  * Turns one side's face values, in the dice set's order, into its total.
  * `kept` says which dice counted towards it (for the breakdown on the result
- * card, R2.5); a scorer without it counts every die.
+ * card, R2.5); a scorer without it counts every die. `labels` says how each
+ * die is written in that breakdown, where it isn't just its face (percentile:
+ * `00 + 0`, making 100).
  * @typedef {((faces: number[]) => number) & {
  *   id: string,
  *   suffix: string,
  *   kept?: (faces: number[]) => boolean[],
+ *   labels?: (faces: number[]) => string[],
  * }} Scorer
  */
 

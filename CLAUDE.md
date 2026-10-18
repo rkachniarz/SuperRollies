@@ -1,6 +1,6 @@
 # Super Rollies — notes for Claude
 
-A dice roll-off game (1d20 up to 8d6 a side): three.js for rendering, Rapier
+A dice roll-off game (one die up to 8 a side, d4 to d20 and percentile): three.js for rendering, Rapier
 (deterministic build) for physics, no framework, no build step to run it. See README.md for the
 file-by-file map.
 
@@ -17,9 +17,9 @@ record new decisions in its log rather than silently changing requirements.
 npm install
 npm run dev     # http://localhost:8000 - must be served, ES modules don't load over file://
 npm run build   # -> dist/artifact.html, the single-file copy for claude.ai only
-npm test        # unit tests (node:test): RNG, rules engine, scorers, handfuls
+npm test        # unit tests (node:test): RNG, rules engine, scorers, handfuls, die shapes
 npm run verify  # the browser checks below, in headless Chromium (needs npm run dev)
-npm run phase0  # physics checks: d10 settling, tunnelling, handfuls, determinism (needs npm run dev)
+npm run phase0  # physics checks: every die settles flat, tunnelling, handfuls, determinism (needs npm run dev)
 ```
 
 Browser checks run in Chromium only until after the MVP (DEV_PLAN.md, D14).
@@ -41,17 +41,30 @@ Each of these was a real bug that took real effort to find. They are commented a
 the point they matter; this is the index so they don't get "cleaned up" by
 someone (or something) tidying with good intentions.
 
-- **`src/dice.js` — the decal orientation basis must be right-handed.**
+- **`src/die-shapes.js` — the decal orientation basis must be right-handed.**
   `right = up × normal`, not `normal × up`. The latter is a mirror, and a
   quaternion cannot represent a reflection, so `setFromRotationMatrix` silently
   yields a wrong orientation for every face: numbers come out at odd angles or
   vanish entirely (a decal facing away is backface-culled). Symptom when broken:
   the best camera-facing decal has a *negative* dot with the view direction,
   which is geometrically impossible on a correct die.
-- **`src/dice.js` — decal size must stay under `inradius * √2`.** Each die
-  type sets its own multiple (`decalSize` in `d20.js`, `d6.js`): 1.0 on the
-  d20, 1.3 on the d6. Larger than √2 and a corner of the square decal can cross
-  its face's edge and bleed onto the neighbouring face.
+- **`src/die-shapes.js` — a centred decal must stay under `inradius * √2`.**
+  Each die type sets its own multiple (`decalSize` in `d6.js` … `d20.js`):
+  1.0 on the d20, 1.3 on the d6. Larger than √2 and a corner of the square
+  decal can cross its face's edge and bleed onto the neighbouring face. The
+  inradius is measured per face, from its centroid, so it holds for the d10's
+  kites too. `test/dice.test.js` checks every decal's corners lie inside its
+  face, for every die type.
+- **`src/d4.js` — the d4 has its own decal bound.** Its numbers sit at the
+  corners, three per face, each pointing at its corner, so the √2 rule doesn't
+  apply. Halfway to the corner (`decalOffset` 0.5), a square more than 0.73×
+  the inradius either crosses the face's edge or overlaps its neighbours on the
+  face (0.68 is used). The numeral fills its decal (`numeralFill`) instead,
+  since the faces slope steeply away from the camera. `test/dice.test.js`
+  checks both inside-the-face and no-overlap.
+- **`src/d4.js` — the d4 is read from the face it lies on (`reads: 'down'`).**
+  Each face's number is that of the corner it *doesn't* touch, which is the one
+  pointing up. Its rest pose lies on its highest-numbered face, not under it.
 - **`src/dice.js` — the numerals use an unlit `MeshBasicMaterial` on purpose.**
   A lit material makes the player die's near-black digits unreadable on faces
   angled away from the key light, because numeral and facet darken together.
@@ -75,7 +88,10 @@ someone (or something) tidying with good intentions.
   slides dice back in only if the window narrowed past them, judged by how
   far each die *actually* reaches sideways as it lies - never its
   circumradius, which made every d6 resting against a side wall jump inwards
-  as the throw ended.
+  as the throw ended - and **towards each wall separately**: a d4 against a
+  wall on a face reaches a third as far towards it as its corner reaches the
+  other way, and taking the larger for both teleported it half a die inwards,
+  into its neighbours.
 - **`src/arena.js` — a die is released at least its circumradius from any
   wall**, so it clears the wall in every orientation (`clampToTray` for the
   held handful, `opponentZone` for the opponent's, both given the handful's
@@ -136,6 +152,12 @@ someone (or something) tidying with good intentions.
   Counting them doesn't work: Rapier reports several along a single edge.
   Between two dice "touching" is 3 cm, not 1 (`TOUCHING_DIE`): Rapier rests two
   moving bodies 1–2 cm apart, and dice leaning on each other never settled.
+  **Or dead still for half a second (`STILL_SPEED`, `STILL_TIME`):** a d12
+  cocked against a wall can sit perfectly still with one floor corner held
+  1–2 cm up, and waited out the 4 s timeout (1 throw in 700). Don't fix that
+  by raising the floor's 1 cm `TOUCHING` to 3 cm: measured, that froze d20s
+  that were still slowly toppling flat off a wall (`check-dice.mjs`'s cocked
+  count rose). A cocked die is read as it lies (DEV_PLAN.md D24).
 - **`src/rules/` — the rules engine stays pure.** No DOM, physics, clock or
   `Math.random()`: a round's outcome is a function of the match config, the
   match state and both sides' faces, and nothing else. Multiplayer depends on
@@ -180,12 +202,14 @@ Worth re-checking after any change to dice, camera, input or physics. All of
 these are scripted in `npm run verify` (`tools/phase0/verify.mjs`):
 
 1. Every die shows its full set of numerals (20 on a d20, 6 pip faces on a
-   d6), at rest at least one squarely faces the camera, and the face the game
-   read is the one on top.
+   d6, 12 on a d4: three per face), at rest at least one squarely faces the
+   camera, and the face the game read is the one on top (on a d4, the number
+   round its top corner). Checked for every die type, via The Whole Bag and
+   Percentile.
 2. A micro-nudge is refused ("Make a proper throw!"); a genuine drag throws.
 3. The die is grabbable on the first tap even when the result card overlaps it.
 4. On a 390×844 viewport every die is still reachable at its sideways limit,
-   for one die and for 8. Dice at rest stay exactly where they landed (against
+   for one die, for 8, and for The Whole Bag (the biggest dice). Dice at rest stay exactly where they landed (against
    the side walls too), and narrowing the window slides them back on screen.
 5. A full match drains hearts to 0, announces the result, returns to the menu.
 6. A fresh match's die is grabbable at once; a fumbled die can be caught
@@ -193,11 +217,12 @@ these are scripted in `npm run verify` (`tools/phase0/verify.mjs`):
 7. Zen: no opponent, the die reaches the far half, the back button is clear of
    every spot a die can rest, and Quick Game afterwards restores the table.
    Zen offers every dice set and every die type alone, and throws what's
-   picked: one d6, or a handful totalled with its set's scorer.
+   picked: each die type alone, or a handful totalled with its set's scorer.
 8. The same match seed throws the opponent's dice the same way.
-9. Handfuls (2, 4, 5 and 8 dice): one grab picks them all up, they're thrown
-   together, and the result card adds each side up, greying out dice that
-   don't count (Advantage, Heroic Stats).
+9. Handfuls (2 to 8 dice, mixed types too): one grab picks them all up,
+   they're thrown together, and the result card adds each side up, greying out
+   dice that don't count (Advantage, Heroic Stats), and writing percentile as
+   `40 + 7`, `00 + 0` = 100.
 
 Run `npm test` alongside; it needs no server.
 
