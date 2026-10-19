@@ -246,6 +246,24 @@ someone (or something) tidying with good intentions.
   those too would change half the recorded table throws, so the threshold
   sits above that. And only when Rapier still calls it asleep: calling
   `wakeUp()` on a die it had already woken changed recorded throws.
+- **`src/game.js` (`redraw`) — a redraw (Draw Poker) holds the kept dice
+  where they lie, `fixed` in the record, and lifts the thrown handful clear
+  of them, all together (`liftClear` in `handful.js`).** Fixed, so nothing
+  thrown onto them can turn them over after they were read; lifted, or a
+  release over one starts inside it. A die picked out and *fumbled* goes
+  straight back where it lay rather than dropping: a drop could turn it
+  over, and the player may still keep it.
+- **`src/physics.js` — with a die held fixed, a die near one pose has
+  settled (`HELD_ROCK_MOVE`, 5 cm and 6°).** Propped between a held die and
+  a wall, a die jitters or creeps down the held one a few cm a second,
+  neither resting on a face nor still: 1 redraw in 36 timed out. The rope's
+  2 cm made no difference, nor did more friction on held dice. Only for
+  records with a fixed die, so every recorded throw replays unchanged.
+- **`src/table.js` (`removeDice`) — dice burnt out (Burnout) go by index,
+  and the rest are numbered afresh.** The rules only count how many a side
+  has left, so `setHand` would take dice off the end, leaving the one that
+  showed the 1 on the table. Ids must stay `player-0` onwards, in order:
+  throw records and the rules read faces by position.
 - **`src/handful.js` — No Man's Land's aimed throw is gentle and flat
   (`AIM_SPEED`, no extra lift).** Harder, or lobbed, eight dice a side
   landed on each other's and heaped up, and 1 throw in 20 waited out the
@@ -349,6 +367,16 @@ these are scripted in `npm run verify` (`tools/phase0/verify.mjs`):
     set, then exactly the Spice that set allows (set-specific first), its
     back button returns to the dice, and picking one starts that match. A
     match over there starts another on the same dice and Spice.
+19. Draw Poker (desktop and 390×844): after the throw a tap picks a die out
+    (and again puts it back), the opponent's dice to throw glow, the keep
+    button is clear of every die; a drag throws only the dice picked out,
+    the rest unmoved and still counted; keeping them all throws none.
+    Dice Poker's card names both hands.
+20. Count the Sixes counts 6s on the card, the rest greyed; Burnout takes
+    the dice that showed 1 off the table and marks them by the hearts, clear
+    of the corners on a phone; Crown counts one die a side, `+ 5 👑` for
+    each on its maximum; Wild Magic's matching digits set off a surge, said
+    on the card.
 
 Run `npm test` alongside; it needs no server.
 

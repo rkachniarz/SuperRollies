@@ -11,9 +11,9 @@
 // (Doubles Again, Second Wind) are thrown.
 
 import {
-  hearts, hitPoints, raceTo, tugOfWar, DEATH_SAVES, DEATH_SAVE_DC, DEATH_SAVE_FAILS, failsFor, naturalOf,
+  hearts, hitPoints, raceTo, tugOfWar, burnout, burntOut, DEATH_SAVES, DEATH_SAVE_DC, DEATH_SAVE_FAILS, failsFor, naturalOf,
 } from './win-conditions.js';
-import { DIE_MAX, extraDieType, keepHighest } from './dice-sets.js';
+import { DIE_MAX, extraDieType, keepHighest, countOf } from './dice-sets.js';
 import {
   TRAY_HALF_WIDTH, DIVIDER_T, POTHOLE_RADIUS, POTHOLE_DEPTH, CAT_PAW_CHANCE, WIND_MIN, WIND_MAX,
 } from '../config.js';
@@ -46,6 +46,11 @@ const MAX_EXPLOSIONS = 10;
 // The two d20 sets: a "natural 20" is the d20 that counts, so under Advantage
 // it's the higher of the two (DEV_PLAN.md D26).
 const D20_SETS = ['classic', 'advantage'];
+
+// A poker hand's score is its rank, not a total (DEV_PLAN.md D42), so Spice
+// that count totals up, or make a die count for more than its face, sit Dice
+// Poker out.
+const NOT_POKER = ['dice-poker'];
 
 /** @type {Spice} */
 export const VANILLA = {
@@ -119,8 +124,9 @@ const EXPLODING_DICE = {
   kind: 'rule',
   summary: 'A die showing its highest number rolls again and adds it. It can chain.',
   rules: 'Whenever a die lands on its highest number (a 6 on a d6, a 20 on a d20), it explodes: it is rolled again and the new roll is added to it. If that roll is the highest number too, it explodes again, and so on. The extra rolls are made by the game, the same on both screens.',
-  // Percentile's tens and units aren't a total that can grow.
-  eligibility: { excludeDiceSets: ['percentile'] },
+  // Percentile's tens and units aren't a total that can grow, nor is a
+  // poker hand.
+  eligibility: { excludeDiceSets: ['percentile', ...NOT_POKER] },
   values: (faces, { hand, rng }) => faces.map((face, i) => {
     const max = DIE_MAX[hand.types[i]];
     if (face !== max) return { value: face };
@@ -185,8 +191,9 @@ const UNDERDOG = {
   kind: 'comeback',
   summary: 'Whoever is behind throws one extra die.',
   rules: 'Whoever has fewer hearts left throws one more die than usual, until they catch up: the commonest die in the set (another d6 with Sneak Attack, a d4 with The Whole Bag). Never more than eight dice.',
-  // At eight dice there's no room for another (D6); percentile is two digits.
-  eligibility: { maxDice: 7, excludeDiceSets: ['percentile'] },
+  // At eight dice there's no room for another (D6); percentile is two
+  // digits, and a poker hand is five dice.
+  eligibility: { maxDice: 7, excludeDiceSets: ['percentile', ...NOT_POKER] },
   hand: (side, base, { rules, state }) => {
     if (rules.winCondition.behind(state.win) !== side || base.types.length >= 8) return base;
     return { ...base, types: [...base.types, extraDieType(rules.diceSet)] };
@@ -361,7 +368,7 @@ const HIT_POINTS = {
   kind: 'win',
   summary: 'Lose a round and you lose the difference in HP.',
   rules: 'Instead of hearts, each side has hit points, more with dice that roll bigger totals (30 with The Classic). The round\'s loser loses as many as the totals differ by: 17 against 9 costs 8 HP. Run out and you lose the match.',
-  eligibility: {},
+  eligibility: { excludeDiceSets: NOT_POKER },
   winCondition: hitPoints,
 };
 
@@ -373,7 +380,7 @@ const RACE_TO_N = {
   kind: 'win',
   summary: 'Every total adds up. First to the target wins.',
   rules: 'Every round, each side\'s total is added to its score, win or lose. The first to reach the target wins the match; the target is about five average throws (55 with The Classic). If you both get there in the same round, the higher score wins.',
-  eligibility: {},
+  eligibility: { excludeDiceSets: NOT_POKER },
   winCondition: raceTo,
 };
 
@@ -385,7 +392,7 @@ const TUG_OF_WAR = {
   kind: 'win',
   summary: 'A rope down the table. Each round its flag is pulled towards the loser: pull it to their end.',
   rules: 'A rope lies down the middle of the table, from your end to your opponent\'s, and the dice bounce off it or roll over it. A flag tied to it starts halfway. Each round it is pulled towards the loser by the difference between the totals; pull it to their end and they lose the match. The rope is longer with dice that roll bigger totals.',
-  eligibility: {},
+  eligibility: { excludeDiceSets: NOT_POKER },
   winCondition: tugOfWar,
   table: ({ rules, state }) => ({ rope: { pull: rules.winCondition.pull?.(state.win) ?? 0 } }),
 };
@@ -611,6 +618,153 @@ const DEATH_SAVES_SPICE = {
   },
 };
 
+// ---------- Phase 6: other ways to score ----------
+
+/** @type {Spice} */
+const DRAW_POKER = {
+  id: 'draw-poker',
+  name: 'Draw Poker',
+  icon: '🃏',
+  kind: 'dice',
+  summary: 'Once a round, throw any of your dice again before the hands are shown.',
+  rules: 'Once you have both thrown, each of you may throw any of your dice again, once: tap the ones to throw, then pick them up and throw them, or keep them all. The dice you keep stay where they lie. Then the hands are shown. Your opponent keeps the dice that make its hand.',
+  eligibility: { diceSets: ['dice-poker'] },
+  redraws: 1,
+};
+
+const SIXES = countOf(6, 'six', 'sixes');
+
+/** @type {Spice} */
+const COUNT_THE_SIXES = {
+  id: 'count-the-sixes',
+  name: 'Count the Sixes',
+  icon: '🎲',
+  kind: 'dice',
+  summary: 'Only the number of 6s counts.',
+  rules: 'Forget the total: whoever has more dice showing 6 wins the round. The same number of 6s is a tie.',
+  eligibility: { diceSets: ['fireball'] },
+  hand: (_side, base) => ({ ...base, scorer: SIXES }),
+};
+
+/** @type {Spice} */
+const BURNOUT = {
+  id: 'burnout',
+  name: 'Burnout',
+  icon: '🔥',
+  kind: 'dice',
+  summary: 'Every die that lands on a 1 is lost for the rest of the match.',
+  rules: 'Hearts as usual, but each of your dice that lands on a 1 burns out: it still counts this round, then it is gone for the rest of the match, and you throw one fewer. Run out of dice and you lose the match, hearts or not.',
+  eligibility: { diceSets: ['fireball'] },
+  winCondition: burnout,
+  // How many dice each side has left is the win condition's, so this
+  // depends on the match state only.
+  hand: (side, base, { state }) =>
+    ({ ...base, types: base.types.slice(0, /** @type {import('./win-conditions.js').BurnoutState} */ (state.win).dice[side]) }),
+  values: (faces) => faces.map((face) => (face === 1 ? { value: face, text: '1', tag: 'burnt' } : { value: face })),
+  explain: ({ faces }) => {
+    const lost = /** @type {Side[]} */ (['player', 'opponent']).map((side) => {
+      const n = burntOut(faces[side]);
+      return n ? `${side === 'player' ? 'you lose' : 'they lose'} ${n === 1 ? 'a die' : `${n} dice`}` : '';
+    }).filter(Boolean);
+    return lost.length ? `🔥 Burnt out: ${lost.join(', ')}.` : undefined;
+  },
+};
+
+/** What Crown adds for each die showing its highest number. */
+const CROWN_BONUS = 5;
+
+/** @type {Spice} */
+const CROWN = {
+  id: 'crown',
+  name: 'Crown',
+  icon: '👑',
+  kind: 'dice',
+  summary: `Only your highest die counts, but every die on its maximum adds ${CROWN_BONUS}.`,
+  rules: `Only your single highest die counts towards your total. But every die showing its highest number (a 4 on the d4, a 20 on the d20) is crowned, and adds ${CROWN_BONUS}, the one that counts too.`,
+  eligibility: { diceSets: ['the-whole-bag'] },
+  hand: (_side, base) => ({ ...base, scorer: keepHighest(1) }),
+  adjust: ({ values }, { side, hand }) => values[side]
+    .filter((value, i) => value === DIE_MAX[hand.types[i]])
+    .map(() => ({ label: '👑', value: CROWN_BONUS })),
+};
+
+/**
+ * Wild Magic's surges, by what they do to the round, and how the card says
+ * so. `who` is the side that surged: `you` or `they`.
+ * @type {{ id: string, text: (who: string) => string }[]}
+ */
+const SURGES = [
+  { id: 'swap', text: () => 'the totals swap, so the lower wins.' },
+  { id: 'double', text: () => 'this round costs double.' },
+  { id: 'heal', text: (who) => `${who} regain a heart.` },
+  { id: 'backfire', text: (who) => `it backfires, and ${who} lose a heart.` },
+  { id: 'fizzle', text: () => 'it fizzles, and nobody wins the round.' },
+  { id: 'triumph', text: (who) => `${who} win the round, whatever the totals.` },
+];
+
+/** @typedef {{ surge: import('./types.js').PerSide<number> }} WildMagicState */
+
+/**
+ * Whether a percentile result's two digits match: 11, 22 ... 99, and 100
+ * (`00 + 0`).
+ * @param {number} score
+ */
+const matchingDigits = (score) => score === 100 || score % 11 === 0;
+
+/**
+ * The sides whose result set off a surge, player first, each with the surge
+ * drawn for it.
+ * @param {Pick<Round, 'scores'>} round
+ * @param {import('./types.js').StateContext} ctx
+ */
+function surgesOf({ scores }, { state }) {
+  const { surge } = /** @type {WildMagicState} */ (state.spice);
+  return /** @type {Side[]} */ (['player', 'opponent'])
+    .filter((side) => matchingDigits(scores[side]))
+    .map((side) => ({ side, ...SURGES[surge[side]] }));
+}
+
+/** @type {Spice} */
+const WILD_MAGIC = {
+  id: 'wild-magic',
+  name: 'Wild Magic',
+  icon: '🌀',
+  kind: 'dice',
+  summary: 'Roll matching digits (11, 22...) and you set off a wild magic surge.',
+  rules: 'A result whose two digits match (11, 22 and so on up to 99, and 00 + 0, which makes 100) sets off a surge of wild magic, picked by the game: the totals swap, the round costs double, you regain a heart, it backfires and you lose one, it fizzles and nobody wins, or you win the round outright. You can both surge at once.',
+  eligibility: { diceSets: ['percentile'] },
+  // Drawn before every throw, whether it's set off or not: so each side's is
+  // the same whichever hook reads it, and the rules stream moves on the same
+  // way every round.
+  beforeThrow: ({ rng }) => ({ spice: { surge: { player: rng.int(SURGES.length), opponent: rng.int(SURGES.length) } } }),
+  compare: (round, ctx) => {
+    const { player, opponent } = round.scores;
+    /** @type {Side | null} */
+    let winner = player > opponent ? 'player' : opponent > player ? 'opponent' : null;
+    for (const { side, id } of surgesOf(round, ctx)) {
+      if (id === 'swap') winner = winner && other(winner);
+      else if (id === 'fizzle') winner = null;
+      else if (id === 'triumph') winner = side;
+    }
+    return winner;
+  },
+  applyDamage: (round, damage, ctx) => {
+    let cost = damage;
+    for (const { side, id } of surgesOf(round, ctx)) {
+      if (id === 'double') cost = { player: cost.player * 2, opponent: cost.opponent * 2 };
+      // A cost below nothing is a heart back (never past three: Hearts' apply).
+      else if (id === 'heal') cost = { ...cost, [side]: cost[side] - 1 };
+      else if (id === 'backfire') cost = { ...cost, [side]: cost[side] + 1 };
+    }
+    return cost;
+  },
+  explain: (round, ctx) => {
+    const said = surgesOf(round, ctx).map(({ side, text }) =>
+      `🌀 ${side === 'player' ? 'Your' : 'Their'} wild magic surges: ${text(side === 'player' ? 'you' : 'they')}`);
+    return said.length ? said.join(' ') : undefined;
+  },
+};
+
 /** Every Spice, in the order the catalogue lists them. */
 /** @type {Record<string, Spice>} */
 export const SPICE = Object.fromEntries([
@@ -621,6 +775,7 @@ export const SPICE = Object.fromEntries([
   POTHOLE, CAT_PAW, GUSTY_TABLE, NO_MANS_LAND,
   CRITICAL_HIT, CRITICAL_FUMBLE, INSPIRATION, BRUTAL_CRITICAL, SNAKE_EYES, TRIPLES, CALTROPS,
   DOUBLES_AGAIN, DEATH_SAVES_SPICE,
+  DRAW_POKER, COUNT_THE_SIXES, BURNOUT, CROWN, WILD_MAGIC,
 ].map((spice) => [spice.id, spice]));
 
 /** What each kind of Spice is called on its card. */

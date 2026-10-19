@@ -114,7 +114,10 @@ export function createHud() {
     }
   }
 
-  /** A row of `max` marks, `count` of them struck (failed death saves). */
+  /**
+   * A row of `max` marks, `count` of them struck with the mark's icon
+   * (failed death saves, dice burnt out).
+   */
   function showMarks(el, mark) {
     el.hidden = !mark;
     if (!mark) return;
@@ -123,7 +126,7 @@ export function createHud() {
     el.replaceChildren(...Array.from({ length: mark.max }, (_, i) => {
       const dot = document.createElement('span');
       dot.className = i < mark.count ? 'mark struck' : 'mark';
-      dot.textContent = i < mark.count ? '💀' : '';
+      dot.textContent = i < mark.count ? mark.icon ?? '💀' : '';
       return dot;
     }));
   }
@@ -164,11 +167,14 @@ export function createHud() {
    * count (a dropped lowest, the lower of two under advantage) are greyed
    * out; an exploded die is written `(6+6+2)` and a cursed one struck through,
    * as the round's `dice` say. With one plain die a side there's nothing to
-   * break down, so it's just the two rolls. `notes` are extra lines: what the
-   * Spice decided (`Boxcars!`), and what it announces for the next round.
+   * break down, so it's just the two rolls. A score with a name (a poker
+   * hand, `2 sixes`) isn't a sum, so its dice are listed rather than added
+   * up, and it's the name that's written as the result. `notes` are extra
+   * lines: what the Spice decided (`Boxcars!`), and what it announces for
+   * the next round.
    * @param {string} headline
    * @param {{ side: string, dice: import('./rules/types.js').DieTerm[],
-   *   adjustments?: import('./rules/types.js').Adjustment[], score: number }[]} sides
+   *   adjustments?: import('./rules/types.js').Adjustment[], score: number, named?: string }[]} sides
    * @param {{ gameOver?: boolean, notes?: (string | undefined)[] }} [options]
    */
   function showRound(headline, sides, { notes = [], ...options } = {}) {
@@ -177,12 +183,12 @@ export function createHud() {
     if (plain) {
       resultDetailEl.textContent = sides.map((s) => `${SIDE_NAMES[s.side]} rolled ${s.score}`).join(' · ');
     } else {
-      for (const { side, dice, adjustments = [], score } of sides) {
+      for (const { side, dice, adjustments = [], score, named } of sides) {
         const line = document.createElement('span');
         line.className = 'breakdown';
         line.append(`${SIDE_NAMES[side]}: `);
         dice.forEach(({ text, kept, tag }, i) => {
-          if (i > 0) line.append(' + ');
+          if (i > 0) line.append(named ? ' · ' : ' + ');
           const die = document.createElement('span');
           die.textContent = text;
           const classes = [kept ? '' : 'dropped', tag ?? ''].join(' ').trim();
@@ -197,7 +203,7 @@ export function createHud() {
         }
         line.append(' = ');
         const total = document.createElement('strong');
-        total.textContent = String(score);
+        total.textContent = named ?? String(score);
         line.append(total);
         resultDetailEl.append(line);
       }
@@ -236,7 +242,8 @@ export function createHud() {
 
   /**
    * Offers the player a re-throw of the round just shown (Second Wind,
-   * Mercy): a short `label` for the button, and a `title` saying what it is.
+   * Mercy), or to keep all their dice rather than throw some again (Draw
+   * Poker): a short `label` for the button, and a `title` saying what it is.
    * null takes the offer away. `dice` says where the dice lie on screen
    * (table.onScreen), for placeRethrow to keep the button off them.
    * @param {{ label: string, title: string } | null} offer

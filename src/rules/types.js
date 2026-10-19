@@ -37,12 +37,19 @@
  * `kept` says which dice counted towards it (for the breakdown on the result
  * card, R2.5); a scorer without it counts every die. `labels` says how each
  * die is written in that breakdown, where it isn't just its face (percentile:
- * `00 + 0`, making 100).
+ * `00 + 0`, making 100). `describe` names the score, where the number itself
+ * means nothing to a player (a poker hand's rank) or needs a word (`2
+ * sixes`); a named score isn't a sum, so the card lists its dice rather than
+ * adding them up. `hold` says which dice are worth keeping when a side may
+ * throw the others again (Draw Poker), for the opponent; without it, the
+ * dice that count are kept.
  * @typedef {((faces: number[]) => number) & {
  *   id: string,
  *   suffix: string,
  *   kept?: (faces: number[]) => boolean[],
  *   labels?: (faces: number[]) => string[],
+ *   describe?: (faces: number[]) => string,
+ *   hold?: (faces: number[]) => boolean[],
  * }} Scorer
  */
 
@@ -53,6 +60,8 @@
  * @property {string} notation  As printed on its card, e.g. `8d6`.
  * @property {string} summary  One line, for its card.
  * @property {string} range  The totals it can make, e.g. `8–48`.
+ * @property {string} [rules]  Its full rules, for the rules popup, where the
+ *   summary and range don't say it all (Dice Poker's hands).
  * @property {{ type: string, count: number }[]} dice  Per side, in order.
  * @property {Scorer} scorer
  * @property {number} dieScale  Die size relative to the die type's own.
@@ -72,7 +81,7 @@
 /**
  * What a Spice says one die counts for, when that isn't just its face. `text`
  * is how the result card writes it (`(6+6+2)` for a die that exploded twice);
- * `tag` marks it for the card to style ('exploded', 'cursed'). `extra` is
+ * `tag` marks it for the card to style ('exploded', 'cursed', 'burnt'). `extra` is
  * any rolls the game made for it and added on (an exploded die's), in order,
  * for the table to show them rolled.
  * @typedef {{ value: number, text?: string, tag?: string, extra?: number[] }} DieValue
@@ -103,6 +112,8 @@
  * @property {PerSide<DieTerm[]>} dice  Each die as the result card writes it.
  * @property {PerSide<Adjustment[]>} adjustments
  * @property {PerSide<number>} scores
+ * @property {PerSide<string | undefined>} named  What each score is called,
+ *   where the hand's scorer names it (`Full house (6s, 2s)`, `2 sixes`).
  * @property {Side | null} winner  null for a tie.
  */
 
@@ -113,7 +124,7 @@
  * (Death Saves' fails); or a bar per side, styled as HP, a race's progress,
  * or the ground left in a tug of war.
  * @typedef {{ kind: 'hearts', sides: PerSide<{ left: number, max: number }>,
- *   marks?: PerSide<{ count: number, max: number, label: string }> }
+ *   marks?: PerSide<{ count: number, max: number, label: string, icon?: string }> }
  *   | { kind: 'bar', style: 'hp' | 'race' | 'tug', sides: PerSide<{ value: number, max: number, text: string }> }} MatchView
  */
 
@@ -230,6 +241,9 @@
  *   faces. `dice` is how many each side has.
  * @property {(ctx: StateContext) => Partial<TableEffects>} [table]  The table
  *   this round is thrown on (TableEffects). Depends on the match state only.
+ * @property {number} [redraws]  How many times a round each side may throw
+ *   any of its dice again, keeping the rest where they lie, once both have
+ *   thrown and before the round is played out (Draw Poker). Default none.
  * @property {(throws: number[][], ctx: StateContext & { side: Side }) => boolean} [again]
  *   Whether a side throws once more this round, given the faces of each throw
  *   it has made in it so far (Doubles Again).

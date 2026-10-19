@@ -2,7 +2,8 @@
 // floor with holes in it (Pothole), in a breeze (Gusty Table), with no
 // divider (No Man's Land, the opponent throwing at the player's dice), the
 // knock a cat's paw gives dice at rest (Cat Paw), and over a rope down the
-// middle (Tug of War). Every step of every throw is checked: no die sinks into the floor or
+// middle (Tug of War), and a redraw: some dice thrown again onto the rest,
+// held where they lie (Draw Poker). Every step of every throw is checked: no die sinks into the floor or
 // through a pit's bottom, none leaves the tray, and with the divider up none
 // crosses it. At rest, a die counted as fallen is down a pit and one not
 // counted is on the floor. And the throws settle, bar a few timeouts.
@@ -15,7 +16,7 @@
 
 import { initPhysics, createRoundSim, TIMEOUT_STEPS } from '../../src/physics.js';
 import { SHAPES } from '../../src/die-shapes.js';
-import { handLayout, scatter, randomHandful, aimHandful } from '../../src/handful.js';
+import { handLayout, scatter, randomHandful, aimHandful, liftClear } from '../../src/handful.js';
 import { DICE_SETS, dieTypes } from '../../src/rules/dice-sets.js';
 import { matchConfig, resolveRules, startMatch, beginRound, tableOf } from '../../src/rules/engine.js';
 import { DIVIDER_T, DIE_RADIUS, HELD_HEIGHT, MAX_THROW_SPEED, MAX_LIFT_SPEED, SPIN_POWER, PHYSICS_STEP } from '../../src/config.js';
@@ -30,7 +31,9 @@ const rand = mulberry32(0x7AB1E);
 
 // One die and the most dice, the biggest dice and the d4's corners.
 const SETS = ['classic', 'fireball', 'the-whole-bag', 'swarm-of-daggers'];
-const SPICE = ['pothole', 'gusty-table', 'no-mans-land', 'cat-paw', 'tug-of-war'];
+const SPICE = ['pothole', 'gusty-table', 'no-mans-land', 'cat-paw', 'tug-of-war', 'draw-poker'];
+// The sets a Spice is checked with, where it's only played with some.
+const SETS_FOR = { 'draw-poker': ['dice-poker'] };
 
 /** A throw like the game's: both sides' handfuls on the table the rules lay out for `seed`. */
 function throwFor(set, spice, seed) {
@@ -92,9 +95,33 @@ function knockFor(record, result) {
   };
 }
 
+/**
+ * A redraw (Draw Poker, redraw in game.js), from a throw at rest: each die
+ * thrown again or not at random, at least one of the player's; those that
+ * aren't held where they lie, and each side's handful let go as a fresh
+ * throw's is, lifted clear of them.
+ */
+function redrawFor(record, result, fresh) {
+  const at = Object.fromEntries(result.dice.map((d) => [d.id, d]));
+  const again = new Set(record.dice.filter((d) => rand() < 0.5).map((d) => d.id));
+  again.add('player-0');
+  const radius = (d) => SHAPES[d.type].circumradius * (d.s ?? 1);
+  const lying = record.dice.filter((d) => !again.has(d.id)).map((d) => ({ p: at[d.id].p, r: radius(d) }));
+  const released = new Map();
+  for (const side of ['player', 'opponent']) {
+    const dice = fresh.dice.filter((d) => d.id.startsWith(side) && again.has(d.id));
+    liftClear(dice, dice.map(radius), lying).forEach((release) => released.set(release.id, release));
+  }
+  return {
+    ...record,
+    dice: record.dice.map((d) => released.get(d.id) ??
+      { id: d.id, type: d.type, s: d.s, p: at[d.id].p, q: at[d.id].q, v: [0, 0, 0], w: [0, 0, 0], fixed: true }),
+  };
+}
+
 let failures = 0;
 for (const spice of SPICE) {
-  for (const setId of SETS) {
+  for (const setId of SETS_FOR[spice] ?? SETS) {
     const id = `${spice}/${setId}`;
     if (ONLY && !id.includes(ONLY)) continue;
     const set = DICE_SETS[setId];
@@ -109,6 +136,8 @@ for (const spice of SPICE) {
       let record = throwFor(set, spice, i);
       // Cat Paw: the knock is what's checked, from where a throw came to rest.
       if (spice === 'cat-paw') record = knockFor(record, replayThrow(record));
+      // Draw Poker: the redraw is what's checked, onto a throw at rest.
+      if (spice === 'draw-poker') record = redrawFor(record, replayThrow(record), throwFor(set, spice, i + THROWS));
       const holes = record.holes ?? [];
       const pitOf = (x, z) => holes.find((h) => (x - h.x) ** 2 + (z - h.z) ** 2 < h.r * h.r);
       // Near enough a hole to be tipped over its rim, a die can sit lower

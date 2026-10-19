@@ -23,6 +23,8 @@ catalogue of cards.
 Since Phase 5 (2026-10-19): Spice on the table (Pothole, Cat Paw, Gusty Table,
 No Man's Land), re-throws (Second Wind, Mercy), three more ways to win (Hit
 Points, Race to N, Tug of War), Doubles Again and Death Saves: 28 Spice.
+Since Phase 6 (2026-10-19): Dice Poker scored as poker hands, and Draw Poker's
+redraw of chosen dice; Count the Sixes, Burnout, Crown and Wild Magic: 33 Spice.
 
 ---
 
@@ -99,6 +101,11 @@ Some Spice works with any dice; some only makes sense with particular dice
 | D39 | 2026-10-19 | **A test bench, for development only, behind `?dev`.** For live-testing every Spice without the draft's luck: a third menu button, shown only with `?dev` in the address, opens the catalogue (4.3) of every dice set, then every Spice that set allows, those made for particular sets first (`testBenchSpice`), and starts a Quick Game with them. Its seed is logged to the console, and `?seed=` in the address replays it. Not part of the finished game; the flag keeps it out of players' way, and it can be removed outright before release. |
 | D40 | 2026-10-19 | **What the rules did to the dice is shown on the dice** (playtest feedback). An exploded die's extra rolls (Exploding Dice, Brutal Critical) **pop out of it as dice of their own**, with a burst, towards the most open part of that side's half, and land on the rolls drawn; a chain pops out of the pop. They glow, so they're told apart from the dice thrown, and go at the next throw. The rolls are still **drawn, not thrown** (D28): each pop's tumble is simulated with every die already on the table held fixed, so nothing the rules read is moved, and once it's known which face it lands on, its die is turned onto itself by one of its symmetries (`turnShowing`) so the face it lands on shows the drawn roll. The outline is the same, so nothing looks off, and the rules never depend on physics. A pop is for show only and is in no throw record. A **cursed die shows a red 0** in place of its number until the next throw. **Hit Points' card says who lost how many HP** (`You lose 8 HP.`): a win condition can name its unit (`unit`), and the game writes the line from the player's seat, so a multiplayer guest can mirror it. |
 | D41 | 2026-10-19 | **Second playtest round.** (1) **Test bench rematch:** a bench match over starts another on the same dice and Spice, from a new seed (logged), instead of returning to the menu. (2) **No Man's Land: the opponent throws at the player's dice** (`aimHandful`), at where they were let go, 3–4.5 units/s with no extra lift: the handfuls collide ~4× as often with one die a side, ~2× with eight. Eight a side do stack up now and then: 1.9% of Fireball's throws time out (0.75% unaimed; the limit is 2%). Harder or lobbed, they heaped up and up to 1 throw in 20 timed out. This is the only aimed throw; the opponent AI proper is for later. (3) **The re-throw button sits right under the result card**, where the eye already is, amending D31 and 4.6a: it may now sit over the tray, so it's placed clear of every die on the table (`placeRethrow`): centred under the card, else under its left or right edge, a row lower, or above it; with none of those clear, its old corner. (4) **Tug of War is on the table:** a rope lies down the middle from end to end, through the divider (which stays), and the dice collide with it; a red flag tied to it shows the marker, sliding towards the loser. Only the rope is in a throw's record (`rope: true`); the flag is drawn. A die propped on one corner against the rope rocks in place indefinitely, its speed peaking over the settle threshold every swing (Fireball timed out 1 throw in 6), so with a rope down, a die that stays within 2 cm and 3° of one pose for half a second has settled (`rocking`). Also found on the way: Rapier occasionally moves a die it says is asleep with nothing holding it up; a d4 fell 2.7 cm into the floor that way (~1 throw in 500). One that sinks more than 1 cm is now woken and pushed back out. Smaller dips (3.5 mm, once) are routine and left alone: waking those would change 12 of the 24 recorded table throws. |
+| D42 | 2026-10-19 | **Dice Poker: the hands are the set's, the redraw is a Spice.** Poker hands are the Dice Poker set's scorer (§5), so the set always plays poker: best first, five of a kind, four, a full house, a straight (2-6 over 1-5), three, two pair, a pair, nothing; equal hands go to the higher dice in them, then the higher left over. The score is a rank no one sees; the card names the hand (`Full house (6s, 2s)`) and lists the dice with `·`, not `+`, as a named score isn't a sum (a scorer's `describe`). A die that counts 0 (cursed, down a hole) is dead, part of no hand. Spice that need a total or a die worth more than its face sit Dice Poker out: Hit Points, Race to N, Tug of War, Exploding Dice, Underdog. §6.5's "one reroll of chosen dice" is a Spice of its own, **Draw Poker**, only with that set, so the match label doesn't read "Dice Poker · Dice Poker": once both have thrown, each side may throw any of its dice again, once (a Spice's `redraws`). The player taps dice to pick them out (they glow), drags to throw them, or keeps them all with a button placed as the re-throw button is (D41); the opponent keeps what the scorer's `hold` says is worth keeping (the dice making its hand; with nothing, all but the lowest), and its dice to throw glow too. Both throw together. The dice kept are **held where they lie**, `fixed` in the record, so a redraw replays like any throw; a handful let go over one is lifted clear of it, all together (`liftClear`). A die picked up and fumbled goes straight back where it lay rather than dropping, since a drop could turn it over. Single-player until Q1. |
+| D43 | 2026-10-19 | **Count the Sixes and Crown change the scorer for the match** (the `hand` hook): Count the Sixes counts 6s (`countOf`), the other dice greyed out and the total written `2 sixes`; Crown keeps the highest die and adds 5 for every die on its maximum, the counted one too, each written `+ 5 👑`. A d10's "0" is its maximum (D25). |
+| D44 | 2026-10-19 | **Burnout is Hearts plus dice left**, a win condition like Death Saves (D36), so what a side throws still depends on the match state only (CLAUDE.md, `handOf`). Each die showing a 1 still counts that round, tagged `burnt` (`1🔥` on the card), then it's lost; 0 dice loses the match, both at once a draw. On the table the very dice that showed 1 burn up where they lie, a beat after landing, and the rest are numbered afresh (`removeDice`), so ids stay `player-0` onwards. Dice burnt are marks by the hearts (🔥, eight to a side: they fit on a phone). |
+| D45 | 2026-10-19 | **Wild Magic's surge is drawn before every throw and set off by matching digits** (11 to 99, and `00 + 0` = 100: 10% a side). One surge per side is drawn from the rules stream every round, set off or not, so every hook reads the same one and the stream moves on the same way. Six surges: the totals swap (the lower wins), the round costs double, the surger regains a heart (capped at the start: Hearts now never go above it), it backfires and the surger loses one, it fizzles and nobody wins, or the surger wins outright. Both can surge, applied player first (D27): two swaps swap back. "The totals swap" only ever decides who wins, so it's the same as Lowball for a round; with hearts, swapping the numbers themselves would change nothing more. |
+| D46 | 2026-10-19 | **A die thrown onto dice held where they lie settles near one pose** (`HELD_ROCK_MOVE`). Measured with `check-table.mjs`: 1 redraw in 36 waited out the timeout, a die propped between a held die and a wall jittering there or creeping down it a few cm a second (ordinary 5d6 throws: none in 400). The rope's rocking rule (D41) at 2 cm and 3 degrees made no difference, nor did more friction on held dice (worse), nor counting a second of being slow; within 5 cm and 6 degrees of one pose for half a second took it to 3 in 500. Only for records with a die held fixed (redraws, and an explosion's pops, which are only for show), so every recorded throw replays unchanged. |
 
 ---
 
@@ -242,7 +249,7 @@ Some Spice works with any dice; some only makes sense with particular dice
 | Percentile | d10 + d% | percentile | wild magic / d100 | 1–100 |
 | Sneak Attack | 1d20 + 3d6 | sum | rogue's hit and sneak attack | 4–38 |
 | The Whole Bag | d4 + d6 + d8 + d10 + d12 + d20 | sum | one of each | 6–60 |
-| Dice Poker | 5d6 | poker hand | — | hand ranking |
+| Dice Poker | 5d6 | poker hand (D42) | — | nothing to five of a kind |
 
 ---
 
@@ -299,11 +306,11 @@ Some Spice works with any dice; some only makes sense with particular dice
 | 2d6 | Snake Eyes / Boxcars | 1-1 loses the round automatically; 6-6 wins it. |
 | 2d6, 3d6 | Doubles Again | Rolling doubles grants another throw, added to the total. |
 | 3d6, 4d6 | Triples | Three of a kind wins the round outright. |
-| 5d6 | Dice Poker | Poker hands replace the total; one reroll of chosen dice before the reveal. Reroll timing depends on Q1 in multiplayer. |
+| 5d6 | Draw Poker | Once a round, before the hands are shown, throw any of your dice again; the rest stay where they lie (D42). Timing depends on Q1 in multiplayer. |
 | 8d6 | Count the Sixes | Only the number of 6s counts. |
 | 8d6 | Burnout | Each die showing a 1 is lost for the rest of the match. Running out of dice loses the match. |
 | 3d4, 4d4 | Caltrops | Every 1 you roll is subtracted from your opponent's total. |
-| Percentile | Wild Magic | A result with matching digits (11, 22, …) triggers a random surge, e.g. the two totals swap. |
+| Percentile | Wild Magic | A result with matching digits (11, 22, …, and 00 + 0) triggers a random surge, e.g. the two totals swap (D45). |
 | The Whole Bag | Crown | Only your single highest die counts, but each die showing its maximum adds +5. |
 | 1d12 | Brutal Critical | A 12 grants an extra d12, added to the total. |
 
@@ -757,13 +764,21 @@ Behaviour is unchanged: 1d20 vs. AI plays exactly as it does today.
 
 ### Phase 6 — Alternative scoring
 
-- [ ] **6.1** Dice Poker: hand ranking, reroll selection UI.
-- [ ] **6.2** Count the Sixes.
-- [ ] **6.3** Burnout (dice pool shrinks across rounds).
-- [ ] **6.4** Crown.
-- [ ] **6.5** Wild Magic surge table.
+- [x] **6.1** Dice Poker: hand ranking, reroll selection UI. *D42. The hands
+  are the set's scorer (`src/rules/poker.js`); the reroll is Draw Poker,
+  tap to pick dice out and drag to throw them, the rest held where they
+  lie. `check-table.mjs` now throws redraws too, which found dice propped
+  against a held die never settling (D46).*
+- [x] **6.2** Count the Sixes. *D43.*
+- [x] **6.3** Burnout (dice pool shrinks across rounds). *D44.*
+- [x] **6.4** Crown. *D43.*
+- [x] **6.5** Wild Magic surge table. *D45. Six surges.*
 - [ ] **6.6** Verification checklist passes; artifact republished.
-- [ ] **6.7** Docs refresh.
+  *`npm test` (235), `npm run phase0` (now with redraws in
+  `check-table.mjs`; determinism unchanged, 51 of 51) and `npm run verify`
+  all pass. Not yet republished: the published version was being
+  playtested.*
+- [x] **6.7** Docs refresh.
 
 ### Phase 7 — Multiplayer
 
@@ -781,7 +796,7 @@ Blocked on **Q1** for the protocol; 7.1–7.3 can start before Q1 is settled.
   match (R4.3).
 - [ ] **7.6** Both clients evaluate the rules engine; mismatch detection (R4.4).
 - [ ] **7.7** Disconnect handling and rejoin window (R4.5, Q2).
-- [ ] **7.8** Interactive Spice in multiplayer: Second Wind, Dice Poker reroll,
+- [ ] **7.8** Interactive Spice in multiplayer: Second Wind, Draw Poker's redraw,
   No Man's Land.
 - [ ] **7.9** Host/Join hidden in the artifact build (R4.6).
 - [ ] **7.9a** Keep multiplayer code out of the artifact bundle.

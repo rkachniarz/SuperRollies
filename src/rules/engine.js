@@ -10,7 +10,8 @@
 // Between the two, handOf says what each side throws this round and tableOf
 // what the table is like (a hole, a breeze); afterSettle what happens to the
 // dice once they've landed (a cat's paw); throwsAgain whether a side throws
-// once more this round (doubles). After playRound, canRethrow and
+// once more this round (doubles), and redrawsOf whether each may first throw
+// some of its dice again (Draw Poker). After playRound, canRethrow and
 // spendRethrow let a side throw its dice again and have the round played out
 // once more from where it started (Second Wind): every one of these is pure,
 // so going back to the state before the round undoes it.
@@ -179,6 +180,16 @@ export function throwsAgain(rules, state, side, throws) {
 }
 
 /**
+ * How many times this round each side may throw any of its dice again,
+ * keeping the rest where they lie, before the round is played out (Draw
+ * Poker).
+ * @param {Rules} rules
+ */
+export function redrawsOf(rules) {
+  return rules.spice.redraws ?? 0;
+}
+
+/**
  * Whether `side` may throw its dice again and have this round played out
  * once more (Second Wind, Mercy). `state` is the one the round started from.
  * @param {Rules} rules
@@ -221,7 +232,7 @@ export function scoreDice(scorer, faces, values) {
     const { tag, extra } = values?.[i] ?? {};
     return { ...term, ...(tag ? { tag } : {}), ...(extra ? { extra } : {}) };
   });
-  return { values: counted, kept, dice, score: scorer(counted) };
+  return { values: counted, kept, dice, score: scorer(counted), named: scorer.describe?.(counted) };
 }
 
 /**
@@ -274,6 +285,7 @@ export function playRound(rules, state, faces, { fallen, again } = {}) {
       dice: { player: sides.player.dice, opponent: sides.opponent.dice },
       adjustments,
       scores: { player: total('player'), opponent: total('opponent') },
+      named: { player: sides.player.named, opponent: sides.opponent.named },
     };
     const winner = spice.compare ? spice.compare(scored, ctx) : higherWins(scored.scores);
     const round = { ...scored, winner };

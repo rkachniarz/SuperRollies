@@ -23,7 +23,7 @@ import {
   HELD_HEIGHT, HOLD_PALM_SIZE, HOLD_PALM_FLAT, HOLD_PALM_SLOPE, HOLD_PALM_LIP, HOLD_PALM_LIP_SLOPE, HOLD_PALM_FINGERS, HOLD_PALM_FRICTION, HOLD_PALM_RESTITUTION, HOLD_MAX_DIE_SPEED,
   HOLD_FOLLOW, HOLD_MAX_ACCEL, HOLD_SWAY, HOLD_SWAY_HZ, HOLD_TILT, HOLD_CALM_SPEED, HOLD_HOP_CHANCE, HOLD_HOP, HOLD_HOP_SPIN,
   HOLD_SETTLE_STEPS, HOLD_SETTLE_DAMPING, HOLD_RELEASE_OVERLAP, WIND_FULL_TIME, WIND_END_TIME,
-  ROPE_RADIUS, ROPE_FRICTION, ROPE_RESTITUTION, ROCK_MOVE, ROCK_TURN_COS,
+  ROPE_RADIUS, ROPE_FRICTION, ROPE_RESTITUTION, ROCK_MOVE, ROCK_TURN_COS, HELD_ROCK_MOVE, HELD_ROCK_TURN_COS,
 } from './config.js';
 import { SHAPES } from './die-shapes.js';
 
@@ -85,6 +85,7 @@ const STILL_STEPS = Math.ceil(STILL_TIME / PHYSICS_STEP);
 export const TIMEOUT_STEPS = Math.ceil(SETTLE_TIMEOUT_MS / 1000 / PHYSICS_STEP);
 const SETTLE_SPEED_SQ = SETTLE_SPEED * SETTLE_SPEED;
 const ROCK_MOVE_SQ = ROCK_MOVE * ROCK_MOVE;
+const HELD_ROCK_MOVE_SQ = HELD_ROCK_MOVE * HELD_ROCK_MOVE;
 // How far a die Rapier says is asleep may drift before it's woken (see
 // step()). Asleep dice routinely drop 3.5 mm, once, and stop (half the
 // recorded table throws do it): too little to see, and waking them would
@@ -714,6 +715,14 @@ export function createRoundSim(record, { clamp = true } = {}) {
   const sideFace = sideWallFace(record.arenaHalfWidth, tray);
   const rope = addTray(world, record.divider ?? true, sideFace, tray, record.holes, record.rope);
   const wind = record.wind ?? null;
+  // A die propped against the rope (Tug of War), or against a die held where
+  // it lies (Draw Poker's redraw), has settled once it stays near one pose,
+  // rocking or creeping or not: further from it against a held die, which
+  // it creeps down (HELD_ROCK_MOVE). Only for such records, so every other
+  // recorded throw replays unchanged.
+  const held = record.dice.some((d) => d.fixed);
+  const rocks = Boolean(rope) || held;
+  const [rockMoveSq, rockTurnCos] = held ? [HELD_ROCK_MOVE_SQ, HELD_ROCK_TURN_COS] : [ROCK_MOVE_SQ, ROCK_TURN_COS];
 
   const dice = record.dice.map((d) => {
     const [qx, qy, qz, qw] = d.q;
@@ -752,8 +761,8 @@ export function createRoundSim(record, { clamp = true } = {}) {
     const [px, py, pz] = d.curr.p;
     const q = d.curr.q;
     const near = from &&
-      (px - from.p[0]) ** 2 + (py - from.p[1]) ** 2 + (pz - from.p[2]) ** 2 < ROCK_MOVE_SQ &&
-      Math.abs(q[0] * from.q[0] + q[1] * from.q[1] + q[2] * from.q[2] + q[3] * from.q[3]) > ROCK_TURN_COS;
+      (px - from.p[0]) ** 2 + (py - from.p[1]) ** 2 + (pz - from.p[2]) ** 2 < rockMoveSq &&
+      Math.abs(q[0] * from.q[0] + q[1] * from.q[1] + q[2] * from.q[2] + q[3] * from.q[3]) > rockTurnCos;
     if (near) d.rockSteps++;
     else {
       d.rockFrom = d.curr;
@@ -809,11 +818,11 @@ export function createRoundSim(record, { clamp = true } = {}) {
         };
         const [vSq, wSq] = speedsSq();
         d.stillSteps = vSq < STILL_SPEED_SQ && wSq < STILL_SPEED_SQ ? d.stillSteps + 1 : 0;
-        // With a rope down (Tug of War): how long it's stayed within
-        // ROCK_MOVE and 3 degrees of one pose, rocking in place or not.
-        if (rope) rocking(d);
+        // With a rope down (Tug of War), or dice held where they lie: how
+        // long it's stayed near one pose, rocking in place or not.
+        if (rocks) rocking(d);
         const isQuiet = () => {
-          if (rope && d.rockSteps >= STILL_STEPS) return true;
+          if (rocks && d.rockSteps >= STILL_STEPS) return true;
           const [v2, w2] = speedsSq();
           return v2 < SETTLE_SPEED_SQ && w2 < SETTLE_SPEED_SQ &&
             (d.stillSteps >= STILL_STEPS || restsOnFace(world, d.collider));

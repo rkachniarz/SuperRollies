@@ -254,16 +254,18 @@ for (const [set, count, dropped] of HANDFULS) {
     const allHeld = held.length === count && lifted === count && heldSpread < restSpread;
 
     const round = await throwAndWait(page);
-    const { faces, kept, scores } = round.outcome;
+    const { faces, kept, scores, named } = round.outcome;
     const lines = await page.$$eval('#result .breakdown', (els) => els.map((el) => ({
       text: el.textContent, dropped: el.querySelectorAll('.dropped').length,
     })));
-    const expected = ['player', 'opponent'].map((side, i) =>
-      `${['You', 'Opponent'][i]}: ${(DICE_SETS[set].scorer.labels?.(faces[side]) ?? faces[side]).join(' + ')} = ${scores[side]}`);
+    // A named score (a poker hand) lists its dice, and is written by name.
+    const expected = ['player', 'opponent'].map((side, i) => (named[side]
+      ? `${['You', 'Opponent'][i]}: ${faces[side].join(' · ')} = ${named[side]}`
+      : `${['You', 'Opponent'][i]}: ${(DICE_SETS[set].scorer.labels?.(faces[side]) ?? faces[side]).join(' + ')} = ${scores[side]}`));
     const ok = allHeld && faces.player.length === count && faces.opponent.length === count &&
       lines.length === 2 && lines.every((l, i) => l.text === expected[i] && l.dropped === dropped) &&
       kept.player.filter((k) => !k).length === dropped;
-    report(`Handful: ${set} (${count} dice) picked up together, thrown, added up on the card`, ok,
+    report(`Handful: ${set} (${count} dice) picked up together, thrown, added up (or named) on the card`, ok,
       `${lifted}/${count} lifted, bunched to ${heldSpread.toFixed(2)} from ${restSpread.toFixed(2)}; card: ${lines.map((l) => `"${l.text}" (${l.dropped} greyed)`).join(', ')}`);
   }, '#quickGameBtn', { pick: set });
 }
@@ -961,7 +963,8 @@ await withMatch(DESKTOP, 'doubles', async (page) => {
     const round = await playARound(page);
     const { again } = round.outcome;
     if (again.player.length || again.opponent.length) seen = round;
-    if (await page.locator('#result.game-over').count()) await startQuickGame(page, 'greatsword', 'doubles-again');
+    // A new match only if this round wasn't the one: its card is read below.
+    else if (await page.locator('#result.game-over').count()) await startQuickGame(page, 'greatsword', 'doubles-again');
   }
   if (!seen) throw new Error('no doubles in twenty rounds');
   const { again, adjustments } = seen.outcome;
@@ -987,6 +990,180 @@ await withMatch(PHONE, 'death saves', async (page) => {
   report('Death Saves: failed saves are marked by each side\'s hearts',
     JSON.stringify(marks.fails) === JSON.stringify(marks.shown), JSON.stringify(marks.shown));
 }, '#quickGameBtn', { pick: 'classic', spice: 'death-saves' });
+
+// ---------- Phase 6 ----------
+
+/** Waits until the round asks the player to pick dice out (Draw Poker), with nothing moving. */
+async function waitForPick(page) {
+  await page.waitForFunction(() => window.superRollies.game.awaiting === 'pick' && !window.superRollies.roller.busy,
+    null, { timeout: 15000 });
+}
+
+/** Which of a side's dice glow, picked out to be thrown again. */
+const glowing = (page, side) => page.evaluate((side) =>
+  window.superRollies.dice[side].map((d) => d.mesh.material.emissive.getHex() !== 0), side);
+
+// Draw Poker (6.1): once both have thrown, the player taps dice to pick them
+// out (and again to put one back), and the opponent's to throw glow; the
+// button to keep them all sits clear of every die; a drag throws only the
+// dice picked out, the rest held where they lie, and their faces still
+// count. Or the player keeps them all.
+for (const [name, viewport] of [['desktop', DESKTOP], ['390x844', PHONE]]) {
+  await withMatch(viewport, `draw poker (${name})`, async (page) => {
+    const before = await page.evaluate(() => window.superRollies.rounds.length);
+    await drag(page, 0, -260);
+    await waitForPick(page);
+    const asked = await page.textContent('#resultHeadline');
+    const shown = await page.evaluate(() => {
+      const { table } = window.superRollies;
+      const btn = document.getElementById('rethrowBtn');
+      const box = btn.getBoundingClientRect();
+      const clear = Math.min(...table.onScreen().map((d) => {
+        const dx = Math.max(box.left - d.x, 0, d.x - box.right);
+        const dy = Math.max(box.top - d.y, 0, d.y - box.bottom);
+        return Math.hypot(dx, dy) - d.r;
+      }));
+      return { button: !btn.hidden ? btn.textContent : null, clear };
+    });
+    // Tap two dice, then the second again: only the first stays picked out.
+    for (const i of [0, 1, 1]) {
+      const p = await dieScreenPos(page, 'player', i);
+      await page.mouse.click(p.x, p.y);
+    }
+    const picked = await glowing(page, 'player');
+    const theirs = await glowing(page, 'opponent');
+    const lay = await page.evaluate(() => window.superRollies.dice.player.map((d) => d.mesh.position.toArray().join()));
+    // Drag die 0: it alone goes.
+    await drag(page, 10, -200, 8, await dieScreenPos(page, 'player', 0));
+    await page.waitForFunction((n) => window.superRollies.rounds.length > n, before, { timeout: 15000 });
+    await waitForDiceAtRest(page);
+    const round = await page.evaluate(() => JSON.parse(JSON.stringify(window.superRollies.rounds.at(-1))));
+    const [first, redraw] = round.throws;
+    const thrown = (side) => redraw.record.dice.filter((d) => d.id.startsWith(side) && !d.fixed).map((d) => d.id);
+    const stayed = await page.evaluate((lay) => window.superRollies.dice.player.slice(1)
+      .every((d, i) => d.mesh.position.toArray().join() === lay[i + 1]), lay);
+    const firstFaces = first.result.dice.filter((d) => d.id.startsWith('player')).map((d) => d.face);
+    const newFace = redraw.result.dice.find((d) => d.id === 'player-0').face;
+    const counted = round.outcome.faces.player.join() === [newFace, ...firstFaces.slice(1)].join();
+    const firstTheirs = first.result.dice.filter((d) => d.id.startsWith('opponent')).map((d) => d.face);
+    const hold = (await import('../../src/rules/poker.js')).pokerHold(firstTheirs);
+    const wantTheirs = hold.flatMap((k, i) => (k ? [] : [`opponent-${i}`]));
+    report(`Draw Poker (${name}): tap picks dice out, the keep button is clear of every die, the opponent's to throw glow`,
+      asked === 'Throw any again?' && shown.button?.includes('Keep them') && shown.clear > 0 &&
+        picked.join() === [true, false, false, false, false].join() &&
+        theirs.join() === hold.map((k) => !k).join(),
+      `asked "${asked}"; button ${shown.clear.toFixed(0)}px clear; picked ${picked.map(Number).join('')}, theirs glowing ${theirs.map(Number).join('')}`);
+    report(`Draw Poker (${name}): only the dice picked out are thrown, the rest stay where they lay and still count`,
+      thrown('player').join() === 'player-0' && thrown('opponent').join() === wantTheirs.join() && stayed && counted,
+      `threw ${[...thrown('player'), ...thrown('opponent')].join(', ') || 'nothing'}; kept dice ${stayed ? 'unmoved' : 'MOVED'}; ` +
+        `faces ${round.outcome.faces.player.join(' ')}`);
+
+    // Next round: keep them all. No die of the player's is thrown again.
+    if (await page.locator('#result.game-over').count()) return;
+    const n = await page.evaluate(() => window.superRollies.rounds.length);
+    await drag(page, 0, -260);
+    await waitForPick(page);
+    await page.click('#rethrowBtn');
+    await page.waitForFunction((n) => window.superRollies.rounds.length > n, n, { timeout: 15000 });
+    const kept = await page.evaluate(() => JSON.parse(JSON.stringify(window.superRollies.rounds.at(-1))));
+    const again = kept.throws[1];
+    const unthrown = !again || again.record.dice.filter((d) => d.id.startsWith('player')).every((d) => d.fixed);
+    const named = await page.$$eval('#result .breakdown strong', (els) => els.map((el) => el.textContent));
+    report(`Draw Poker (${name}): keeping them all throws none of yours again, and the card names both hands`,
+      unthrown && named.join() === [kept.outcome.named.player, kept.outcome.named.opponent].join(),
+      `${kept.throws.length} throws; card: ${named.join(' vs ')}`);
+  }, '#quickGameBtn', { pick: 'dice-poker', spice: 'draw-poker' });
+}
+
+// Count the Sixes (6.2): the card counts each side's 6s, the rest greyed out.
+await withMatch(DESKTOP, 'count the sixes', async (page) => {
+  const { outcome } = await playARound(page);
+  const lines = await page.$$eval('#result .breakdown', (els) => els.map((el) => ({
+    total: el.querySelector('strong').textContent, dropped: el.querySelectorAll('.dropped').length,
+  })));
+  const want = ['player', 'opponent'].map((side) => {
+    const n = outcome.faces[side].filter((f) => f === 6).length;
+    return { total: `${n} ${n === 1 ? 'six' : 'sixes'}`, dropped: 8 - n };
+  });
+  report('Count the Sixes: the card counts each side\'s 6s, the rest greyed out',
+    JSON.stringify(lines) === JSON.stringify(want), lines.map((l) => `${l.total} (${l.dropped} greyed)`).join(' vs '));
+}, '#quickGameBtn', { pick: 'fireball', spice: 'count-the-sixes' });
+
+// Burnout (6.3): each die that lands on a 1 goes from the table, the hand
+// shrinks with it, and the dice burnt are marked by the hearts, clear of the
+// corners on a phone.
+await withMatch(PHONE, 'burnout', async (page) => {
+  let seen = null;
+  for (let i = 0; i < 10 && !seen; i++) {
+    const round = await playARound(page);
+    if (round.outcome.faces.player.includes(1) || round.outcome.faces.opponent.includes(1)) seen = round;
+    if (await page.locator('#result.game-over').count()) break;
+  }
+  if (!seen) throw new Error('no 1 in ten rounds');
+  await waitForDiceAtRest(page);
+  const after = await page.evaluate(() => {
+    const { game, dice } = window.superRollies;
+    const box = (el) => el.getBoundingClientRect();
+    const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+    const rows = [...document.querySelectorAll('.marks:not([hidden])')];
+    return {
+      left: game.match.win.dice,
+      onTable: { player: dice.player.length, opponent: dice.opponent.length },
+      ids: dice.player.map((d) => d.id).join(),
+      marks: {
+        player: document.querySelectorAll('#youMarks .mark.struck').length,
+        opponent: document.querySelectorAll('#opponentMarks .mark.struck').length,
+      },
+      overlaps: rows.some((m) => ['backBtn', 'matchInfo'].some((id) => hit(box(m), box(document.getElementById(id))))),
+      offScreen: rows.some((m) => box(m).left < 0 || box(m).right > window.innerWidth),
+    };
+  });
+  const ones = (side) => seen.outcome.faces[side].filter((f) => f === 1).length;
+  const before = seen.outcome.faces;
+  const ok = ['player', 'opponent'].every((side) =>
+    after.left[side] === before[side].length - ones(side) && after.onTable[side] === after.left[side] &&
+    after.marks[side] === 8 - after.left[side]) &&
+    after.ids === Array.from({ length: after.onTable.player }, (_, i) => `player-${i}`).join() &&
+    !after.overlaps && !after.offScreen;
+  report('Burnout: dice showing 1 go from the table, the hand shrinks, and the burnt are marked by the hearts, clear of the corners',
+    ok, `1s: ${ones('player')} vs ${ones('opponent')}; left ${after.left.player} vs ${after.left.opponent}; ` +
+      `on the table ${after.onTable.player} vs ${after.onTable.opponent}; marked ${after.marks.player} vs ${after.marks.opponent}`);
+}, '#quickGameBtn', { pick: 'fireball', spice: 'burnout' });
+
+// Crown (6.4): only the highest die counts, and each die on its maximum is
+// written `+ 5 👑` on the card.
+await withMatch(DESKTOP, 'crown', async (page) => {
+  let seen = null;
+  for (let i = 0; i < 10 && !seen; i++) {
+    const round = await playARound(page);
+    if (round.outcome.adjustments.player.length || round.outcome.adjustments.opponent.length) seen = round;
+    if (await page.locator('#result.game-over').count()) await startQuickGame(page, 'the-whole-bag', 'crown');
+  }
+  if (!seen) throw new Error('no die on its maximum in ten rounds');
+  const card = await page.$$eval('#result .adjustment', (els) => els.map((el) => el.textContent.trim()));
+  const { adjustments, kept } = seen.outcome;
+  const crowns = adjustments.player.length + adjustments.opponent.length;
+  report('Crown: one die counts a side, and each die on its maximum is + 5 👑 on the card',
+    card.length === crowns && card.every((t) => t === '+ 5 👑') &&
+      kept.player.filter(Boolean).length === 1 && kept.opponent.filter(Boolean).length === 1,
+    `${crowns} crowned: ${card.join(', ')}`);
+}, '#quickGameBtn', { pick: 'the-whole-bag', spice: 'crown' });
+
+// Wild Magic (6.5): matching digits set off a surge, said on the card.
+await withMatch(DESKTOP, 'wild magic', async (page) => {
+  let seen = null;
+  for (let i = 0; i < 30 && !seen; i++) {
+    const round = await playARound(page, (i % 5 - 2) * 30, -260);
+    const { scores } = round.outcome;
+    if (['player', 'opponent'].some((side) => scores[side] === 100 || scores[side] % 11 === 0)) seen = round;
+    else if (await page.locator('#result.game-over').count()) await startQuickGame(page, 'percentile', 'wild-magic');
+  }
+  if (!seen) throw new Error('no matching digits in thirty rounds');
+  const notes = await page.$$eval('#resultDetail .note', (els) => els.map((el) => el.textContent));
+  report('Wild Magic: matching digits set off a surge, said on the card',
+    seen.outcome.note?.startsWith('🌀') && notes.includes(seen.outcome.note),
+    `${seen.outcome.scores.player} vs ${seen.outcome.scores.opponent}: "${seen.outcome.note}"`);
+}, '#quickGameBtn', { pick: 'percentile', spice: 'wild-magic' });
 
 console.log(failures ? `\n${failures} check(s) failed (${engine})` : `\nAll checks passed (${engine})`);
 process.exit(failures ? 1 : 0);

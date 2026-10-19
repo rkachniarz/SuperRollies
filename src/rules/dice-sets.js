@@ -3,6 +3,7 @@
 // that total them.
 
 import { TRAY_HALF_WIDTH, TRAY_DEPTH } from '../config.js';
+import { poker } from './poker.js';
 
 /** @typedef {import('./types.js').DiceSet} DiceSet */
 /** @typedef {import('./types.js').Scorer} Scorer */
@@ -57,6 +58,28 @@ export function dropLowest(n) {
 }
 
 /**
+ * Only the dice showing `face` count, one each: a total of how many there
+ * are, written `2 sixes` (Count the Sixes). The rest are greyed out.
+ * @param {number} face
+ * @param {string} one  What one is called: `six`.
+ * @param {string} many  And more than one: `sixes`.
+ * @returns {Scorer}
+ */
+export function countOf(face, one, many) {
+  const kept = (/** @type {number[]} */ faces) => faces.map((f) => f === face);
+  const scorer = (/** @type {number[]} */ faces) => kept(faces).filter(Boolean).length;
+  return Object.assign(scorer, {
+    id: `countOf(${face})`,
+    suffix: '',
+    kept,
+    describe: (/** @type {number[]} */ faces) => {
+      const n = scorer(faces);
+      return `${n} ${n === 1 ? one : many}`;
+    },
+  });
+}
+
+/**
  * The Classic's tray scaled up by `k`. Bigger handfuls need a bigger table:
  * room for the handful in each half with some left to move it about, and on a
  * phone held upright too (DEV_PLAN.md 2.6). The camera pulls back by the same
@@ -85,12 +108,12 @@ export const percentile = Object.assign(
  * @param {string} id
  * @param {string} name
  * @param {DiceSet['dice']} dice
- * @param {{ summary: string, range: string, scorer?: Scorer, dieScale?: number, tray?: number, notation?: string }} options
+ * @param {{ summary: string, range: string, rules?: string, scorer?: Scorer, dieScale?: number, tray?: number, notation?: string }} options
  * @returns {DiceSet}
  */
-function diceSet(id, name, dice, { summary, range, scorer = sum, dieScale = 1, tray = 1, notation }) {
+function diceSet(id, name, dice, { summary, range, rules, scorer = sum, dieScale = 1, tray = 1, notation }) {
   notation ??= dice.map(({ type, count }) => `${count}${type}`).join(' + ') + scorer.suffix;
-  return { id, name, notation, summary, range, dice, scorer, dieScale, tray: trayOf(tray) };
+  return { id, name, notation, summary, range, ...(rules ? { rules } : {}), dice, scorer, dieScale, tray: trayOf(tray) };
 }
 
 export const THE_CLASSIC = diceSet('classic', 'The Classic', [{ type: 'd20', count: 1 }],
@@ -125,9 +148,13 @@ export const DICE_SETS = Object.fromEntries([
     { tray: 1.2, summary: 'A d20 to hit and three d6s of sneak attack, all added up.', range: '4–38' }),
   diceSet('the-whole-bag', 'The Whole Bag', ['d4', 'd6', 'd8', 'd10', 'd12', 'd20'].map((type) => ({ type, count: 1 })),
     { tray: 1.3, summary: 'One of every die, all added up.', range: '6–60' }),
-  // Scored as a sum until poker hands arrive (DEV_PLAN.md 6.1).
-  diceSet('dice-poker', 'Dice Poker', [{ type: 'd6', count: 5 }],
-    { tray: 1.25, summary: 'Five d6s, added up (poker hands are on the way).', range: '5–30' }),
+  diceSet('dice-poker', 'Dice Poker', [{ type: 'd6', count: 5 }], {
+    scorer: poker,
+    tray: 1.25,
+    summary: 'Five d6s, scored as a poker hand.',
+    range: 'nothing to five of a kind',
+    rules: 'Five d6s, scored as a poker hand, best first: five of a kind, four of a kind, a full house, a straight (2 to 6 beats 1 to 5), three of a kind, two pair, a pair, nothing. The better hand wins; between equal hands, the higher dice in it, then the higher dice left over.',
+  }),
 ].map((set) => [set.id, set]));
 
 /**

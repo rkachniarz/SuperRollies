@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { handLayout, scatter, randomHandful, aimHandful } from '../src/handful.js';
+import { handLayout, scatter, randomHandful, aimHandful, liftClear } from '../src/handful.js';
 import { mulberry32 } from '../src/rng.js';
 
 const distance = ([ax, az], [bx, bz]) => Math.sqrt((ax - bx) ** 2 + (az - bz) ** 2);
@@ -92,5 +92,23 @@ describe('aimHandful', () => {
       return aimHandful(randomHandful(zone, handLayout(2, 0.66).offsets, rand), [0, 2], rand);
     };
     assert.deepEqual(throwAt(), throwAt());
+  });
+});
+
+describe('liftClear (Draw Poker: thrown over dice held where they lie)', () => {
+  const lying = [{ p: [0, 0.4, 2], r: 0.7 }];
+
+  test('a handful over a die lying there is lifted clear of it, all together', () => {
+    const releases = [{ p: [0.3, 1.1, 2], v: [1, 0, 0] }, { p: [2, 1.1, 2], v: [0, 0, 1] }];
+    const lifted = liftClear(releases, [0.7, 0.7], lying);
+    assert.ok(Math.abs(lifted[0].p[1] - (0.4 + 1.4)) < 1e-12);
+    assert.equal(lifted[1].p[1] - lifted[0].p[1], 0);
+    assert.deepEqual(lifted[1].v, [0, 0, 1]);
+    assert.equal(releases[0].p[1], 1.1);
+  });
+
+  test('one let go clear of every die lying there is left as it is', () => {
+    const releases = [{ p: [3, 1.1, 2] }];
+    assert.deepEqual(liftClear(releases, [0.7], lying), releases);
   });
 });

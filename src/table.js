@@ -2,9 +2,10 @@
 // between throws. Rebuilt for every match, since the dice set decides how many
 // dice there are, of which types, and how big the tray is. Between rounds a
 // side can gain a die or lose one again, when a Spice changes its hand
-// (Underdog's extra die, Inspiration's advantage). After a round, a die the
-// rules exploded has its extra rolls pop out of it as dice of their own, and
-// a cursed one shows a red 0: both only for show, until the next throw.
+// (Underdog's extra die, Inspiration's advantage), or lose one for good
+// (Burnout). After a round, a die the rules exploded has its extra rolls pop
+// out of it as dice of their own, and a cursed one shows a red 0: both only
+// for show, until the next throw.
 
 import * as THREE from 'three';
 import { THEMES, DIVIDER_T } from './config.js';
@@ -144,6 +145,25 @@ export function createTable(arena) {
       die.placeAt(x, z, i * 0.9);
       dice.push(die);
     }
+    measureHand(side);
+  }
+
+  /**
+   * Takes `side`'s dice at `indices` off the table for good, from where they
+   * lie (Burnout's burnt dice). The rest stay put, numbered afresh, so a
+   * side's dice are always `player-0` onwards in order, as throw records and
+   * the rules expect.
+   * @param {'player' | 'opponent'} side
+   * @param {number[]} indices
+   */
+  function removeDice(side, indices) {
+    const dice = sides[side];
+    for (const die of dice) byId.delete(die.id);
+    for (const i of [...new Set(indices)].sort((a, b) => b - a)) dice.splice(i, 1)[0].remove();
+    dice.forEach((die, i) => {
+      die.id = `${side}-${i}`;
+      byId.set(die.id, die.mesh);
+    });
     measureHand(side);
   }
 
@@ -295,6 +315,7 @@ export function createTable(arena) {
   return {
     setup,
     setHand,
+    removeDice,
     popOut,
     tidy,
     onScreen,

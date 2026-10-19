@@ -8,6 +8,11 @@
 // (createHoldSim in physics.js): lying in a cupped palm that follows the
 // pointer, gently shaken, so they roll about and knock into each other.
 // Either way they're thrown together, each with a little variation of its own.
+//
+// While the player is picking dice out to throw again (Draw Poker), a press
+// on one doesn't pick anything up at once: a tap picks that die out, or puts
+// it back, and only a drag picks up the dice picked out, that one too, to be
+// thrown. Those left lie where they are.
 
 import * as THREE from 'three';
 import {
@@ -15,18 +20,25 @@ import {
   MAX_THROW_SPEED, MAX_LIFT_SPEED, LIFT_FACTOR, SPIN_POWER,
   PHYSICS_STEP, MAX_STEPS_PER_FRAME,
 } from './config.js';
-import { scatter } from './handful.js';
+import { scatter, handLayout } from './handful.js';
 import { createHoldSim, palmFor } from './physics.js';
 
 // How quickly held dice catch up with the hand, per second. Fast enough that
 // they are in place well before any real throw ends.
 const GATHER_RATE = 30;
 const inPalm = new THREE.Vector3();
+
+// How far (CSS pixels) a press on a die must move, while picking dice out,
+// before it's a drag that picks them up rather than a tap on that one.
+const PICK_DRAG_PX = 8;
 const turnInPalm = new THREE.Quaternion();
 
 export function createThrowControls({
   canvas, camera, table, arena,
   canGrab, onGrab, onFumble, onThrow, onBoardTap,
+  // While the player is picking dice out (Draw Poker): whether they are,
+  // a tap on die `index`, and which dice a drag from it picks up.
+  picking = () => false, onPick = () => {}, grabbed = () => table.sides.player,
   // The seeded source for the random part of a throw's spin (see rng.js).
   random,
 }) {
@@ -37,6 +49,9 @@ export function createThrowControls({
   // { pointerId, startX, startZ, samples: [{t,x,z}], dice, hand, targets }, and
   // for a handful its hold simulation (holdHandful).
   let dragState = null;
+  // A press on a die while picking, before it's known to be a tap or a drag:
+  // { pointerId, index, x, y }.
+  let pressed = null;
 
   function setPointerNDC(evt) {
     const rect = canvas.getBoundingClientRect();
@@ -89,16 +104,28 @@ export function createThrowControls({
   }
 
   function beginGrab(evt) {
-    if (!canGrab() || dragState) return;
+    if (!canGrab() || dragState || pressed) return;
     setPointerNDC(evt);
     raycaster.setFromCamera(pointerNDC, camera);
-    const dice = table.sides.player;
-    if (raycaster.intersectObjects(dice.map((d) => d.mesh), false).length === 0) return;
+    const all = table.sides.player;
+    const hit = raycaster.intersectObjects(all.map((d) => d.mesh), false)[0];
+    if (!hit) return;
 
     evt.preventDefault();
     canvas.setPointerCapture(evt.pointerId);
-    canvas.classList.add('dragging');
+    if (picking()) {
+      pressed = { pointerId: evt.pointerId, index: all.findIndex((d) => d.mesh === hit.object), x: evt.clientX, y: evt.clientY };
+      return;
+    }
+    startGrab(evt, all);
+  }
 
+  /**
+   * Picks up `dice` (all the player's, or those picked out to throw again)
+   * from where `evt` pressed on them.
+   */
+  function startGrab(evt, dice) {
+    canvas.classList.add('dragging');
     const p = pointOnHeldPlane(evt);
     // startX/startZ are the grab point itself and never get trimmed away
     // (unlike samples, pruned to a recent window below) - they're what the
@@ -110,16 +137,25 @@ export function createThrowControls({
       startZ: p.z,
       samples: [{ t: performance.now(), x: p.x, z: p.z }],
       dice,
-      hand: table.hand,
+      hand: dice.length === table.sides.player.length ? table.hand : handLayout(dice.length, Math.max(...dice.map((d) => d.radius))),
       targets: dice.map(() => new THREE.Vector3()),
       hold: dice.length > 1 ? holdHandful(dice, p) : null,
     };
     aimHand(p.x, p.z);
 
-    onGrab();
+    onGrab(dice);
   }
 
   function updateGrab(evt) {
+    // Picking: a press that moves far enough is a drag, and picks up the dice
+    // picked out, from where it pressed. Until then, nothing moves.
+    if (pressed && evt.pointerId === pressed.pointerId) {
+      if (Math.hypot(evt.clientX - pressed.x, evt.clientY - pressed.y) < PICK_DRAG_PX) return;
+      const { index, x, y } = pressed;
+      pressed = null;
+      if (!canGrab()) return;
+      startGrab({ clientX: x, clientY: y, pointerId: evt.pointerId }, grabbed(index));
+    }
     if (!dragState || evt.pointerId !== dragState.pointerId) return;
     evt.preventDefault();
     const p = pointOnHeldPlane(evt);
@@ -183,7 +219,18 @@ export function createThrowControls({
     held.hold?.sim.free();
   }
 
+  /** A press while picking that ends without a drag: a tap on that die. */
+  function endPress(evt) {
+    if (!pressed || evt.pointerId !== pressed.pointerId) return false;
+    const { index } = pressed;
+    pressed = null;
+    try { canvas.releasePointerCapture(evt.pointerId); } catch (e) { /* already released */ }
+    if (evt.type === 'pointerup') onPick(index);
+    return true;
+  }
+
   function endGrab(evt) {
+    if (endPress(evt)) return;
     if (!dragState || evt.pointerId !== dragState.pointerId) return;
     // A sample at the moment of release, not just at the last pointermove: a
     // pointer held still sends no moves, so without it a fast drag that then
@@ -238,6 +285,7 @@ export function createThrowControls({
   // call): the die just drops back where it is. Not a throw - the player never
   // let go - and not a fumble to scold them for either.
   function cancelGrab(evt) {
+    if (endPress(evt)) return;
     const held = letGo(evt);
     if (!held) return;
     onFumble(release(held, still(held)), { cancelled: true });
@@ -250,12 +298,12 @@ export function createThrowControls({
   canvas.addEventListener('pointercancel', cancelGrab);
 
   // Runs after beginGrab (registered first), so if the tap actually picked up
-  // the die, dragState is already set and its "Let go to throw" prompt is left
-  // alone. A tap anywhere else just clears a lingering card - which is what
+  // the die (or pressed on one to pick it out), dragState (or pressed) is
+  // already set and the card is left alone. A tap anywhere else just clears a lingering card - which is what
   // makes tapping the card itself work even though it doesn't take pointer
   // events (see the note on #result in styles.css).
   canvas.addEventListener('pointerdown', () => {
-    if (!dragState) onBoardTap();
+    if (!dragState && !pressed) onBoardTap();
   });
 
   return {

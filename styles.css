@@ -576,6 +576,9 @@
   #result .exploded{ color:var(--player-accent); font-weight:700; }
   #result .cursed{ color:#ff5470; text-decoration:line-through; }
   #result .fallen{ color:#ff8a9d; font-style:italic; }
+  /* A die lost for the rest of the match (Burnout). */
+  #result .burnt{ color:#ff9a3c; font-weight:700; }
+  #result .burnt::after{ content:'🔥'; font-size:0.8em; }
   #result .adjustment{ color:#ff8a9d; }
   /* What the Spice decided, or announces for the next round. */
   #result .note{ display:block; margin-top:4px; color:#b9a6ff; font-weight:700; }

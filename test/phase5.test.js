@@ -37,9 +37,12 @@ describe('Phase 5 in the catalogue', () => {
   test('eligibility: Doubles Again with 2d6 and 3d6, Death Saves with the d20 sets, the rest with any', () => {
     assert.deepEqual(offered('doubles-again'), ['greatsword', 'ability-score']);
     assert.deepEqual(offered('death-saves'), ['classic', 'advantage']);
-    for (const spice of ['second-wind', 'hit-points', 'race-to-n', 'tug-of-war', 'mercy',
-      'pothole', 'cat-paw', 'gusty-table', 'no-mans-land']) {
+    for (const spice of ['second-wind', 'mercy', 'pothole', 'cat-paw', 'gusty-table', 'no-mans-land']) {
       assert.equal(offered(spice).length, Object.keys(DICE_SETS).length, spice);
+    }
+    // A poker hand's score is a rank, not a total to lose or bank (D42).
+    for (const spice of ['hit-points', 'race-to-n', 'tug-of-war']) {
+      assert.deepEqual(offered(spice), Object.keys(DICE_SETS).filter((id) => id !== 'dice-poker'), spice);
     }
   });
 
@@ -88,7 +91,7 @@ describe('the test bench (D39)', () => {
       assert.ok(general.every((g, i) => g || !general.slice(0, i).includes(true)), id);
     }
     assert.deepEqual(testBenchSpice('greatsword').slice(0, 2).map((s) => s.id), ['snake-eyes', 'doubles-again']);
-    assert.equal(testBenchSpice('fireball')[0].id, 'vanilla');
+    assert.deepEqual(testBenchSpice('fireball').slice(0, 3).map((s) => s.id), ['count-the-sixes', 'burnout', 'vanilla']);
   });
 });
 

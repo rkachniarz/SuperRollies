@@ -134,3 +134,24 @@ export function aimHandful(releases, [tx, tz], rand) {
     ],
   }));
 }
+
+/**
+ * A handful's releases lifted, all together, clear of dice lying under where
+ * it's let go (Draw Poker's kept dice, held where they lie): each die at
+ * least the two circumradii above any it's over, so the throw never starts
+ * inside one. All by the same amount, so the handful's own dice stay as far
+ * apart as they were.
+ * @param {{ p: number[] }[]} releases
+ * @param {number[]} radii  Each released die's circumradius.
+ * @param {{ p: number[], r: number }[]} lying  Where each die lying there is, and its circumradius.
+ */
+export function liftClear(releases, radii, lying) {
+  let lift = 0;
+  releases.forEach(({ p: [x, y, z] }, i) => {
+    for (const { p: [ox, oy, oz], r } of lying) {
+      const reach = r + radii[i];
+      if ((x - ox) ** 2 + (z - oz) ** 2 < reach * reach) lift = Math.max(lift, oy + reach - y);
+    }
+  });
+  return releases.map((release) => ({ ...release, p: [release.p[0], release.p[1] + lift, release.p[2]] }));
+}

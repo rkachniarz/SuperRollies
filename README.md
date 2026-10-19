@@ -6,7 +6,8 @@ the match: the lowest total wins, dice explode on their highest number, a
 natural 20 hits twice as hard, whoever's behind throws an extra die. Or it
 bends the table: a pothole in each half, a breeze across it, a cat's paw
 swiping at the dice once they've settled, no wall down the middle. Or how
-you win: hit points, a race to a target, a tug of war. Pick them up, throw
+you score and win: poker hands with a redraw, only the sixes counting, dice
+that burn out on a 1, hit points, a race to a target, a tug of war. Pick them up, throw
 them, roll higher than your opponent. Lose a round and you lose a heart; lose
 them all and the match is over. Or pick **Zen** and just throw: any of the
 dice, the whole tray, no score.
@@ -57,7 +58,8 @@ src/
   handful.js  several dice as one handful: how they sit together, how they
               scatter when thrown, and the opponent's throw
   table.js    the dice on the table this match, and where they wait; dice
-              popped out by an explosion, and a cursed die's red 0
+              popped out by an explosion, a cursed die's red 0, and dice
+              burnt out for good
   arena.js    the tray as drawn - renderer, camera, lights, walls, any holes
               in the floor - sized per dice set, and how much of it is on screen
   physics.js  the tray's colliders (a floor with holes, a breeze), the dice
@@ -67,25 +69,30 @@ src/
               an explosion's burst, the flag on Tug of War's rope
   roll.js     plays a throw on screen: fixed-step physics, smooth drawing
   replay.js   replays a recorded throw to rest; reads the faces
-  input.js    grab / drag / release, and telling a throw from a fumble
+  input.js    grab / drag / release, telling a throw from a fumble, and a
+              tap that picks a die out from a drag that throws
   cards.js    a dice set, Spice or single die as a card: the draft, Zen's
               catalogue and the rules popup all draw them
   hud.js      the match state (hearts, or a bar for HP and the like), the
               message card, the match label and its rules popup, the
               re-throw button, the menu, the draft and the catalogue
   game.js     match flow: the draft, starting a match, a round's throws (and
-              a paw's knock, doubles thrown again, a re-throw), handing them
-              to the rules, and Zen
+              a paw's knock, dice picked out and thrown again, doubles
+              thrown again, a re-throw), handing them to the rules, and Zen
   rng.js      the seeded random number generator every outcome draws from
   rules/      the rules, as pure functions with no DOM or physics:
     engine.js         match config, and what a round's dice mean for the match
     dice-sets.js      what each side throws, how it's scored (sum, keep
-                      highest, drop lowest, percentile), and its tray
+                      highest, drop lowest, percentile, poker), and its tray
+    poker.js          poker hands from dice: their ranking and names, and
+                      which dice are worth keeping for a redraw
     spice.js          per-match changes: what dice count for, who wins a
                       round and what it costs, what each side throws, what
-                      the table is like, and who may throw again
+                      the table is like, and who may throw again, or throw
+                      some of their dice again
     win-conditions.js how a match is won (Hearts by default; Hit Points,
-                      Race to N and Tug of War scaled to the dice)
+                      Race to N and Tug of War scaled to the dice; Death
+                      Saves and Burnout, Hearts with a second way to lose)
     draft.js          the two cards offered at each step of the draft
     types.js          the JSDoc types they share
   main.js     wires it together and runs the frame loop

@@ -180,5 +180,14 @@ export const ROPE_RESTITUTION = 0.2;
 // has settled, rocking or not.
 export const ROCK_MOVE = 0.02; // units
 export const ROCK_TURN_COS = 0.9996573; // cos of half of 3 degrees, written out (see physics.js)
+// Thrown onto dice held where they lie (Draw Poker's redraw), a die propped
+// between a held die and a wall jitters there, or creeps down the held die
+// a few cm a second, never resting on a face nor dead still: 1 redraw in 36
+// waited out the timeout. With dice held fixed, a die that stays this close
+// to one pose for STILL_TIME has settled. Measured, the rope's 2 cm and 3
+// degrees made no difference, nor did more friction on the held dice, nor a
+// second of being merely slow; this took it to 3 in 500.
+export const HELD_ROCK_MOVE = 0.05; // units
+export const HELD_ROCK_TURN_COS = 0.9986295347545738; // cos of half of 6 degrees, written out
 export const SETTLE_TIMEOUT_MS = 4000; // simulated time; give up waiting for a die to come to rest
 export const GAME_OVER_LINGER_MS = 2600; // how long the match-over card stays up

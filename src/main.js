@@ -30,6 +30,9 @@ const controls = createThrowControls({
   onFumble: game.onFumble,
   onThrow: game.onThrow,
   onBoardTap: game.onBoardTap,
+  picking: game.picking,
+  onPick: game.onPick,
+  grabbed: game.grabbed,
   random: game.random,
 });
 

@@ -42,7 +42,7 @@ describe('the Spice catalogue', () => {
     }
   });
 
-  test('the catalogue, in order: Phases 4 and 5', () => {
+  test('the catalogue, in order: Phases 4, 5 and 6', () => {
     assert.deepEqual(Object.keys(SPICE), [
       'vanilla', 'sudden-death', 'marathon', 'mutual-destruction', 'lowball', 'exploding-dice',
       'raising-the-stakes', 'cursed-number', 'second-wind',
@@ -51,6 +51,7 @@ describe('the Spice catalogue', () => {
       'pothole', 'cat-paw', 'gusty-table', 'no-mans-land',
       'critical-hit', 'critical-fumble', 'inspiration', 'brutal-critical', 'snake-eyes', 'triples', 'caltrops',
       'doubles-again', 'death-saves',
+      'draw-poker', 'count-the-sixes', 'burnout', 'crown', 'wild-magic',
     ]);
   });
 

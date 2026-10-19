@@ -71,6 +71,11 @@ const CURSED_TEXT = '0';
 const CURSED_COLOR = '#ff2b2b';
 const CURSED_OUTLINE = '#1a0606';
 
+// A die picked out to be thrown again (Draw Poker) glows pale, unlike an
+// explosion's orange pops.
+const PICK_GLOW = 0xfff4c2;
+const PICK_GLOW_INTENSITY = 0.55;
+
 function labelTexture(value, text, style, colorHex, fill = 0.68, outlineHex = null) {
   const key = (style === 'pips' ? value : text) + '|' + style + '|' + colorHex + '|' + fill + '|' + outlineHex;
   let tex = labelTextureCache.get(key);
@@ -194,6 +199,15 @@ export function createDie({ type, theme, scale = 1, scene }) {
         decal.userData.printed ??= decal.material.map;
         decal.material.map = decal.userData.number === number ? cursed : decal.userData.printed;
       }
+    },
+    /**
+     * Glows while it's picked out to be thrown again (Draw Poker); false
+     * puts it back as it was.
+     * @param {boolean} on
+     */
+    highlight(on) {
+      material.emissive.set(on ? PICK_GLOW : 0x000000);
+      material.emissiveIntensity = on ? PICK_GLOW_INTENSITY : 1;
     },
     remove() {
       scene.remove(mesh);

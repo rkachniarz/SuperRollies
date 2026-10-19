@@ -56,7 +56,7 @@ export function diceSetCard(set) {
     tag: set.notation,
     summary: set.summary,
     icon: types.map(dieIcon).join(''),
-    rules: `${set.summary} Totals run ${set.range}.`,
+    rules: set.rules ?? `${set.summary} Totals run ${set.range}.`,
   };
 }
 

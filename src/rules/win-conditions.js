@@ -3,10 +3,10 @@
 // Marathon are Hearts with one and six. The rest count points, scaled to the
 // dice set (scoreStats in dice-sets.js) so a match lasts about as long with
 // eight d6s as with one d20: Hit Points, Race to N and Tug of War. Death Saves
-// is Hearts with a second way to lose.
+// and Burnout are Hearts with a second way to lose.
 
 import { HEARTS_PER_SIDE } from '../config.js';
-import { scoreStats } from './dice-sets.js';
+import { scoreStats, dieTypes } from './dice-sets.js';
 
 /** @typedef {import('./types.js').PerSide<number>} HeartsState */
 /** @typedef {import('./types.js').Side} Side */
@@ -61,9 +61,11 @@ export function hearts(count) {
       player: winner === 'opponent' ? 1 : 0,
       opponent: winner === 'player' ? 1 : 0,
     }),
+    // Never above where they started: a Spice can heal a heart (Wild
+    // Magic), as a cost below zero.
     apply: (state, _round, damage) => ({
-      player: Math.max(0, state.player - damage.player),
-      opponent: Math.max(0, state.opponent - damage.opponent),
+      player: Math.min(count, Math.max(0, state.player - damage.player)),
+      opponent: Math.min(count, Math.max(0, state.opponent - damage.opponent)),
     }),
     // Both sides can only run out together if a Spice costs both a heart in
     // the same round (Mutual Destruction); that ends the match as a draw.
@@ -237,3 +239,45 @@ export const DEATH_SAVES = {
     },
   }),
 };
+
+/**
+ * How many of a side's dice burn out (Burnout): those showing a 1.
+ * @param {number[]} faces
+ */
+export const burntOut = (faces) => faces.filter((face) => face === 1).length;
+
+/**
+ * @typedef {{ hearts: import('./types.js').PerSide<number>, dice: import('./types.js').PerSide<number> }} BurnoutState
+ */
+
+/**
+ * Burnout: Hearts as usual, and each die that lands on a 1 is lost for the
+ * rest of the match, so a side throws fewer and fewer. Run out of dice and
+ * you lose the match, hearts or not; both at once is a draw. How many dice
+ * each side has left is kept here, with the hearts, so what a side throws
+ * depends on the match state only (Spice.hand).
+ * @param {DiceSet} diceSet
+ * @returns {import('./types.js').WinCondition<BurnoutState>}
+ */
+export function burnout(diceSet) {
+  const count = dieTypes(diceSet).length;
+  const marks = (/** @type {number} */ left) => ({ count: count - left, max: count, label: 'dice burnt out', icon: '🔥' });
+  return {
+    id: 'burnout',
+    init: () => ({ hearts: HEARTS.init(), dice: { player: count, opponent: count } }),
+    damage: HEARTS.damage,
+    apply: (state, round, damage) => ({
+      hearts: HEARTS.apply(state.hearts, round, damage),
+      dice: {
+        player: Math.max(0, state.dice.player - burntOut(round.faces.player)),
+        opponent: Math.max(0, state.dice.opponent - burntOut(round.faces.opponent)),
+      },
+    }),
+    matchWinner: ({ hearts: h, dice }) => whoIsOut(h.player <= 0 || dice.player <= 0, h.opponent <= 0 || dice.opponent <= 0),
+    behind: (state) => HEARTS.behind(state.hearts) ?? fewer(state.dice),
+    view: (state) => ({
+      ...HEARTS.view(state.hearts),
+      marks: { player: marks(state.dice.player), opponent: marks(state.dice.opponent) },
+    }),
+  };
+}

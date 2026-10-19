@@ -8,9 +8,10 @@
 // costs, until the win condition says the match is over.
 //
 // A round, in full: both sides throw; a Spice may then act on the settled
-// dice (Cat Paw's swipe), or have a side throw again (Doubles Again); the
-// rules play the round out; and its loser may get to throw again and have it
-// played out once more (Second Wind, Mercy). The rules say what happens at
+// dice (Cat Paw's swipe), let each side throw some of its dice again (Draw
+// Poker), or have a side throw again (Doubles Again); the rules play the
+// round out; and its loser may get to throw again and have it played out
+// once more (Second Wind, Mercy). The rules say what happens at
 // each step and the table carries it out, so every throw, paw and breeze is
 // in a throw record and replays exactly.
 //
@@ -19,14 +20,14 @@
 // Quick Game does, and every die type on its own (DEV_PLAN.md D18).
 
 import { GAME_OVER_LINGER_MS } from './config.js';
-import { randomHandful, aimHandful } from './handful.js';
+import { randomHandful, aimHandful, handLayout, liftClear } from './handful.js';
 import { DIE_TYPES } from './die-shapes.js';
 import { createRng, deriveSeed, randomSeed } from './rng.js';
 import { replayThrow } from './replay.js';
 import { SHAPES } from './die-shapes.js';
 import {
   matchConfig, resolveRules, startMatch, beginRound, playRound, handOf, edgeOf, scoreDice,
-  tableOf, afterSettle, throwsAgain, canRethrow, spendRethrow,
+  tableOf, afterSettle, throwsAgain, canRethrow, spendRethrow, redrawsOf,
 } from './rules/engine.js';
 import { DICE_SETS, THE_CLASSIC, dieTypes, sum } from './rules/dice-sets.js';
 import { SPICE } from './rules/spice.js';
@@ -52,6 +53,9 @@ const OPPONENT_BEAT_MS = 1100;
 
 // After a die explodes, how long before what it popped out explodes in turn.
 const POP_BEAT_MS = 250;
+
+// How long a die that burns out (Burnout) shows its 1 before it goes.
+const BURN_BEAT_MS = 600;
 
 // Zen's table: nothing on it but the dice.
 const PLAIN_TABLE = { holes: [], wind: null, divider: false, rope: null };
@@ -96,6 +100,12 @@ export function createGame({ hud, roller, arena, table, effects }) {
   // The test bench's dice and Spice, while it's a bench match: the next
   // match is played on them too.
   let bench = null;
+  // While the player picks dice out to throw again (Draw Poker): which,
+  // by index, and what keeping them all resolves.
+  let picking = null;
+  // The dice the player has picked up, and where they lay before, while
+  // they're in the hand.
+  let holding = null;
 
   function newMatch(seed, diceSet, spice) {
     config = matchConfig({ seed, diceSet, spice });
@@ -293,6 +303,9 @@ export function createGame({ hud, roller, arena, table, effects }) {
     awaiting = null;
     offer = null;
     replaying = false;
+    endPicking();
+    holding = null;
+    for (const die of [...table.sides.player, ...table.sides.opponent]) die.highlight(false);
     hud.showRethrow(null);
   }
 
@@ -307,10 +320,11 @@ export function createGame({ hud, roller, arena, table, effects }) {
     const result = await roller.start(record);
     rounds.push({ record, result, throws: [{ record, result }] });
     const faces = facesOf(result, 'player');
-    const { dice, score } = scoreDice(zenScorer, faces);
-    // The total up top; with several dice, how it was made up below.
+    const { dice, score, named } = scoreDice(zenScorer, faces);
+    // The total up top (or what it's called: a poker hand); with several
+    // dice, how it was made up below.
     if (faces.length === 1) hud.showResult(`You rolled ${score}`, '');
-    else hud.showRound(`You rolled ${score}`, [{ side: 'player', dice, score }]);
+    else hud.showRound(`You rolled ${named ?? score}`, [{ side: 'player', dice, score, named }]);
     rolling = false;
   }
 
@@ -362,6 +376,11 @@ export function createGame({ hud, roller, arena, table, effects }) {
       again: { player: [], opponent: [] },
     };
 
+    // Draw Poker: each side may throw some of its dice again.
+    for (let n = redrawsOf(rules); n > 0; n--) {
+      if (!await redraw(round, throws, id)) return;
+    }
+
     // Doubles: whoever threw them throws again, both together if both did.
     for (;;) {
       const sides = SIDES.filter((side) => throwsAgain(rules, match, side, [round.faces[side], ...round.again[side]]));
@@ -385,6 +404,109 @@ export function createGame({ hud, roller, arena, table, effects }) {
     }
 
     await playOut(match, round, throws, id);
+  }
+
+  /**
+   * A redraw (Draw Poker): each side may throw any of its dice again, once,
+   * the rest held where they lie. The opponent keeps what its scorer says is
+   * worth keeping (a poker hand's pairs and the like), and its dice to throw
+   * glow; the player picks theirs out by tapping them, then throws them, or
+   * keeps them all. Both throw together. The new faces replace the old in
+   * `round`. Resolves false if the match was left meanwhile.
+   */
+  async function redraw(round, throws, id) {
+    const scored = Object.fromEntries(SIDES.map((side) =>
+      [side, scoreDice(handOf(rules, match, side).scorer, round.faces[side])]));
+    const { scorer } = handOf(rules, match, 'opponent');
+    const keep = scorer.hold?.(round.faces.opponent) ?? scored.opponent.kept;
+    const theirs = keep.flatMap((kept, i) => (kept ? [] : [i]));
+    for (const i of theirs) table.sides.opponent[i].highlight(true);
+    const they = theirs.length
+      ? `Your opponent throws ${theirs.length === 1 ? 'one die' : `${theirs.length} dice`} again.`
+      : 'Your opponent keeps its dice.';
+
+    const hand = (side) => ({ side, dice: scored[side].dice, score: scored[side].score, named: scored[side].named });
+    rolling = false;
+    hud.showRound('Throw any again?', [hand('player'), hand('opponent')],
+      { notes: [they, 'Tap the dice you want to throw again, then throw them. Or keep them all.'] });
+    hud.showRethrow({ label: '✋ Keep them', title: 'Keep all your dice as they are' }, table.onScreen);
+    const mine = await new Promise((resolve) => {
+      picking = { chosen: new Set(), keep: () => resolve(null) };
+      awaiting = (releases, dice) => resolve({ releases, dice });
+    });
+    endPicking();
+    if (id !== matchId) return false;
+    // Whatever was picked, the round goes on without the player now.
+    rolling = true;
+
+    /** @type {Map<string, object>} the releases of the dice thrown, by id */
+    const thrown = new Map();
+    mine?.dice.forEach((die, i) => thrown.set(die.id, mine.releases[i]));
+    if (theirs.length) {
+      const dice = theirs.map((i) => table.sides.opponent[i]);
+      const { offsets, reach } = handLayout(dice.length, Math.max(...dice.map((d) => d.radius)));
+      randomHandful(arena.opponentZone(reach), offsets, () => opponentRng.next())
+        .forEach((release, i) => thrown.set(dice[i].id, release));
+    }
+    if (!thrown.size) return true;
+    if (!mine) {
+      hud.showResult('Your opponent throws again', they);
+      await pause(OPPONENT_BEAT_MS);
+      if (id !== matchId) return false;
+      hud.hideResult();
+    }
+    for (const die of table.sides.opponent) die.highlight(false);
+    const record = recordKeeping(thrown);
+    const next = { record, result: await roller.start(record) };
+    if (id !== matchId) return false;
+    throws.push(next);
+    const faces = Object.fromEntries(next.result.dice.map((d) => [d.id, d.face]));
+    for (const side of SIDES) {
+      table.sides[side].forEach((die, i) => { if (thrown.has(die.id)) round.faces[side][i] = faces[die.id]; });
+    }
+    return true;
+  }
+
+  /**
+   * A throw record of every die on the table: those in `thrown` (by id) let
+   * go as released, the rest held where they lie for them to bounce off
+   * (Draw Poker's kept dice). A side's handful let go over a die lying there
+   * is lifted clear of it, all together, so it never starts a throw inside
+   * one and its own dice stay as far apart as they were.
+   */
+  function recordKeeping(thrown) {
+    const all = [...table.sides.player, ...table.sides.opponent];
+    const lying = all.filter((d) => !thrown.has(d.id)).map((d) => ({ p: d.mesh.position.toArray(), r: d.radius }));
+    const released = new Map();
+    for (const side of SIDES) {
+      const dice = table.sides[side].filter((d) => thrown.has(d.id));
+      liftClear(dice.map((d) => thrown.get(d.id)), dice.map((d) => d.radius), lying)
+        .forEach((release, i) => released.set(dice[i].id, release));
+    }
+    return recordOf(all.map((die) => {
+      const at = { id: die.id, type: die.type, s: die.scale };
+      const release = released.get(die.id);
+      if (release) return { ...at, ...release };
+      return { ...at, p: die.mesh.position.toArray(), q: die.mesh.quaternion.toArray(), v: [0, 0, 0], w: [0, 0, 0], fixed: true };
+    }));
+  }
+
+  /** Done picking dice out: none glow, and the button to keep them goes. */
+  function endPicking() {
+    if (!picking) return;
+    picking = null;
+    awaiting = null;
+    for (const die of table.sides.player) die.highlight(false);
+    hud.showRethrow(null);
+  }
+
+  /** The player taps die `index` while picking dice out: picked out, or put back. */
+  function pick(index) {
+    if (!picking || rolling) return;
+    const { chosen } = picking;
+    if (chosen.has(index)) chosen.delete(index);
+    else chosen.add(index);
+    table.sides.player[index].highlight(chosen.has(index));
   }
 
   /**
@@ -434,6 +556,17 @@ export function createGame({ hud, roller, arena, table, effects }) {
         if (term.tag === 'cursed') table.sides[side][i].showCursed(outcome.faces[side][i]);
       });
     }
+    // Dice lost for the rest of the match (Burnout) burn up where they lie,
+    // a beat after landing so the 1s they show are seen.
+    const burnt = SIDES.map((side) => [side, outcome.dice[side].flatMap((term, i) => (term.tag === 'burnt' ? [i] : []))]);
+    if (burnt.some(([, list]) => list.length)) {
+      await pause(BURN_BEAT_MS);
+      if (id !== matchId) return;
+      for (const [side, list] of burnt) {
+        for (const i of list) effects.burst(table.sides[side][i].mesh.position.toArray(), table.sides[side][i].radius);
+        table.removeDice(side, list);
+      }
+    }
     let popping = SIDES.flatMap((side) => outcome.dice[side].flatMap((term, i) =>
       (term.extra ? [{ side, from: table.sides[side][i], rolls: term.extra }] : [])));
     for (let n = 0; popping.length; n++) {
@@ -471,7 +604,12 @@ export function createGame({ hud, roller, arena, table, effects }) {
     const { unit } = rules.winCondition;
     const cost = unit && SIDES.filter((side) => outcome.damage[side] > 0).map((side) =>
       `${side === 'player' ? 'You lose' : 'Your opponent loses'} ${outcome.damage[side]} ${unit}.`).join(' ');
-    return [cost || undefined, outcome.note];
+    // Two hands with the same name (a pair of 6s each) were decided by the
+    // dice left over.
+    const { named, winner } = outcome;
+    const kicker = winner && named.player && named.player === named.opponent
+      ? 'The same hand: the dice left over decide it.' : undefined;
+    return [cost || undefined, kicker, outcome.note];
   }
 
   const breakdownOf = (outcome) => SIDES.map((side) => ({
@@ -479,6 +617,7 @@ export function createGame({ hud, roller, arena, table, effects }) {
     dice: outcome.dice[side],
     adjustments: outcome.adjustments[side],
     score: outcome.scores[side],
+    named: outcome.named[side],
   }));
 
   /**
@@ -581,7 +720,12 @@ export function createGame({ hud, roller, arena, table, effects }) {
     (id) => start('zen', id.startsWith('die:') ? { dieType: id.slice(4) } : { diceSet: id })));
   hud.onTestBench(openTestBench);
   hud.onBack(returnToMenu);
-  hud.onRethrow(useRethrow);
+  // The button under the card: keep all your dice while picking (Draw
+  // Poker), or a re-throw (Second Wind).
+  hud.onRethrow(() => {
+    if (picking && !rolling && !holding) picking.keep();
+    else if (!picking) useRethrow();
+  });
 
   // The match-over card is the one that takes pointer events, so tapping it
   // heads straight back to the menu instead of waiting out the timer.
@@ -598,8 +742,11 @@ export function createGame({ hud, roller, arena, table, effects }) {
     get rules() { return rules; },
     /** The seed the draft on screen deals from. */
     get draftSeed() { return draftSeed; },
-    /** What the round is waiting on from the player: a throw ('throw'), or nothing. */
-    get awaiting() { return awaiting ? 'throw' : null; },
+    /**
+     * What the round is waiting on from the player: a throw ('throw'), dice
+     * picked out to throw again ('pick'), or nothing.
+     */
+    get awaiting() { return picking ? 'pick' : awaiting ? 'throw' : null; },
     /** Whether a re-throw is on offer to the player. */
     get offered() { return offer !== null; },
     rounds,
@@ -610,7 +757,17 @@ export function createGame({ hud, roller, arena, table, effects }) {
     random: () => throwRng.next(),
     // The dice can only be picked up between rounds of a match in progress.
     canGrab: () => state === 'playing' && !rolling,
-    onGrab() {
+    /** Whether the player is picking dice out to throw again (Draw Poker). */
+    picking: () => picking !== null,
+    onPick: pick,
+    /** The dice a drag from die `index` picks up: all, or those picked out, that one too. */
+    grabbed(index) {
+      if (!picking) return table.sides.player;
+      if (!picking.chosen.has(index)) pick(index);
+      return table.sides.player.filter((_, i) => picking.chosen.has(i));
+    },
+    onGrab(dice) {
+      holding = { dice, from: dice.map((d) => ({ p: d.mesh.position.clone(), q: d.mesh.quaternion.clone() })) };
       // Dice still dropping from a fumble are caught again mid-fall.
       roller.cancel();
       table.tidy();
@@ -623,6 +780,16 @@ export function createGame({ hud, roller, arena, table, effects }) {
       hud.showResult('Let go to throw', '');
     },
     onFumble(playerReleases, { cancelled = false } = {}) {
+      const held = holding;
+      holding = null;
+      // Picked out to throw again, they go straight back where they lay: a
+      // drop could turn one over, and they may yet be kept.
+      if (picking) {
+        held.dice.forEach((die, i) => { die.mesh.position.copy(held.from[i].p); die.mesh.quaternion.copy(held.from[i].q); });
+        if (cancelled) return;
+        hud.showResult('Make a proper throw!', 'Throw the dice you picked out, or keep them all.');
+        return;
+      }
       // Let go of them without a throw: they just drop back onto the table. If
       // the browser took the gesture away (cancelled), there's nobody to scold.
       roller.start(recordFor({ player: playerReleases }));
@@ -635,10 +802,14 @@ export function createGame({ hud, roller, arena, table, effects }) {
       hud.hideResult();
       if (rolling) return;
       rolling = true;
+      // The dice picked out go; picking is over.
+      if (picking) hud.showRethrow(null);
+      const held = holding;
+      holding = null;
       if (awaiting) {
         const resolve = awaiting;
         awaiting = null;
-        resolve(playerReleases);
+        resolve(playerReleases, held?.dice);
       } else if (mode === 'zen') runZenThrow(playerReleases);
       else runRound(playerReleases);
     },
@@ -646,7 +817,8 @@ export function createGame({ hud, roller, arena, table, effects }) {
       // Tapping the table accepts a match-ending round the player could have
       // thrown again.
       if (state === 'deciding') endMatch(offer.outcome);
-      else if (state === 'playing') hud.hideResult();
+      // While picking dice out, the card says how: it stays.
+      else if (state === 'playing' && !picking) hud.hideResult();
     },
   };
 }
