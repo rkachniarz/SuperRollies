@@ -237,15 +237,58 @@ export function createHud() {
   /**
    * Offers the player a re-throw of the round just shown (Second Wind,
    * Mercy): a short `label` for the button, and a `title` saying what it is.
-   * null takes the offer away.
+   * null takes the offer away. `dice` says where the dice lie on screen
+   * (table.onScreen), for placeRethrow to keep the button off them.
    * @param {{ label: string, title: string } | null} offer
+   * @param {() => { x: number, y: number, r: number }[]} [dice]
    */
-  function showRethrow(offer) {
+  function showRethrow(offer, dice = () => []) {
     rethrowBtn.hidden = !offer;
     rethrowBtn.textContent = offer?.label ?? '';
     rethrowBtn.title = offer?.title ?? '';
     if (offer) rethrowBtn.setAttribute('aria-label', offer.title);
+    rethrowDice = offer ? dice : null;
+    placeRethrow();
   }
+
+  let rethrowDice = null;
+
+  /**
+   * Puts the re-throw button right under the result card, where the eye
+   * already is - unless a die lies there: a die under a button can't be
+   * picked up, and the tap meant for it would spend the re-throw (DEV_PLAN.md
+   * 4.6a). Then the next spot along that's clear: under the card's left or
+   * right edge, a row lower, or above it. If none is, its own corner,
+   * bottom-right, below the tray on every screen shape.
+   */
+  function placeRethrow() {
+    const style = rethrowBtn.style;
+    for (const side of ['left', 'top', 'right', 'bottom']) style[side] = '';
+    if (rethrowBtn.hidden || !rethrowDice || !resultEl.classList.contains('show')) return;
+    const card = resultEl.getBoundingClientRect();
+    const w = rethrowBtn.offsetWidth;
+    const h = rethrowBtn.offsetHeight;
+    const gap = 10;
+    const xs = [card.left + (card.width - w) / 2, card.left, card.right - w];
+    const ys = [card.bottom + gap, card.bottom + 2 * gap + h, card.top - gap - h];
+    const corners = [backBtn, matchInfoBtn].filter((el) => !el.hidden).map((el) => el.getBoundingClientRect());
+    const dice = rethrowDice();
+    const clear = (x, y) => x >= gap && y >= gap && x + w <= window.innerWidth - gap && y + h <= window.innerHeight - gap &&
+      dice.every((d) => {
+        const dx = Math.max(x - d.x, 0, d.x - (x + w));
+        const dy = Math.max(y - d.y, 0, d.y - (y + h));
+        return dx * dx + dy * dy > (d.r + gap) * (d.r + gap);
+      }) &&
+      corners.every((c) => x + w < c.left || x > c.right || y + h < c.top || y > c.bottom);
+    for (const y of ys) {
+      for (const x of xs) {
+        if (!clear(x, y)) continue;
+        Object.assign(style, { left: `${x}px`, top: `${y}px`, right: 'auto', bottom: 'auto' });
+        return;
+      }
+    }
+  }
+  window.addEventListener('resize', placeRethrow);
 
   // The cards behind the match label, for its rules popup.
   let matchCards = [];

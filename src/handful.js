@@ -98,3 +98,39 @@ export function randomHandful({ halfWidth, zNear, zFar }, offsets, rand) {
   const motion = scatter(v, w, offsets, rand);
   return placed.map((d, i) => ({ ...d, ...motion[i] }));
 }
+
+// An aimed throw (aimHandful): how fast it's sent at its target (units/s), and
+// how much of each die's own scatter it keeps. Measured with check-table.mjs:
+// it makes the two handfuls collide about four times as often with one die a
+// side, twice as often with eight. Eight a side still stack up now and then:
+// 1.9% of Fireball's throws wait out the timeout (0.75% unaimed). Thrown
+// harder (5-7.5), or lobbed (with extra lift), they landed on each other's
+// far more, and up to 1 throw in 20 did.
+const AIM_SPEED = [3, 4.5];
+const AIM_SPREAD = 0.3;
+
+/**
+ * A handful thrown at `target` ([x, z]) rather than anywhere: the same
+ * releases, sent towards it hard enough to get there (No Man's Land, where
+ * the opponent throws at the player's dice so they collide). Each die keeps a
+ * little of its own scatter, so they don't fly as one.
+ * @param {{ p: number[], q: number[], v: number[], w: number[] }[]} releases
+ * @param {number[]} target
+ * @param {() => number} rand
+ */
+export function aimHandful(releases, [tx, tz], rand) {
+  const mean = (k, of) => releases.reduce((s, r) => s + r[of][k], 0) / releases.length;
+  const dx = tx - mean(0, 'p');
+  const dz = tz - mean(2, 'p');
+  const length = Math.sqrt(dx * dx + dz * dz) || 1;
+  const speed = AIM_SPEED[0] + rand() * (AIM_SPEED[1] - AIM_SPEED[0]);
+  const [vx, vz] = [mean(0, 'v'), mean(2, 'v')];
+  return releases.map((r) => ({
+    ...r,
+    v: [
+      (dx / length) * speed + (r.v[0] - vx) * AIM_SPREAD,
+      r.v[1],
+      (dz / length) * speed + (r.v[2] - vz) * AIM_SPREAD,
+    ],
+  }));
+}

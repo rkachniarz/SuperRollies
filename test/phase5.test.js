@@ -67,7 +67,7 @@ describe('Phase 5 in the catalogue', () => {
   test('without a Spice that changes it, the table is plain and a round has no fallen dice or extra throws', () => {
     const rules = rulesFor('greatsword', 'vanilla');
     const state = startMatch(rules);
-    assert.deepEqual(tableOf(rules, state), { holes: [], wind: null, divider: true });
+    assert.deepEqual(tableOf(rules, state), { holes: [], wind: null, divider: true, rope: null });
     assert.deepEqual(afterSettle(rules, state, { player: 2, opponent: 2 }), { state, swipes: [] });
     assert.equal(throwsAgain(rules, state, 'player', [[3, 3]]), false);
     assert.equal(canRethrow(rules, state, 'player'), false);
@@ -181,6 +181,16 @@ describe('Tug of War', () => {
     const { sides } = view(-7);
     assert.equal(sides.player.value, 13);
     assert.equal(sides.opponent.value, 27);
+  });
+
+  test('puts a rope down the table, its flag as far along as the marker', () => {
+    const rules = rulesFor('classic', 'tug-of-war');
+    const at = (marker) => tableOf(rules, { ...startMatch(rules), win: marker }).rope;
+    assert.deepEqual([at(0), at(-20), at(10)], [{ pull: 0 }, { pull: -1 }, { pull: 0.5 }]);
+    // The divider stays, and no other Spice puts a rope down.
+    assert.equal(tableOf(rules, startMatch(rules)).divider, true);
+    const vanilla = rulesFor('classic', 'vanilla');
+    assert.equal(tableOf(vanilla, startMatch(vanilla)).rope, null);
   });
 });
 

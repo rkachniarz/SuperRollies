@@ -389,8 +389,10 @@
   }
   .back-btn[hidden]{ display:none; }
 
-  /* Throw again (Second Wind, Mercy): bottom-right, below the tray's near
-     wall on every screen shape, so no die can rest under it (4.6a). */
+  /* Throw again (Second Wind, Mercy): placed right under the result card,
+     clear of the dice lying there (placeRethrow in hud.js). Where it has
+     nowhere clear by the card, here: bottom-right, below the tray's near wall
+     on every screen shape, so no die can rest under it (4.6a). */
   .rethrow-btn{
     position:fixed;
     bottom:calc(12px + env(safe-area-inset-bottom,0px));

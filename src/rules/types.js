@@ -132,6 +132,8 @@
  * @property {(state: S) => Side | null} behind  Who is losing, if anyone
  *   (Underdog helps them).
  * @property {(state: S) => MatchView} view
+ * @property {(state: S) => number} [pull]  How far a marker has been pulled
+ *   towards the opponent's edge, -1 (the player's) to 1 (Tug of War's rope).
  */
 
 /**
@@ -181,7 +183,14 @@
  * it, a steady breeze across it (an acceleration along x and z, in units/s²,
  * felt by every die still moving), and whether the divider is up. All of it
  * goes in the throw's record, so a replay meets the same table.
- * @typedef {{ holes: Hole[], wind: number[] | null, divider: boolean }} TableEffects
+ * @typedef {{ holes: Hole[], wind: number[] | null, divider: boolean, rope: Rope | null }} TableEffects
+ */
+
+/**
+ * A rope lying down the middle of the table, end to end (Tug of War), with a
+ * flag tied to it `pull` of the way to the opponent's end (-1 to 1: -1 at
+ * the player's end). Only the rope is in a throw's record; the flag is drawn.
+ * @typedef {{ pull: number }} Rope
  */
 
 /**

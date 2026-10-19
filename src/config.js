@@ -166,5 +166,19 @@ export const WIND_MAX = 5;
 // WIND_END_TIME, so it never keeps a die from settling.
 export const WIND_FULL_TIME = 1.5;
 export const WIND_END_TIME = 2.5;
+// Tug of War: the rope lying down the middle of the tray, from your end to
+// the opponent's, on The Classic's tray (scaled with the tray). Thick enough
+// to show over the divider it passes through (0.18 high), low enough that a
+// die rolls over it as often as it bounces off.
+export const ROPE_RADIUS = 0.1;
+export const ROPE_FRICTION = 0.7;
+export const ROPE_RESTITUTION = 0.2;
+// A die propped against the rope on one corner rocks between the two, in
+// place, for as long as you like: its speed peaks over SETTLE_SPEED every
+// swing, so it never counted as settled, and Fireball timed out 1 throw in 6.
+// With a rope down, a die that stays this close to one pose for STILL_TIME
+// has settled, rocking or not.
+export const ROCK_MOVE = 0.02; // units
+export const ROCK_TURN_COS = 0.9996573; // cos of half of 3 degrees, written out (see physics.js)
 export const SETTLE_TIMEOUT_MS = 4000; // simulated time; give up waiting for a die to come to rest
 export const GAME_OVER_LINGER_MS = 2600; // how long the match-over card stays up

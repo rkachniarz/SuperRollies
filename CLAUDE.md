@@ -231,6 +231,25 @@ someone (or something) tidying with good intentions.
   outline, so it looks right. Don't let pops push the dice the rules read
   (their faces could change after scoring), and don't put pops in a round's
   records: they're for show.
+- **`src/physics.js` — with a rope down (Tug of War), a die rocking in
+  place has settled (`rocking`).** Propped on one corner against the rope,
+  a die swings between the two indefinitely, its speed over `SETTLE_SPEED`
+  every swing; Fireball timed out 1 throw in 6. Within `ROCK_MOVE` and 3°
+  of one pose for `STILL_TIME` counts as settled. Measured, none of these
+  helped: more rope friction, a box-section rope, a lower rope, no bounce,
+  extra damping by the rope (worse), more solver iterations, no CCD. It's
+  only for records with a rope, so every other recorded throw is unchanged.
+- **`src/physics.js` — a die Rapier says is asleep but that has sunk over
+  a centimetre is woken (`ASLEEP_DRIFT_SQ`).** Rapier occasionally keeps
+  moving a sleeping die with no contact holding it up: a d4 fell 2.7 cm
+  into the floor. Asleep dice also routinely dip 3.5 mm, once; waking
+  those too would change half the recorded table throws, so the threshold
+  sits above that. And only when Rapier still calls it asleep: calling
+  `wakeUp()` on a die it had already woken changed recorded throws.
+- **`src/handful.js` — No Man's Land's aimed throw is gentle and flat
+  (`AIM_SPEED`, no extra lift).** Harder, or lobbed, eight dice a side
+  landed on each other's and heaped up, and 1 throw in 20 waited out the
+  timeout.
 - **`src/dice.js` — dice start each match *placed* flat on a face, never
   dropped.** Dropped from rest in the default orientation, a d20 lands exactly
   on a level edge and, the simulation being deterministic, stays balanced
@@ -244,9 +263,11 @@ someone (or something) tidying with good intentions.
   most, each cut short with an ellipsis rather than wrapping: on 390×844 it
   is ~40 px clear, but wrapped to three or four lines (as it was with the
   dice notation in it) it came within ~11 px, and longer names would cover a die.
-  The re-throw button (Second Wind, Mercy) sits bottom-right, below the
-  tray's near wall, with a short label ("Throw again"): its full name wrapped
-  to three lines on a phone and ran into the hearts. Anything else on
+  The re-throw button (Second Wind, Mercy) is the exception: it sits right
+  under the result card (D41), so it's placed clear of every die on the
+  table (`placeRethrow` in `hud.js`, from `table.onScreen`), falling back
+  to bottom-right, below the tray's near wall. Its label is short ("Throw
+  again"): its full name wrapped to three lines on a phone. Anything else on
   the board (the announcement pill, edge badges, hearts, the bars of Hit
   Points and the like) takes no pointer events. Six hearts go two rows of
   three on a phone, to stay clear of both corners, and a bar is no wider
@@ -312,25 +333,27 @@ these are scripted in `npm run verify` (`tools/phase0/verify.mjs`):
 14. Cat Paw knocks the dice the rules name, from where they lay, and their
     new faces count. Gusty Table's announced breeze is the one in the throw's
     record.
-15. No Man's Land: no divider, and a die of yours across the middle or under
-    the result card is still picked up.
-16. Second Wind: losing a round offers the re-throw button, clear of every
-    resting spot (desktop and 390×844); taking it puts the round back, the
-    new throw replaces the old, and it's spent.
+15. No Man's Land: no divider, a die of yours across the middle or under
+    the result card is still picked up, and the opponent throws at your dice.
+16. Second Wind: losing a round offers the re-throw button, under the result
+    card (or in its corner), clear of every die (desktop and 390×844); taking
+    it puts the round back, the new throw replaces the old, and it's spent.
 17. Hit Points, Race to N and Tug of War each draw a bar per side, as the win
     condition says, clear of the corners on a phone; a Hit Points match runs
     to 0 HP and back to the menu, its card saying who lost how many HP.
     Doubles Again asks the player to throw
     again and adds it on the card; Death Saves' fails are marked by the
-    hearts.
+    hearts. Tug of War's rope lies down the middle, in the throw's record,
+    its flag as far along as the marker.
 18. The test bench is hidden without `?dev`; with it, it lists every dice
     set, then exactly the Spice that set allows (set-specific first), its
-    back button returns to the dice, and picking one starts that match.
+    back button returns to the dice, and picking one starts that match. A
+    match over there starts another on the same dice and Spice.
 
 Run `npm test` alongside; it needs no server.
 
 After a change to physics, also run `npm run phase0`. If throw outcomes change
 on purpose (tuning, colliders), re-record the determinism fixtures with
 `node tools/phase0/record-throws.mjs`, and those onto the tables Spice change
-(holes, a breeze, no divider, a cat's knock) with `node
+(holes, a breeze, no divider, a cat's knock, a rope) with `node
 tools/phase0/record-throws.mjs --table` (both need `npm run dev`).

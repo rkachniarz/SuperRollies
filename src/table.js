@@ -71,16 +71,18 @@ export function createTable(arena) {
    * Lays the table out for a match: `types` is one side's dice (dieTypes in
    * rules/dice-sets.js), at the dice set's `scale`, in its `tray`. Without an
    * `opponent` there's no opponent's dice and no divider (Zen). A Spice may
-   * take the divider away anyway (No Man's Land) or put `holes` in the floor
-   * (Pothole); no die is put down over one.
+   * take the divider away anyway (No Man's Land), put `holes` in the floor
+   * (Pothole) or a `rope` down the middle (Tug of War); no die is put down
+   * over a hole or on the rope.
    */
-  function setup({ types, scale: dieScale, tray, opponent, divider = opponent, holes = [] }) {
+  function setup({ types, scale: dieScale, tray, opponent, divider = opponent, holes = [], rope = false }) {
     tidy();
     for (const die of [...sides.player, ...sides.opponent]) die.remove();
     byId.clear();
     scale = dieScale;
     arena.setTray(tray);
     arena.setHoles(holes);
+    arena.setRope(rope);
     arena.setDivider(divider, opponent);
     for (const side of /** @type {const} */ (['player', 'opponent'])) {
       sides[side] = side === 'opponent' && !opponent ? [] : types.map((type, i) => addDie(side, type, i));
@@ -103,19 +105,21 @@ export function createTable(arena) {
         // starts from where they're held.
         die.placeAt(centre.x + ox, mirror * (centre.z + oz), i * 0.9);
       });
-      // Any that would sit over a hole are put down elsewhere.
+      // Any that would sit over a hole or on the rope are put down elsewhere.
       sides[side].forEach((die, i) => {
         const { x, z } = die.mesh.position;
-        if (holeClearance(x, z) >= die.radius) return;
+        if (clearance(x, z) >= die.radius) return;
         const spot = clearestSpot(side, die.radius, die);
         die.placeAt(spot.x, spot.z, i * 0.9);
       });
     }
   }
 
-  // How far (x, z) is from the edge of the nearest hole; Infinity with none.
-  function holeClearance(x, z) {
-    return Math.min(Infinity, ...arena.holes.map((h) => Math.hypot(h.x - x, h.z - z) - h.r));
+  // How far (x, z) is from the edge of the nearest hole, or from the rope;
+  // Infinity with neither.
+  function clearance(x, z) {
+    const rope = arena.rope ? Math.abs(x) - arena.rope : Infinity;
+    return Math.min(rope, ...arena.holes.map((h) => Math.hypot(h.x - x, h.z - z) - h.r));
   }
 
   /**
@@ -145,7 +149,7 @@ export function createTable(arena) {
 
   // The spot in `side`'s half furthest from any of its dice (bar `except`),
   // for a die of circumradius `radius` to be put down on, and never over a
-  // hole. A coarse grid is plenty: it only decides where a die waits, never
+  // hole or on the rope. A coarse grid is plenty: it only decides where a die waits, never
   // how a throw goes.
   function clearestSpot(side, radius, except = null) {
     const mirror = side === 'player' ? 1 : -1;
@@ -158,9 +162,9 @@ export function createTable(arena) {
       for (let j = 0; j <= 6; j++) {
         const x = -wide + (2 * wide * i) / 8;
         const z = mirror * (near + ((far - near) * j) / 6);
-        const hole = holeClearance(x, z);
-        if (hole < radius) continue;
-        const clear = Math.min(hole, ...sides[side].filter((d) => d !== except)
+        const free = clearance(x, z);
+        if (free < radius) continue;
+        const clear = Math.min(free, ...sides[side].filter((d) => d !== except)
           .map((d) => Math.hypot(d.mesh.position.x - x, d.mesh.position.z - z)));
         if (clear > best.clear) best = { x, z, clear };
       }
@@ -257,6 +261,27 @@ export function createTable(arena) {
     return best;
   }
 
+  /**
+   * Where each die on the table is on screen (popped ones too): a circle
+   * round it, in CSS pixels, for keeping controls clear of them (DEV_PLAN.md
+   * 4.6a).
+   * @returns {{ x: number, y: number, r: number }[]}
+   */
+  function onScreen() {
+    const { camera, renderer } = arena;
+    const rect = renderer.domElement.getBoundingClientRect();
+    const toScreen = (v) => {
+      v.project(camera);
+      return { x: rect.left + ((v.x + 1) / 2) * rect.width, y: rect.top + ((1 - v.y) / 2) * rect.height };
+    };
+    return [...sides.player, ...sides.opponent, ...pops].map((die) => {
+      const at = die.mesh.getWorldPosition(new THREE.Vector3());
+      const centre = toScreen(at.clone());
+      const edge = toScreen(at.clone().setX(at.x + die.radius));
+      return { ...centre, r: Math.abs(edge.x - centre.x) };
+    });
+  }
+
   /** Clears what the last round left on the table: popped dice, cursed numbers. */
   function tidy() {
     for (const pop of pops.splice(0)) {
@@ -272,6 +297,7 @@ export function createTable(arena) {
     setHand,
     popOut,
     tidy,
+    onScreen,
     /** Dice popped out of exploded ones this round. */
     pops,
     keepOnScreen,

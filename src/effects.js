@@ -1,11 +1,13 @@
 // Things on the table that are drawn but never simulated: streaks on the
-// breeze (Gusty Table), the cat's paw (Cat Paw), and the burst where a die
-// explodes (Exploding Dice). None of them touches a die -
+// breeze (Gusty Table), the cat's paw (Cat Paw), the burst where a die
+// explodes (Exploding Dice), and the flag on Tug of War's rope (the rope
+// itself is on the table, in arena.js). None of them touches a die -
 // the breeze's push and the paw's knock are in the throw's record (physics.js)
 // - so they're free to use Math.random: nothing here decides a result.
 
 import * as THREE from 'three';
 import { TRAY_HALF_WIDTH } from './config.js';
+import { ropeRadius } from './physics.js';
 
 const STREAKS = 22;
 const STREAK_SPEED = 3.2; // units/s, at the strongest breeze
@@ -24,6 +26,10 @@ const TOES = 0xd8cfc7;
 const BURST_TIME = 0.6;
 const GROW_TIME = 0.22;
 const BURST_COLOR = 0xffb02e;
+// Tug of War's flag: its colour, and how fast it slides along the rope to
+// where the round has pulled it (a fraction of the way per second).
+const FLAG_COLOR = 0xff5470;
+const FLAG_SLIDE = 4;
 const FLASH_COLOR = 0xfff1b8;
 
 const easeIn = (t) => t * t;
@@ -247,8 +253,60 @@ export function createEffects(arena) {
     growing = [];
   }
 
+  // ---------- Tug of War's flag ----------
+  // A red band tied round the rope with a pennant standing up from it, so
+  // it's seen from above. Where it is along the rope shows how the match
+  // stands: at a side's end, that side has lost.
+  const flagMaterial = new THREE.MeshStandardMaterial({ color: FLAG_COLOR, roughness: 0.6, side: THREE.DoubleSide });
+  let flag = null;
+  let flagTo = 0;
+
+  /**
+   * Ties the flag on the rope `pull` of the way to the opponent's end (-1,
+   * the player's end, to 1), sliding it there; null takes it away.
+   * @param {number | null} pull
+   */
+  function setFlag(pull) {
+    if (pull === null) {
+      if (flag) group.remove(flag);
+      flag = null;
+      return;
+    }
+    const { depth, halfWidth } = arena.tray;
+    const k = halfWidth / TRAY_HALF_WIDTH;
+    const r = ropeRadius(arena.tray);
+    // Short of the end walls, so it's never hidden in one.
+    flagTo = -pull * (depth - 0.3 * k);
+    if (flag && flag.userData.depth === depth) return;
+    if (flag) group.remove(flag);
+    flag = new THREE.Group();
+    flag.name = 'tug-of-war flag';
+    flag.userData.depth = depth;
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.8, r * 1.8, 0.4 * k, 14), flagMaterial);
+    band.rotation.x = Math.PI / 2;
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.03 * k, 0.03 * k, 0.5 * k, 6), flagMaterial);
+    pole.position.y = 0.25 * k;
+    // Flying flat, out to one side: the camera looks down on the table, and
+    // sees a pennant standing upright nearly edge on.
+    const shape = new THREE.Shape().moveTo(0, -0.22 * k).lineTo(0.62 * k, 0).lineTo(0, 0.22 * k).closePath();
+    const pennant = new THREE.Mesh(new THREE.ShapeGeometry(shape), flagMaterial);
+    pennant.rotation.x = -Math.PI / 2;
+    pennant.position.y = 0.5 * k;
+    flag.add(band, pole, pennant);
+    flag.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    flag.position.set(0, r, flagTo);
+    group.add(flag);
+  }
+
+  function frameFlag(dt) {
+    if (!flag) return;
+    const z = flag.position.z;
+    flag.position.z = z + (flagTo - z) * Math.min(1, FLAG_SLIDE * dt);
+  }
+
   return {
     setWind,
+    setFlag,
     swipe,
     burst,
     grow,
@@ -258,6 +316,7 @@ export function createEffects(arena) {
       frameWind(dt, rolling);
       framePaws(dt);
       frameBursts(dt);
+      frameFlag(dt);
     },
   };
 }

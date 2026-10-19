@@ -64,7 +64,7 @@ src/
               in flight, and a handful being held (in an unseen palm); no
               DOM, so it runs in Node too
   effects.js  drawn but never simulated: the breeze's streaks, the cat's paw,
-              an explosion's burst
+              an explosion's burst, the flag on Tug of War's rope
   roll.js     plays a throw on screen: fixed-step physics, smooth drawing
   replay.js   replays a recorded throw to rest; reads the faces
   input.js    grab / drag / release, and telling a throw from a fumble
@@ -120,7 +120,7 @@ npm run phase0   # physics: every die settles flat, tunnelling, handfuls, the ta
 
 `npm run phase0`'s determinism check replays the throws recorded in
 `tools/phase0/throws.json`, and in `table-throws.json` those onto tables a
-Spice changes (holes, a breeze, no divider, a cat's knock). To check a real device, open
+Spice changes (holes, a breeze, no divider, a cat's knock, a rope). To check a real device, open
 `http://<this machine's address>:8000/tools/phase0/determinism.html` on it.
 The first `npm install` also needs `npx playwright install chromium`.
 

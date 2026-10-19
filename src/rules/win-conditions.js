@@ -168,6 +168,8 @@ export function tugOfWar(diceSet) {
     damage: loserPaysGap,
     apply: (marker, _round, damage) => Math.max(-limit, Math.min(limit, marker + damage.opponent - damage.player)),
     matchWinner: (marker) => (marker >= limit ? 'player' : marker <= -limit ? 'opponent' : null),
+    /** How far the marker is towards the opponent's edge, -1 (the player's) to 1. */
+    pull: (marker) => marker / limit,
     behind: (marker) => (marker < 0 ? 'player' : marker > 0 ? 'opponent' : null),
     view: (marker) => ({
       kind: 'bar',

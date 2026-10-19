@@ -644,6 +644,38 @@ if (!ONLY || BENCH.includes(ONLY)) {
   await browser.close();
 }
 
+// The test bench again: once a match is over, another starts on the same
+// dice and Spice, from a new seed, rather than going back to the menu.
+const REMATCH = 'Test bench: a match over starts another on the same dice and Spice';
+if (!ONLY || REMATCH.includes(ONLY)) {
+  const { browser, page, errors } = await openGame(engine, DESKTOP, '?dev');
+  try {
+    await page.waitForSelector('#testBenchBtn:not([disabled])', { timeout: 30000 });
+    await page.click('#testBenchBtn');
+    await page.click('#pickerOptions [data-pick="classic"]');
+    await page.click('#pickerOptions [data-pick="sudden-death"]');
+    await waitForDiceAtRest(page);
+    const first = await page.evaluate(() => window.superRollies.game.config);
+    for (let i = 0; i < 20 && !(await page.locator('#result.game-over').count()); i++) await playARound(page);
+    const note = await page.textContent('#resultDetail');
+    await page.waitForFunction((seed) => {
+      const { game } = window.superRollies;
+      return game.state === 'playing' && game.config.seed !== seed;
+    }, first.seed, { timeout: 8000 });
+    const next = await page.evaluate(() => ({
+      config: window.superRollies.game.config,
+      menu: !document.getElementById('menu').hidden,
+    }));
+    report(REMATCH,
+      next.config.diceSet === 'classic' && next.config.spice === 'sudden-death' && !next.menu && /the same again/.test(note),
+      `seed ${first.seed}, then ${next.config.seed}`);
+  } catch (e) {
+    report(REMATCH, false, e.message.split('\n')[0]);
+  }
+  if (errors.length) report(`${REMATCH}: no page errors`, false, errors.join(' | '));
+  await browser.close();
+}
+
 // ---------- Phase 5: Spice on the table, re-throws, other ways to win ----------
 
 /**
@@ -671,25 +703,6 @@ async function playARound(page, dx = 0, dy = -260) {
   await waitForDiceAtRest(page);
   const round = await page.evaluate(() => JSON.parse(JSON.stringify(window.superRollies.rounds.at(-1))));
   return { ...round, asked };
-}
-
-/** How far a control is from the nearest spot a die can rest in a tray corner (px; negative overlaps). */
-function clearanceFrom(page, selector, corner) {
-  return page.evaluate(({ selector, corner, TRAY_HALF_WIDTH, DIE_RADIUS }) => {
-    const { arena, dice } = window.superRollies;
-    const k = arena.tray.halfWidth / TRAY_HALF_WIDTH;
-    const xMax = Math.min(arena.tray.halfWidth, arena.arenaHalfWidth + DIE_RADIUS) - 0.45 * k;
-    const r = arena.renderer.domElement.getBoundingClientRect();
-    const toScreen = (v) => { v.project(arena.camera); return { x: (v.x + 1) / 2 * r.width, y: (1 - v.y) / 2 * r.height }; };
-    const p = dice.player[0].mesh.position.clone()
-      .set(corner.x * xMax, DIE_RADIUS * k, corner.z * (arena.tray.depth - 0.45 * k));
-    const centre = toScreen(p.clone());
-    const radius = Math.abs(toScreen(p.clone().setX(p.x - DIE_RADIUS * k)).x - centre.x);
-    const box = document.querySelector(selector).getBoundingClientRect();
-    const dx = Math.max(box.left - centre.x, 0, centre.x - box.right);
-    const dy = Math.max(box.top - centre.y, 0, centre.y - box.bottom);
-    return Math.hypot(dx, dy) - radius;
-  }, { selector, corner, TRAY_HALF_WIDTH, DIE_RADIUS });
 }
 
 // Pothole (5.1): a die that falls in lies in the pit and counts 0, written
@@ -809,10 +822,20 @@ await withMatch(DESKTOP, "no man's land", async (page) => {
   report("No Man's Land: no divider; a die of yours across the middle or under the card is still picked up",
     !table.divider && table.split && record.divider === false && said === 'Let go to throw',
     `${found.far ? "in the opponent's half" : 'by the middle'}${found.underCard ? ', under the card' : ''}; card said "${said}"`);
+  // The opponent throws at where the player's dice were let go: each of its
+  // dice heads that way faster than an unaimed throw ever goes (2.5 at most).
+  const sideOf = (side) => record.dice.filter((d) => d.id.startsWith(side));
+  const centre = (list) => [0, 2].map((k) => list.reduce((s, d) => s + d.p[k], 0) / list.length);
+  const [px, pz] = centre(sideOf('player'));
+  const [ox, oz] = centre(sideOf('opponent'));
+  const towards = sideOf('opponent').map((d) => (d.v[0] * (px - ox) + d.v[2] * (pz - oz)) / Math.hypot(px - ox, pz - oz));
+  report("No Man's Land: the opponent throws its dice at yours", towards.every((v) => v > 2.5),
+    `opponent's dice heading ${towards.map((v) => v.toFixed(1)).join(', ')} towards yours`);
 }, '#quickGameBtn', { pick: 'ability-score', spice: 'no-mans-land' });
 
 // Second Wind (5.4): lose a round and the button offers a re-throw. It sits
-// clear of every spot a die can rest (4.6a); taking it puts the round back,
+// right under the result card, clear of every die on the table (4.6a), or in
+// its corner if nothing by the card is clear; taking it puts the round back,
 // your re-throw replaces your dice, the round is played out again, and it's
 // spent.
 for (const [name, viewport] of [['desktop', DESKTOP], ['390x844', PHONE]]) {
@@ -826,9 +849,21 @@ for (const [name, viewport] of [['desktop', DESKTOP], ['390x844', PHONE]]) {
     }
     if (!lost) throw new Error('never lost a round in twelve');
     const shown = await page.locator('#rethrowBtn:not([hidden])').count() === 1;
-    const clearance = Math.min(await clearanceFrom(page, '#rethrowBtn', { x: 1, z: 1 }), await clearanceFrom(page, '#rethrowBtn', { x: 0, z: 1 }));
-    report(`Second Wind (${name}): the re-throw button is offered, clear of the nearest resting die`,
-      shown && clearance > 0, `${clearance.toFixed(0)}px clear`);
+    const placed = await page.evaluate(() => {
+      const btn = document.getElementById('rethrowBtn').getBoundingClientRect();
+      const card = document.getElementById('result').getBoundingClientRect();
+      const clear = Math.min(...window.superRollies.table.onScreen().map((d) => {
+        const dx = Math.max(btn.left - d.x, 0, d.x - btn.right);
+        const dy = Math.max(btn.top - d.y, 0, d.y - btn.bottom);
+        return Math.hypot(dx, dy) - d.r;
+      }));
+      const underCard = btn.top >= card.bottom && btn.top - card.bottom < 2 * btn.height &&
+        btn.left >= card.left - 1 && btn.right <= card.right + 1;
+      const corner = btn.right > window.innerWidth - 40 && btn.bottom > window.innerHeight - 40;
+      return { clear, where: underCard ? 'under the card' : corner ? 'in its corner' : `elsewhere (${btn.left},${btn.top})` };
+    });
+    report(`Second Wind (${name}): the re-throw button is offered under the card (or in its corner), clear of every die`,
+      shown && placed.clear > 0 && placed.where !== 'elsewhere', `${placed.where}, ${placed.clear.toFixed(0)}px clear of the nearest die`);
 
     const count = await page.evaluate(() => window.superRollies.rounds.length);
     await page.click('#rethrowBtn');
@@ -884,6 +919,22 @@ for (const spice of ['hit-points', 'race-to-n', 'tug-of-war']) {
       want ? notes.includes(want) : !notes.some((n) => n.includes('HP')), notes.join(' | ') || 'no notes (a tie)');
   }, '#quickGameBtn', { pick: 'ability-score', spice });
 }
+
+// Tug of War's rope (D41): it lies down the middle, in every throw's record,
+// and its flag is as far along it as the marker.
+await withMatch(DESKTOP, 'tug of war rope', async (page) => {
+  const { record } = await playARound(page);
+  await page.waitForTimeout(1000);
+  const seen = await page.evaluate(() => {
+    const { arena, game } = window.superRollies;
+    const pull = game.rules.winCondition.pull(game.match.win);
+    const flag = arena.scene.getObjectByName('tug-of-war flag')?.position.z ?? null;
+    return { rope: arena.rope, pull, flag, want: -pull * (arena.tray.depth - 0.3 * arena.tray.halfWidth / 3.1) };
+  });
+  report("Tug of War: a rope down the middle, in the throw's record, its flag as far along as the marker",
+    record.rope === true && record.divider !== false && seen.rope > 0 && seen.flag !== null && Math.abs(seen.flag - seen.want) < 0.05,
+    `pull ${seen.pull.toFixed(2)}: flag at z=${seen.flag?.toFixed(2)}, wanted ${seen.want.toFixed(2)}`);
+}, '#quickGameBtn', { pick: 'classic', spice: 'tug-of-war' });
 
 // A whole Hit Points match, to the end and back to the menu (§8, 5).
 await withMatch(DESKTOP, 'hit points match', async (page) => {

@@ -19,7 +19,7 @@
 // Quick Game does, and every die type on its own (DEV_PLAN.md D18).
 
 import { GAME_OVER_LINGER_MS } from './config.js';
-import { randomHandful } from './handful.js';
+import { randomHandful, aimHandful } from './handful.js';
 import { DIE_TYPES } from './die-shapes.js';
 import { createRng, deriveSeed, randomSeed } from './rng.js';
 import { replayThrow } from './replay.js';
@@ -54,7 +54,7 @@ const OPPONENT_BEAT_MS = 1100;
 const POP_BEAT_MS = 250;
 
 // Zen's table: nothing on it but the dice.
-const PLAIN_TABLE = { holes: [], wind: null, divider: false };
+const PLAIN_TABLE = { holes: [], wind: null, divider: false, rope: null };
 
 const pause = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 
@@ -93,6 +93,9 @@ export function createGame({ hud, roller, arena, table, effects }) {
   // again (see commit). While it's being played out again, `replaying`.
   let offer = null;
   let replaying = false;
+  // The test bench's dice and Spice, while it's a bench match: the next
+  // match is played on them too.
+  let bench = null;
 
   function newMatch(seed, diceSet, spice) {
     config = matchConfig({ seed, diceSet, spice });
@@ -105,7 +108,7 @@ export function createGame({ hud, roller, arena, table, effects }) {
 
   /** A throw record of `dice` on the table as it is this round. */
   function recordOf(dice) {
-    const { holes, wind } = tableNow;
+    const { holes, wind, rope } = tableNow;
     return {
       v: 1,
       arenaHalfWidth: arena.arenaHalfWidth,
@@ -113,6 +116,7 @@ export function createGame({ hud, roller, arena, table, effects }) {
       tray: arena.tray,
       ...(holes.length ? { holes } : {}),
       ...(wind ? { wind } : {}),
+      ...(rope ? { rope: true } : {}),
       dice,
     };
   }
@@ -136,11 +140,20 @@ export function createGame({ hud, roller, arena, table, effects }) {
     return { record, result: await roller.start(record) };
   }
 
-  /** The opponent's handful, thrown at random from its own half. */
-  function opponentReleases() {
+  /**
+   * The opponent's handful, thrown at random from its own half. With no
+   * divider (No Man's Land), it's thrown at `aim` ([x, z]), where the
+   * player's dice are let go, so the two handfuls collide.
+   */
+  function opponentReleases(aim) {
     const { offsets, reach } = table.hands.opponent;
-    return randomHandful(arena.opponentZone(reach), offsets, () => opponentRng.next());
+    const rand = () => opponentRng.next();
+    const releases = randomHandful(arena.opponentZone(reach), offsets, rand);
+    return aim && !tableNow.divider ? aimHandful(releases, aim, rand) : releases;
   }
+
+  /** The middle of a handful's releases, [x, z]. */
+  const centreOf = (releases) => [0, 2].map((k) => releases.reduce((s, r) => s + r.p[k], 0) / releases.length);
 
   /** Resolves with the player's releases when they next throw, prompted by `headline`. */
   function playerThrow(headline, detail) {
@@ -159,6 +172,7 @@ export function createGame({ hud, roller, arena, table, effects }) {
    */
   function start(newMode, { seed = randomSeed(), diceSet = THE_CLASSIC.id, spice, dieType } = {}) {
     mode = newMode;
+    bench = null;
     leaveRound();
     newMatch(seed, diceSet, spice);
     rounds.length = 0;
@@ -174,8 +188,9 @@ export function createGame({ hud, roller, arena, table, effects }) {
       opponent: !zen,
       divider: !zen && tableNow.divider,
       holes: tableNow.holes,
+      rope: Boolean(tableNow.rope),
     });
-    effects.setWind(null);
+    showTable();
     hud.showBoard(mode);
     hud.showMatchInfo(diceSetCard(rules.diceSet), zen ? null : spiceCard(rules.spice));
     if (mode === 'quick') {
@@ -195,10 +210,17 @@ export function createGame({ hud, roller, arena, table, effects }) {
     ({ state: match, announce } = beginRound(rules, match));
     announced = announce;
     tableNow = tableOf(rules, match);
-    effects.setWind(tableNow.wind);
+    showTable();
     for (const side of SIDES) table.setHand(side, handOf(rules, match, side).types);
     hud.showAnnounce(announce);
     showEdges();
+  }
+
+  // What's drawn on the table this round but never simulated: the breeze's
+  // streaks, the flag on the rope.
+  function showTable() {
+    effects.setWind(tableNow.wind);
+    effects.setFlag(tableNow.rope ? tableNow.rope.pull : null);
   }
 
   // Marks who holds an edge this round (R3.5); while the player is offered a
@@ -238,19 +260,26 @@ export function createGame({ hud, roller, arena, table, effects }) {
    * Quick Game without the draft's luck. Every dice set, then every Spice that
    * set allows, those made for it first (testBenchSpice in rules/draft.js).
    * The match's seed is logged, and `?seed=` in the address replays it.
+   * Once a match is over, another starts on the same dice and Spice, from a
+   * new seed.
    */
   function openTestBench() {
     const startBench = (diceSet, spice) => {
       const given = new URLSearchParams(window.location.search).get('seed');
-      const seed = given === null ? randomSeed() : Number(given);
-      console.info(`Test bench: ${diceSet} with ${spice}, seed ${seed} (replay with ?dev&seed=${seed})`);
-      start('quick', { seed, diceSet, spice });
+      benchMatch(diceSet, spice, given === null ? randomSeed() : Number(given));
     };
     const pickDice = () => hud.showPicker('Test bench: choose your dice',
       Object.values(DICE_SETS).map(diceSetCard), pickSpice);
     const pickSpice = (diceSet) => hud.showPicker(`Test bench: Spice for ${DICE_SETS[diceSet].name}`,
       testBenchSpice(diceSet).map(spiceCard), (spice) => startBench(diceSet, spice), pickDice);
     pickDice();
+  }
+
+  /** A test bench match of `diceSet` with `spice`, from `seed`, logged. */
+  function benchMatch(diceSet, spice, seed = randomSeed()) {
+    console.info(`Test bench: ${diceSet} with ${spice}, seed ${seed} (replay with ?dev&seed=${seed})`);
+    start('quick', { seed, diceSet, spice });
+    bench = { diceSet, spice };
   }
 
   // Abandons whatever round is under way: the throw in flight, a paw, a
@@ -312,7 +341,7 @@ export function createGame({ hud, roller, arena, table, effects }) {
 
   async function runRound(playerReleases) {
     const id = matchId;
-    const throws = [await roll({ opponent: opponentReleases(), player: playerReleases })];
+    const throws = [await roll({ opponent: opponentReleases(centreOf(playerReleases)), player: playerReleases })];
     if (id !== matchId) return;
 
     // Anything the Spice does to the dice where they've settled.
@@ -487,22 +516,31 @@ export function createGame({ hud, roller, arena, table, effects }) {
       prepareRound();
       hud.showRound(ROUND_HEADLINES[outcome.winner ?? 'tie'], breakdownOf(outcome), { notes: [...notes, announced] });
     }
-    hud.showRethrow(rethrow ? { label: `${rules.spice.icon} Throw again`, title: `${rules.spice.name}: throw your dice again` } : null);
+    hud.showRethrow(rethrow ? { label: `${rules.spice.icon} Throw again`, title: `${rules.spice.name}: throw your dice again` } : null, table.onScreen);
     rolling = false;
   }
 
   // Match over: announce it, then head back to the main menu after a beat (or
-  // immediately if they tap the card).
+  // immediately if they tap the card). On the test bench, another match on
+  // the same dice and Spice instead.
   function endMatch(outcome) {
     state = 'ended';
     offer = null;
     hud.showRethrow(null);
     hud.showAnnounce(undefined);
     hud.showEdge(null);
-    hud.showRound(MATCH_HEADLINES[outcome.matchWinner], breakdownOf(outcome), { gameOver: true, notes: notesOf(outcome) });
+    const notes = notesOf(outcome);
+    if (bench) notes.push('Test bench: the same again next.');
+    hud.showRound(MATCH_HEADLINES[outcome.matchWinner], breakdownOf(outcome), { gameOver: true, notes });
     rolling = false;
     const id = matchId;
-    setTimeout(() => { if (state === 'ended' && id === matchId) returnToMenu(); }, GAME_OVER_LINGER_MS);
+    setTimeout(() => { if (state === 'ended' && id === matchId) afterMatch(); }, GAME_OVER_LINGER_MS);
+  }
+
+  // Once a match is over: back to the menu, or on the test bench, the same again.
+  function afterMatch() {
+    if (bench) benchMatch(bench.diceSet, bench.spice);
+    else returnToMenu();
   }
 
   /**
@@ -523,7 +561,7 @@ export function createGame({ hud, roller, arena, table, effects }) {
     state = 'playing';
     announced = then;
     tableNow = tableOf(rules, match);
-    effects.setWind(tableNow.wind);
+    showTable();
     for (const side of SIDES) table.setHand(side, handOf(rules, match, side).types);
     hud.showMatch(rules.winCondition.view(match.win));
     hud.showAnnounce(then);
@@ -548,7 +586,7 @@ export function createGame({ hud, roller, arena, table, effects }) {
   // The match-over card is the one that takes pointer events, so tapping it
   // heads straight back to the menu instead of waiting out the timer.
   hud.onResultClick(() => {
-    if (state === 'ended') returnToMenu();
+    if (state === 'ended') afterMatch();
     else hud.hideResult();
   });
 

@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { handLayout, scatter, randomHandful } from '../src/handful.js';
+import { handLayout, scatter, randomHandful, aimHandful } from '../src/handful.js';
 import { mulberry32 } from '../src/rng.js';
 
 const distance = ([ax, az], [bx, bz]) => Math.sqrt((ax - bx) ** 2 + (az - bz) ** 2);
@@ -65,5 +65,32 @@ describe('randomHandful', () => {
     dice.forEach((d, i) => {
       assert.ok(Math.abs(d.p[0] - (cx + offsets[i][0])) < 1e-12 && Math.abs(d.p[2] - (cz + offsets[i][1])) < 1e-12);
     });
+  });
+});
+
+describe('aimHandful', () => {
+  const zone = { halfWidth: 1.5, zNear: -1, zFar: -2.5 };
+
+  test('sends the handful at the target, from where it was, as fast as a strong throw', () => {
+    const rand = mulberry32(11);
+    const { offsets } = handLayout(4, 0.66);
+    const thrown = randomHandful(zone, offsets, rand);
+    const aimed = aimHandful(thrown, [0.5, 2], rand);
+    const centre = [0, 2].map((k) => thrown.reduce((s, d) => s + d.p[k], 0) / thrown.length);
+    const toward = [0.5 - centre[0], 2 - centre[1]];
+    aimed.forEach((d, i) => {
+      assert.deepEqual([d.p, d.q, d.w, d.v[1]], [thrown[i].p, thrown[i].q, thrown[i].w, thrown[i].v[1]]);
+      // Heading for the target, give or take its own scatter.
+      const along = (d.v[0] * toward[0] + d.v[2] * toward[1]) / Math.hypot(...toward);
+      assert.ok(along > 3, `die ${i} only ${along.toFixed(2)} towards the target`);
+    });
+  });
+
+  test('the same stream aims the same way', () => {
+    const throwAt = () => {
+      const rand = mulberry32(5);
+      return aimHandful(randomHandful(zone, handLayout(2, 0.66).offsets, rand), [0, 2], rand);
+    };
+    assert.deepEqual(throwAt(), throwAt());
   });
 });

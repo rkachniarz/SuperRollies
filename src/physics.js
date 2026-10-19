@@ -23,6 +23,7 @@ import {
   HELD_HEIGHT, HOLD_PALM_SIZE, HOLD_PALM_FLAT, HOLD_PALM_SLOPE, HOLD_PALM_LIP, HOLD_PALM_LIP_SLOPE, HOLD_PALM_FINGERS, HOLD_PALM_FRICTION, HOLD_PALM_RESTITUTION, HOLD_MAX_DIE_SPEED,
   HOLD_FOLLOW, HOLD_MAX_ACCEL, HOLD_SWAY, HOLD_SWAY_HZ, HOLD_TILT, HOLD_CALM_SPEED, HOLD_HOP_CHANCE, HOLD_HOP, HOLD_HOP_SPIN,
   HOLD_SETTLE_STEPS, HOLD_SETTLE_DAMPING, HOLD_RELEASE_OVERLAP, WIND_FULL_TIME, WIND_END_TIME,
+  ROPE_RADIUS, ROPE_FRICTION, ROPE_RESTITUTION, ROCK_MOVE, ROCK_TURN_COS,
 } from './config.js';
 import { SHAPES } from './die-shapes.js';
 
@@ -48,6 +49,7 @@ import { SHAPES } from './die-shapes.js';
  *   tray?: Tray,             // the dice set's tray (default: The Classic's)
  *   holes?: Hole[],          // holes in the floor, each over a pit (Pothole; default none)
  *   wind?: number[] | null,  // a steady breeze, [x, z] in units/s², on every die still moving (Gusty Table)
+ *   rope?: boolean,          // a rope lying down the middle, end to end (Tug of War; default none)
  *   dice: DieRelease[],
  * }} ThrowRecord
  *
@@ -82,6 +84,12 @@ const STILL_SPEED_SQ = STILL_SPEED * STILL_SPEED;
 const STILL_STEPS = Math.ceil(STILL_TIME / PHYSICS_STEP);
 export const TIMEOUT_STEPS = Math.ceil(SETTLE_TIMEOUT_MS / 1000 / PHYSICS_STEP);
 const SETTLE_SPEED_SQ = SETTLE_SPEED * SETTLE_SPEED;
+const ROCK_MOVE_SQ = ROCK_MOVE * ROCK_MOVE;
+// How far a die Rapier says is asleep may drift before it's woken (see
+// step()). Asleep dice routinely drop 3.5 mm, once, and stop (half the
+// recorded table throws do it): too little to see, and waking them would
+// change those throws. The fall this is for is centimetres.
+const ASLEEP_DRIFT_SQ = 0.01 * 0.01;
 // A breeze blows at full strength for the first of these many steps of a
 // throw, then dies away by the second, so it can never keep a die from
 // settling.
@@ -122,7 +130,17 @@ export function sideWallFace(arenaHalfWidth, tray = CLASSIC_TRAY) {
   return Math.min(tray.halfWidth, arenaHalfWidth + DIE_RADIUS);
 }
 
-function addTray(world, divider, sideFace, { halfWidth, depth }, holes = []) {
+/** The rope's radius in a tray (Tug of War): ROPE_RADIUS, scaled with the tray. */
+export const ropeRadius = (tray) => ROPE_RADIUS * (tray.halfWidth / TRAY_HALF_WIDTH);
+
+// A quarter turn about x, as a quaternion: lays a capsule (Rapier's run along
+// y) along z. Written out rather than from Math.sin/cos, whose last bit may
+// differ between JavaScript engines (see HOLE_CORNERS).
+const ALONG_Z = { x: Math.SQRT1_2, y: 0, z: 0, w: Math.SQRT1_2 };
+
+/** Builds the tray's colliders; returns the rope's, if there is one. */
+function addTray(world, divider, sideFace, tray, holes = [], rope = false) {
+  const { halfWidth, depth } = tray;
   // The floor is a thick slab rather than a plane, so a die driven hard into
   // it has a body of material to be pushed back out of, not a surface to slip
   // past. With holes in it, it's built round them instead (addHoledFloor).
@@ -150,6 +168,21 @@ function addTray(world, divider, sideFace, { halfWidth, depth }, holes = []) {
   addWall(0, -depth - WALL_T, halfWidth + WALL_T * 2, WALL_T); // far edge
   addWall(0, depth + WALL_T, halfWidth + WALL_T * 2, WALL_T); // near edge
   if (divider) addWall(0, 0, halfWidth + WALL_T * 2, DIVIDER_T);
+
+  // Tug of War's rope: a capsule lying on the floor down the middle, wall to
+  // wall, through the divider. Low and round, so a die rolls over it as
+  // often as it bounces off.
+  if (rope) {
+    const r = ropeRadius(tray);
+    return world.createCollider(
+      RAPIER.ColliderDesc.capsule(depth - r, r)
+        .setTranslation(0, r, 0)
+        .setRotation(ALONG_Z)
+        .setFriction(ROPE_FRICTION)
+        .setRestitution(ROPE_RESTITUTION)
+    );
+  }
+  return null;
 }
 
 // cos(k pi / 16) for k = 0..8: a hole is a 32-sided polygon. Written out
@@ -679,7 +712,7 @@ export function createRoundSim(record, { clamp = true } = {}) {
   world.timestep = PHYSICS_STEP;
   const tray = record.tray ?? CLASSIC_TRAY;
   const sideFace = sideWallFace(record.arenaHalfWidth, tray);
-  addTray(world, record.divider ?? true, sideFace, tray, record.holes);
+  const rope = addTray(world, record.divider ?? true, sideFace, tray, record.holes, record.rope);
   const wind = record.wind ?? null;
 
   const dice = record.dice.map((d) => {
@@ -710,6 +743,23 @@ export function createRoundSim(record, { clamp = true } = {}) {
     const fixed = Boolean(d.fixed);
     return { id: d.id, type: d.type, radius, body, collider, prev: pose, curr: pose, quietSteps: 0, stillSteps: 0, settled: fixed, asleep: false, fixed };
   });
+
+  // How long a die has stayed close to one pose (see ROCK_MOVE): the pose it's
+  // measured from moves on whenever the die strays from it. Squared lengths
+  // and a dot product only, so it's bit-exact everywhere.
+  function rocking(d) {
+    const from = d.rockFrom;
+    const [px, py, pz] = d.curr.p;
+    const q = d.curr.q;
+    const near = from &&
+      (px - from.p[0]) ** 2 + (py - from.p[1]) ** 2 + (pz - from.p[2]) ** 2 < ROCK_MOVE_SQ &&
+      Math.abs(q[0] * from.q[0] + q[1] * from.q[1] + q[2] * from.q[2] + q[3] * from.q[3]) > ROCK_TURN_COS;
+    if (near) d.rockSteps++;
+    else {
+      d.rockFrom = d.curr;
+      d.rockSteps = 0;
+    }
+  }
 
   const sim = {
     world,
@@ -759,7 +809,11 @@ export function createRoundSim(record, { clamp = true } = {}) {
         };
         const [vSq, wSq] = speedsSq();
         d.stillSteps = vSq < STILL_SPEED_SQ && wSq < STILL_SPEED_SQ ? d.stillSteps + 1 : 0;
+        // With a rope down (Tug of War): how long it's stayed within
+        // ROCK_MOVE and 3 degrees of one pose, rocking in place or not.
+        if (rope) rocking(d);
         const isQuiet = () => {
+          if (rope && d.rockSteps >= STILL_STEPS) return true;
           const [v2, w2] = speedsSq();
           return v2 < SETTLE_SPEED_SQ && w2 < SETTLE_SPEED_SQ &&
             (d.stillSteps >= STILL_STEPS || restsOnFace(world, d.collider));
@@ -779,8 +833,18 @@ export function createRoundSim(record, { clamp = true } = {}) {
         // sleep until another die knocks into it and wakes it, one left awake
         // (see below) until it stops being quiet. Then it has to settle all
         // over again.
+        //
+        // Rapier can also go on moving a die it says is asleep, with no
+        // contact holding it up: a d4 hit hard by an aimed throw (No Man's
+        // Land) fell 2.7 cm into the floor that way, about 1 throw in 500,
+        // with no other die anywhere near it. So one it still calls asleep
+        // that has sunk more than a centimetre since it was put to sleep is
+        // woken, and the floor pushes it back out (see ASLEEP_DRIFT_SQ).
         if (d.settled) {
-          if (d.asleep ? d.body.isSleeping() : isQuiet()) continue;
+          const stirred = d.asleep && d.body.isSleeping() &&
+            (d.curr.p[0] - d.sleptAt[0]) ** 2 + (d.curr.p[1] - d.sleptAt[1]) ** 2 + (d.curr.p[2] - d.sleptAt[2]) ** 2 > ASLEEP_DRIFT_SQ;
+          if (stirred) d.body.wakeUp();
+          else if (d.asleep ? d.body.isSleeping() : isQuiet()) continue;
           d.settled = false;
           d.asleep = false;
           d.quietSteps = 0;
@@ -794,7 +858,10 @@ export function createRoundSim(record, { clamp = true } = {}) {
           // no contact to hold it up, and it sinks through the floor. (Never
           // seen with one die a side, which the divider keeps apart.)
           d.asleep = !touchesAnotherDie(world, d.collider);
-          if (d.asleep) d.body.sleep();
+          if (d.asleep) {
+            d.body.sleep();
+            d.sleptAt = d.curr.p;
+          }
         }
       }
       // Anything that never settles (rare - e.g. balanced on an edge) is

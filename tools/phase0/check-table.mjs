@@ -1,7 +1,8 @@
 // The Spice that change the table (DEV_PLAN.md 5.1-5.3, 5.6): throws onto a
 // floor with holes in it (Pothole), in a breeze (Gusty Table), with no
-// divider (No Man's Land), and the knock a cat's paw gives dice at rest (Cat
-// Paw). Every step of every throw is checked: no die sinks into the floor or
+// divider (No Man's Land, the opponent throwing at the player's dice), the
+// knock a cat's paw gives dice at rest (Cat Paw), and over a rope down the
+// middle (Tug of War). Every step of every throw is checked: no die sinks into the floor or
 // through a pit's bottom, none leaves the tray, and with the divider up none
 // crosses it. At rest, a die counted as fallen is down a pit and one not
 // counted is on the floor. And the throws settle, bar a few timeouts.
@@ -14,7 +15,7 @@
 
 import { initPhysics, createRoundSim, TIMEOUT_STEPS } from '../../src/physics.js';
 import { SHAPES } from '../../src/die-shapes.js';
-import { handLayout, scatter, randomHandful } from '../../src/handful.js';
+import { handLayout, scatter, randomHandful, aimHandful } from '../../src/handful.js';
 import { DICE_SETS, dieTypes } from '../../src/rules/dice-sets.js';
 import { matchConfig, resolveRules, startMatch, beginRound, tableOf } from '../../src/rules/engine.js';
 import { DIVIDER_T, DIE_RADIUS, HELD_HEIGHT, MAX_THROW_SPEED, MAX_LIFT_SPEED, SPIN_POWER, PHYSICS_STEP } from '../../src/config.js';
@@ -29,13 +30,13 @@ const rand = mulberry32(0x7AB1E);
 
 // One die and the most dice, the biggest dice and the d4's corners.
 const SETS = ['classic', 'fireball', 'the-whole-bag', 'swarm-of-daggers'];
-const SPICE = ['pothole', 'gusty-table', 'no-mans-land', 'cat-paw'];
+const SPICE = ['pothole', 'gusty-table', 'no-mans-land', 'cat-paw', 'tug-of-war'];
 
 /** A throw like the game's: both sides' handfuls on the table the rules lay out for `seed`. */
 function throwFor(set, spice, seed) {
   const rules = resolveRules(matchConfig({ seed, diceSet: set.id, spice }));
   const { state } = beginRound(rules, startMatch(rules));
-  const { holes, wind, divider } = tableOf(rules, state);
+  const { holes, wind, divider, rope } = tableOf(rules, state);
   const types = dieTypes(set);
   const { tray, dieScale } = set;
   const radius = Math.max(...types.map((t) => SHAPES[t].circumradius * dieScale));
@@ -52,12 +53,14 @@ function throwFor(set, spice, seed) {
   const spin = [-vz * SPIN_POWER + (rand() - 0.5) * 6, (rand() - 0.5) * 6, vx * SPIN_POWER + (rand() - 0.5) * 6];
   const motion = scatter([vx, MAX_LIFT_SPEED * rand(), vz], spin, offsets, rand);
   const player = offsets.map(([ox, oz], k) => ({ p: [cx + ox, HELD_HEIGHT, cz + oz], q: randomQuaternion(rand), ...motion[k] }));
-  const opponent = randomHandful({
+  const thrown = randomHandful({
     halfWidth: Math.min(tray.halfWidth * 0.55, xMax), zNear: -(DIVIDER_T + reach.z), zFar: Math.max(-tray.depth * 0.75, -zMax),
   }, offsets, rand);
+  // With no divider, at the player's dice, as the game throws it.
+  const opponent = divider ? thrown : aimHandful(thrown, [cx, cz], rand);
   return {
     v: 1, arenaHalfWidth: tray.halfWidth - DIE_RADIUS, divider, tray,
-    ...(holes.length ? { holes } : {}), ...(wind ? { wind } : {}),
+    ...(holes.length ? { holes } : {}), ...(wind ? { wind } : {}), ...(rope ? { rope: true } : {}),
     dice: [
       ...opponent.map((r, k) => ({ id: `opponent-${k}`, type: types[k], s: dieScale, ...r })),
       ...player.map((r, k) => ({ id: `player-${k}`, type: types[k], s: dieScale, ...r })),

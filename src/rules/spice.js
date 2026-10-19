@@ -383,10 +383,11 @@ const TUG_OF_WAR = {
   name: 'Tug of War',
   icon: '💪',
   kind: 'win',
-  summary: 'Each round pulls the rope towards the loser. Pull it to their edge.',
-  rules: 'A marker starts halfway between you. Each round it moves towards the loser by the difference between the totals. Whoever it reaches the edge of loses the match. The rope is longer with dice that roll bigger totals.',
+  summary: 'A rope down the table. Each round its flag is pulled towards the loser: pull it to their end.',
+  rules: 'A rope lies down the middle of the table, from your end to your opponent\'s, and the dice bounce off it or roll over it. A flag tied to it starts halfway. Each round it is pulled towards the loser by the difference between the totals; pull it to their end and they lose the match. The rope is longer with dice that roll bigger totals.',
   eligibility: {},
   winCondition: tugOfWar,
+  table: ({ rules, state }) => ({ rope: { pull: rules.winCondition.pull?.(state.win) ?? 0 } }),
 };
 
 // ---------- Phase 5: re-throws ----------

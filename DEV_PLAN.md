@@ -98,6 +98,7 @@ Some Spice works with any dice; some only makes sense with particular dice
 | D38 | 2026-10-19 | **No Man's Land keeps the halves, not the wall.** Each side still throws from its own half (the hand is held to it as if the divider were there), the floor stays two colours, and the dice go anywhere. Dice can now rest under the result card in the middle; it takes no pointer events, so they're still picked up through it (checked). A new kind of Spice, "On the table", covers it, Pothole, Cat Paw and Gusty Table. |
 | D39 | 2026-10-19 | **A test bench, for development only, behind `?dev`.** For live-testing every Spice without the draft's luck: a third menu button, shown only with `?dev` in the address, opens the catalogue (4.3) of every dice set, then every Spice that set allows, those made for particular sets first (`testBenchSpice`), and starts a Quick Game with them. Its seed is logged to the console, and `?seed=` in the address replays it. Not part of the finished game; the flag keeps it out of players' way, and it can be removed outright before release. |
 | D40 | 2026-10-19 | **What the rules did to the dice is shown on the dice** (playtest feedback). An exploded die's extra rolls (Exploding Dice, Brutal Critical) **pop out of it as dice of their own**, with a burst, towards the most open part of that side's half, and land on the rolls drawn; a chain pops out of the pop. They glow, so they're told apart from the dice thrown, and go at the next throw. The rolls are still **drawn, not thrown** (D28): each pop's tumble is simulated with every die already on the table held fixed, so nothing the rules read is moved, and once it's known which face it lands on, its die is turned onto itself by one of its symmetries (`turnShowing`) so the face it lands on shows the drawn roll. The outline is the same, so nothing looks off, and the rules never depend on physics. A pop is for show only and is in no throw record. A **cursed die shows a red 0** in place of its number until the next throw. **Hit Points' card says who lost how many HP** (`You lose 8 HP.`): a win condition can name its unit (`unit`), and the game writes the line from the player's seat, so a multiplayer guest can mirror it. |
+| D41 | 2026-10-19 | **Second playtest round.** (1) **Test bench rematch:** a bench match over starts another on the same dice and Spice, from a new seed (logged), instead of returning to the menu. (2) **No Man's Land: the opponent throws at the player's dice** (`aimHandful`), at where they were let go, 3–4.5 units/s with no extra lift: the handfuls collide ~4× as often with one die a side, ~2× with eight. Eight a side do stack up now and then: 1.9% of Fireball's throws time out (0.75% unaimed; the limit is 2%). Harder or lobbed, they heaped up and up to 1 throw in 20 timed out. This is the only aimed throw; the opponent AI proper is for later. (3) **The re-throw button sits right under the result card**, where the eye already is, amending D31 and 4.6a: it may now sit over the tray, so it's placed clear of every die on the table (`placeRethrow`): centred under the card, else under its left or right edge, a row lower, or above it; with none of those clear, its old corner. (4) **Tug of War is on the table:** a rope lies down the middle from end to end, through the divider (which stays), and the dice collide with it; a red flag tied to it shows the marker, sliding towards the loser. Only the rope is in a throw's record (`rope: true`); the flag is drawn. A die propped on one corner against the rope rocks in place indefinitely, its speed peaking over the settle threshold every swing (Fireball timed out 1 throw in 6), so with a rope down, a die that stays within 2 cm and 3° of one pose for half a second has settled (`rocking`). Also found on the way: Rapier occasionally moves a die it says is asleep with nothing holding it up; a d4 fell 2.7 cm into the floor that way (~1 throw in 500). One that sinks more than 1 cm is now woken and pushed back out. Smaller dips (3.5 mm, once) are routine and left alone: waking those would change 12 of the 24 recorded table throws. |
 
 ---
 
@@ -266,7 +267,7 @@ Some Spice works with any dice; some only makes sense with particular dice
 | Marathon | Six hearts each. |
 | Hit Points | Each player has HP scaled to the dice range; the round loser loses the difference between totals. |
 | Race to N | Totals accumulate across rounds; first to N wins. N scales with the dice range. |
-| Tug of War | A marker starts mid-table and moves toward the round loser by the difference in totals. Push it off their edge to win. |
+| Tug of War | A rope lies down the table, the dice colliding with it; a flag on it starts mid-table and moves toward the round loser by the difference in totals. Pull it to their end to win. |
 
 ### 6.3 Universal: comeback (state-based asymmetry) *(D8)*
 
@@ -748,6 +749,11 @@ Behaviour is unchanged: 1d20 vs. AI plays exactly as it does today.
 - [x] **5.11** Playtest feedback (D40): exploded dice pop out extra dice that
   land on their rolls; a cursed die shows a red 0; Hit Points' card says who
   lost how many HP. *Scripted in `npm run verify`.*
+- [x] **5.12** Playtest feedback, round two (D41): the test bench plays the
+  same again after a match; No Man's Land's opponent throws at your dice;
+  the re-throw button sits under the result card, clear of the dice; Tug of
+  War's rope lies down the table with its flag. *Scripted in `npm run
+  verify`; the rope and the aimed throws in `check-table.mjs`.*
 
 ### Phase 6 — Alternative scoring
 

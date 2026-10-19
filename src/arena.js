@@ -7,12 +7,37 @@
 // table, and the camera pulls back to fit it.
 
 import * as THREE from 'three';
-import { HOLE_CORNERS } from './physics.js';
+import { HOLE_CORNERS, ropeRadius } from './physics.js';
 import {
   SCENE_BACKGROUND, OPPONENT_FLOOR_COLOR, PLAYER_FLOOR_COLOR, WALL_COLOR, PIT_COLOR,
   TRAY_HALF_WIDTH, TRAY_DEPTH, WALL_T, DIVIDER_T, WALL_HALF_HEIGHT, WALL_VISIBLE_HALF_HEIGHT,
   DIE_RADIUS, CAMERA_FOV, CAMERA_POSITION, CAMERA_LOOK_AT, CAMERA_DEPTH_MARGIN,
 } from './config.js';
+
+// A rope's twist: diagonal strands in two shades of hemp, in the colours of
+// Tug of War's bar on the HUD.
+function ropeTexture() {
+  const size = 64;
+  const c = document.createElement('canvas');
+  c.width = size;
+  c.height = size;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#c9a86a';
+  ctx.fillRect(0, 0, size, size);
+  ctx.strokeStyle = '#e8d9b5';
+  ctx.lineWidth = size / 5;
+  for (let k = -1; k <= 1; k++) {
+    ctx.beginPath();
+    ctx.moveTo(k * size, 0);
+    ctx.lineTo(k * size + size, size);
+    ctx.stroke();
+  }
+  const texture = new THREE.CanvasTexture(c);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
 
 export function createArena(canvas) {
   // ---------- Renderer, scene, camera, lights ----------
@@ -59,6 +84,9 @@ export function createArena(canvas) {
   // Holes in the floor (Pothole), each over a pit.
   /** @type {import('./rules/types.js').Hole[]} */
   let holes = [];
+  // A rope down the middle, end to end (Tug of War).
+  let rope = false;
+  const ropeMaterial = new THREE.MeshStandardMaterial({ map: ropeTexture(), roughness: 0.9 });
   const pitMaterial = new THREE.MeshStandardMaterial({ color: PIT_COLOR, roughness: 1, side: THREE.BackSide });
   const pitFloorMaterial = new THREE.MeshStandardMaterial({ color: PIT_COLOR, roughness: 1 });
 
@@ -68,7 +96,7 @@ export function createArena(canvas) {
       trayGroup.traverse((o) => {
         if (!o.isMesh) return;
         o.geometry.dispose();
-        if (![wallVisualMaterial, pitMaterial, pitFloorMaterial].includes(o.material)) o.material.dispose();
+        if (![wallVisualMaterial, pitMaterial, pitFloorMaterial, ropeMaterial].includes(o.material)) o.material.dispose();
       });
     }
     trayGroup = new THREE.Group();
@@ -134,6 +162,28 @@ export function createArena(canvas) {
     addWall(0, depth + WALL_T, halfWidth + WALL_T * 2, WALL_T); // near edge
     dividerMesh = addWall(0, 0, halfWidth + WALL_T * 2, DIVIDER_T);
     setDivider(divider);
+
+    // The rope (Tug of War), lying where its collider is (physics.js), wall
+    // to wall through the divider. Its twist is in the texture, which wraps
+    // round it once and repeats along it.
+    if (rope) {
+      const r = ropeRadius(tray);
+      const geometry = new THREE.CylinderGeometry(r, r, depth * 2, 12, 1);
+      const mesh = new THREE.Mesh(geometry, ropeMaterial);
+      ropeMaterial.map.repeat.set(1, (depth * 2) / (r * 5));
+      mesh.rotation.x = Math.PI / 2;
+      mesh.position.y = r;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      trayGroup.add(mesh);
+    }
+  }
+
+  /** Lays a rope down the middle (Tug of War), or takes it away. */
+  function setRope(on = false) {
+    if (on === rope) return;
+    rope = on;
+    buildTray();
   }
 
   // Zen mode takes the divider out, giving one die the whole tray - and paints
@@ -302,12 +352,14 @@ export function createArena(canvas) {
 
   return {
     renderer, scene, camera,
-    clampToTray, opponentZone, resize, setDivider, setTray, setHoles,
+    clampToTray, opponentZone, resize, setDivider, setTray, setHoles, setRope,
     get divider() { return divider; },
     /** Whether the tray is two halves, each side throwing from its own. */
     get split() { return split; },
     get tray() { return tray; },
     get holes() { return holes; },
+    /** The rope's radius, if there's one down the middle (Tug of War); else 0. */
+    get rope() { return rope ? ropeRadius(tray) : 0; },
     get arenaHalfWidth() { return arenaHalfWidth; },
     /** How far out the centre of a die of circumradius `radius` can be: against a side wall. */
     xLimit: (radius) => sideFace() - radius,

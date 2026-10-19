@@ -3,11 +3,11 @@
 // record alongside the exact result the game itself reached.
 //
 //   node tools/phase0/record-throws.mjs [count=20]           ->   tools/phase0/throws.json
-//   node tools/phase0/record-throws.mjs [count=24] --table   ->   tools/phase0/table-throws.json
+//   node tools/phase0/record-throws.mjs [count=30] --table   ->   tools/phase0/table-throws.json
 //
 // --table records throws onto the tables Spice change instead (DEV_PLAN.md
-// Phase 5): holes in the floor, a breeze, no divider, and a cat's paw knocking
-// dice at rest, a quarter of the count each. Their records carry what the
+// Phase 5): holes in the floor, a breeze, no divider, a cat's paw knocking
+// dice at rest, and a rope down the middle, a fifth of the count each. Their records carry what the
 // table was like, so they replay the same anywhere too.
 //
 // Needs the dev server running (npm run dev).
@@ -17,8 +17,8 @@ import { openGame, startQuickGame, throwAndWait, waitForDiceAtRest } from './dri
 import { mulberry32 } from './rng.mjs';
 
 const TABLE = process.argv.includes('--table');
-const COUNT = Number(process.argv.find((a) => /^\d+$/.test(a)) ?? (TABLE ? 24 : 20));
-const SPICE = TABLE ? ['pothole', 'gusty-table', 'no-mans-land', 'cat-paw'] : ['vanilla'];
+const COUNT = Number(process.argv.find((a) => /^\d+$/.test(a)) ?? (TABLE ? 30 : 20));
+const SPICE = TABLE ? ['pothole', 'gusty-table', 'no-mans-land', 'cat-paw', 'tug-of-war'] : ['vanilla'];
 const rand = mulberry32(20);
 const { browser, page, errors } = await openGame('chromium');
 
