@@ -304,8 +304,16 @@ export function createHud() {
     menuStatusEl.hidden = false;
   }
 
-  /** Shows one card of the menu (the main menu, the draft or the catalogue). */
-  function showMenuCard(el) {
+  // Where the back button of the menu card on screen goes (the draft's or the
+  // catalogue's): the menu, unless that card's step says otherwise.
+  let menuBack = showMenu;
+
+  /**
+   * Shows one card of the menu (the main menu, the draft or the catalogue),
+   * its back button going to `onBack`.
+   */
+  function showMenuCard(el, onBack = showMenu) {
+    menuBack = onBack;
     for (const card of [menuMainEl, draftEl, pickerEl]) card.hidden = card !== el;
     menuEl.hidden = false;
     menuEl.scrollTop = 0;
@@ -323,9 +331,6 @@ export function createHud() {
     showMenuCard(menuMainEl);
   }
 
-  // Where the draft's back button goes; each step sets it.
-  let draftBack = showMenu;
-
   /**
    * One step of the Quick Game draft (R1.1, R1.2): a few cards, one to pick.
    * `chosen` recalls what an earlier step picked. Back goes to `onBack`.
@@ -338,14 +343,9 @@ export function createHud() {
     draftChosenEl.textContent = chosen ?? '';
     draftChosenEl.hidden = !chosen;
     draftCardsEl.replaceChildren(...cards.map((card) => renderCard(card, { onPick })));
-    draftBack = onBack;
-    showMenuCard(draftEl);
+    showMenuCard(draftEl, onBack);
     draftCardsEl.querySelector('button')?.focus();
   }
-
-  // Where the catalogue's back button goes: the menu, unless a step says
-  // otherwise (the test bench's Spice step goes back to its dice).
-  let pickerBack = showMenu;
 
   /**
    * The catalogue (DEV_PLAN.md 4.3): every card on offer, as a list, one to
@@ -359,16 +359,14 @@ export function createHud() {
   function showPicker(title, cards, onPick, onBack = showMenu) {
     pickerTitleEl.textContent = title;
     pickerOptionsEl.replaceChildren(...cards.map((card) => renderCard(card, { onPick, compact: true })));
-    pickerBack = onBack;
-    showMenuCard(pickerEl);
+    showMenuCard(pickerEl, onBack);
     pickerOptionsEl.querySelector('button')?.focus();
   }
 
   // The test bench is for development only: shown with ?dev in the address.
   testBenchBtn.hidden = !new URLSearchParams(window.location.search).has('dev');
 
-  pickerBackBtn.addEventListener('click', () => pickerBack());
-  draftBackBtn.addEventListener('click', () => draftBack());
+  for (const btn of [pickerBackBtn, draftBackBtn]) btn.addEventListener('click', () => menuBack());
   matchInfoBtn.addEventListener('click', showRules);
   rulesCloseBtn.addEventListener('click', hideRules);
   // A tap outside the cards closes the popup too, as does Escape.

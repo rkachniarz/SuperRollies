@@ -83,8 +83,9 @@ describe('the test bench (D39)', () => {
     for (const id of Object.keys(DICE_SETS)) {
       const offered = testBenchSpice(id);
       assert.deepEqual(new Set(offered), new Set(eligibleSpice(id)), id);
-      const firstGeneral = offered.findIndex((s) => !s.eligibility.diceSets);
-      assert.ok(offered.slice(firstGeneral).every((s) => !s.eligibility.diceSets), id);
+      // Once a general Spice appears, no set-specific one follows it.
+      const general = offered.map((s) => !s.eligibility.diceSets);
+      assert.ok(general.every((g, i) => g || !general.slice(0, i).includes(true)), id);
     }
     assert.deepEqual(testBenchSpice('greatsword').slice(0, 2).map((s) => s.id), ['snake-eyes', 'doubles-again']);
     assert.equal(testBenchSpice('fireball')[0].id, 'vanilla');

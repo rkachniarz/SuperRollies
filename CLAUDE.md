@@ -21,7 +21,7 @@ npm run build   # -> dist/artifact.html, the single-file copy for claude.ai only
 npm test        # unit tests (node:test): RNG, rules engine, scorers, handfuls, die shapes
 npm run verify  # the browser checks below, in headless Chromium (needs npm run dev)
 node tools/phase0/verify.mjs chromium "second wind"   # only the checks whose label contains that
-# http://localhost:8000/?dev adds a Test bench to the menu: any dice set, then any Spice it allows (D39)
+# http://localhost:8000/?dev adds a Test bench to the menu: any dice set, then any Spice it allows (D39); ?dev&seed=N replays a match it logged
 npm run phase0  # physics checks: every die settles flat, tunnelling, handfuls, tables Spice change, determinism (needs npm run dev)
 ```
 
@@ -310,6 +310,9 @@ these are scripted in `npm run verify` (`tools/phase0/verify.mjs`):
     to 0 HP and back to the menu. Doubles Again asks the player to throw
     again and adds it on the card; Death Saves' fails are marked by the
     hearts.
+18. The test bench is hidden without `?dev`; with it, it lists every dice
+    set, then exactly the Spice that set allows (set-specific first), its
+    back button returns to the dice, and picking one starts that match.
 
 Run `npm test` alongside; it needs no server.
 

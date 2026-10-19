@@ -231,12 +231,19 @@ export function createGame({ hud, roller, arena, table, effects }) {
    * The test bench, for development only (behind ?dev, DEV_PLAN.md D39): a
    * Quick Game without the draft's luck. Every dice set, then every Spice that
    * set allows, those made for it first (testBenchSpice in rules/draft.js).
+   * The match's seed is logged, and `?seed=` in the address replays it.
    */
   function openTestBench() {
+    const startBench = (diceSet, spice) => {
+      const given = new URLSearchParams(window.location.search).get('seed');
+      const seed = given === null ? randomSeed() : Number(given);
+      console.info(`Test bench: ${diceSet} with ${spice}, seed ${seed} (replay with ?dev&seed=${seed})`);
+      start('quick', { seed, diceSet, spice });
+    };
     const pickDice = () => hud.showPicker('Test bench: choose your dice',
       Object.values(DICE_SETS).map(diceSetCard), pickSpice);
     const pickSpice = (diceSet) => hud.showPicker(`Test bench: Spice for ${DICE_SETS[diceSet].name}`,
-      testBenchSpice(diceSet).map(spiceCard), (spice) => start('quick', { diceSet, spice }), pickDice);
+      testBenchSpice(diceSet).map(spiceCard), (spice) => startBench(diceSet, spice), pickDice);
     pickDice();
   }
 

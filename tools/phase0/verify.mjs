@@ -15,7 +15,7 @@ import { TRAY_DEPTH, TRAY_HALF_WIDTH, DIE_RADIUS } from '../../src/config.js';
 import { DICE_SETS } from '../../src/rules/dice-sets.js';
 import { SPICE } from '../../src/rules/spice.js';
 import { isEligible, matchConfig, resolveRules, startMatch, beginRound, afterSettle } from '../../src/rules/engine.js';
-import { dealDice, dealSpice } from '../../src/rules/draft.js';
+import { dealDice, dealSpice, testBenchSpice } from '../../src/rules/draft.js';
 import { openGame, startQuickGame, startMode, waitForDiceAtRest, dieScreenPos, drag, throwAndWait } from './driver.mjs';
 
 const engine = process.argv[2] ?? 'chromium';
@@ -550,10 +550,17 @@ await withMatch(PHONE, 'cursed', async (page) => {
 
 // The test bench (D39): only with ?dev; every dice set, then every Spice that
 // set allows, set-specific first; back goes to the dice; picking one starts it.
-if (!ONLY || 'test bench'.includes(ONLY)) {
+const BENCH = 'Test bench: only with ?dev; every dice set, then every Spice for it (set-specific first), and that match';
+if (!ONLY || BENCH.includes(ONLY)) {
+  let hiddenWithoutFlag = false;
   const plain = await openGame(engine, DESKTOP);
-  await plain.page.waitForSelector('#quickGameBtn:not([disabled])', { timeout: 30000 });
-  const hiddenWithoutFlag = await plain.page.locator('#testBenchBtn').isHidden();
+  try {
+    await plain.page.waitForSelector('#quickGameBtn:not([disabled])', { timeout: 30000 });
+    hiddenWithoutFlag = await plain.page.locator('#testBenchBtn').isHidden();
+  } catch (e) {
+    report(`${BENCH} (without ?dev)`, false, e.message.split('\n')[0]);
+  }
+  if (plain.errors.length) report(`${BENCH}: no page errors without ?dev`, false, plain.errors.join(' | '));
   await plain.browser.close();
 
   const { browser, page, errors } = await openGame(engine, DESKTOP, '?dev');
@@ -570,15 +577,16 @@ if (!ONLY || 'test bench'.includes(ONLY)) {
     await page.click('#pickerOptions [data-pick="snake-eyes"]');
     await waitForDiceAtRest(page);
     const config = await page.evaluate(() => window.superRollies.game.config);
-    const expected = Object.values(SPICE).filter((s) => isEligible(s, DICE_SETS.greatsword));
-    report('Test bench: only with ?dev; every dice set, then every Spice for it (set-specific first), and that match',
-      hiddenWithoutFlag && sets.join() === Object.keys(DICE_SETS).join() && spice.length === expected.length &&
-        spice.slice(0, 2).join() === 'snake-eyes,doubles-again' && backToDice &&
-        config.diceSet === 'greatsword' && config.spice === 'snake-eyes' && errors.length === 0,
+    const expected = testBenchSpice('greatsword').map((s) => s.id);
+    report(BENCH,
+      hiddenWithoutFlag && sets.join() === Object.keys(DICE_SETS).join() && spice.join() === expected.join() &&
+        expected.slice(0, 2).join() === 'snake-eyes,doubles-again' && backToDice &&
+        config.diceSet === 'greatsword' && config.spice === 'snake-eyes',
       `${sets.length} sets; Greatsword offers ${spice.join(', ')}`);
   } catch (e) {
-    report('Test bench', false, e.message.split('\n')[0]);
+    report(BENCH, false, e.message.split('\n')[0]);
   }
+  if (errors.length) report(`${BENCH}: no page errors`, false, errors.join(' | '));
   await browser.close();
 }
 
