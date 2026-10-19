@@ -1,7 +1,7 @@
 # Super Rollies — notes for Claude
 
 A dice roll-off game (one die up to 8 a side, d4 to d20 and percentile, and a Spice that bends the
-rules each match): three.js for rendering, Rapier (deterministic build) for physics, no framework, no
+rules or the table each match): three.js for rendering, Rapier (deterministic build) for physics, no framework, no
 build step to run it. See README.md for the
 file-by-file map.
 
@@ -20,7 +20,8 @@ npm run dev     # http://localhost:8000 - must be served, ES modules don't load 
 npm run build   # -> dist/artifact.html, the single-file copy for claude.ai only
 npm test        # unit tests (node:test): RNG, rules engine, scorers, handfuls, die shapes
 npm run verify  # the browser checks below, in headless Chromium (needs npm run dev)
-npm run phase0  # physics checks: every die settles flat, tunnelling, handfuls, determinism (needs npm run dev)
+node tools/phase0/verify.mjs chromium "second wind"   # only the checks whose label contains that
+npm run phase0  # physics checks: every die settles flat, tunnelling, handfuls, tables Spice change, determinism (needs npm run dev)
 ```
 
 Browser checks run in Chromium only until after the MVP (DEV_PLAN.md, D14).
@@ -193,6 +194,33 @@ someone (or something) tidying with good intentions.
   every dice set (`DICE_SETS`) and every die type alone (`DIE_TYPES`). Both
   lists are built from the registries, so a new set or die joins it by being
   added there; `npm run verify` checks nothing is missing (DEV_PLAN.md, D18).
+- **`src/physics.js` — a floor with holes (Pothole) is a triangle mesh,
+  without `FIX_INTERNAL_EDGES`, and only when there are holes.** With that
+  flag a die spinning where triangles meet took 3 s or more to stop, and
+  Fireball timed out 1 throw in 6; without it dice settle as on the slab.
+  Every table without holes keeps the slab, so recorded throws replay
+  unchanged. Against the mesh Rapier gives **no solver contacts**, so
+  `restsOnFace` reads its raw contacts instead (for the mesh only): without
+  that no die ever counted as resting on a face there. A die whose centre
+  drops below the table is down a hole, and **not waited for**: a heap of
+  dice in a pit shuffles about for seconds. `check-table.mjs` guards all of
+  it.
+- **`src/physics.js`, `src/rules/spice.js` — numbers that go into a throw
+  record are never from `Math.cos`/`sin`.** A hole's 32 corners and the
+  breeze's eight directions are written out as literals: those functions'
+  last bit may differ between JavaScript engines, and the record must replay
+  bit-identically everywhere (`table-throws.json` checks it).
+- **`src/physics.js` — the breeze (Gusty Table) is a gust, and only pushes
+  dice that are moving.** Pushed on into a wall, a die jittered against it
+  and never settled; and a d12 rocking in a corner was nudged back into it
+  for as long as the wind blew. So below the settle speed a die gets no push,
+  and the gust fades out between 1.5 s and 2.5 s.
+- **`src/game.js` — a re-throw (Second Wind, Mercy) replays the round from
+  the state it started in.** The engine is pure, so undoing a round is
+  going back to that state (`spendRethrow`) and calling `playRound` again
+  with the new faces; nothing is "un-applied". Every await in a round checks
+  `matchId`, so a round still waiting on a throw, a pause or a paw stops
+  when the player leaves the match.
 - **`src/dice.js` — dice start each match *placed* flat on a face, never
   dropped.** Dropped from rest in the default orientation, a d20 lands exactly
   on a level edge and, the simulation being deterministic, stays balanced
@@ -205,13 +233,18 @@ someone (or something) tidying with good intentions.
   measures each against the nearest resting spot. The label is two lines at
   most, each cut short with an ellipsis rather than wrapping: on 390×844 it
   is ~40 px clear, but wrapped to three or four lines (as it was with the
-  dice notation in it) it came within ~11 px, and longer names would cover a die. Anything else on
-  the board (the announcement pill, edge badges, hearts) takes no pointer
-  events. Six hearts go two rows of three on a phone, to stay clear of both
-  corners.
+  dice notation in it) it came within ~11 px, and longer names would cover a die.
+  The re-throw button (Second Wind, Mercy) sits bottom-right, below the
+  tray's near wall, with a short label ("Throw again"): its full name wrapped
+  to three lines on a phone and ran into the hearts. Anything else on
+  the board (the announcement pill, edge badges, hearts, the bars of Hit
+  Points and the like) takes no pointer events. Six hearts go two rows of
+  three on a phone, to stay clear of both corners, and a bar is no wider
+  than the gap between the corners (~130 px on 390×844).
 - **`styles.css` — `#result` stays `pointer-events: none` except when it's the
   match-over card.** It sits dead centre, which is where the die rests against
-  the divider; if it took pointer events, the tap that should pick up the die
+  the divider (and, with No Man's Land's divider gone, anywhere in the
+  middle); if it took pointer events, the tap that should pick up the die
   would dismiss the card instead. Board taps dismiss it (see `input.js`).
 - **`index.html` must keep its doctype and viewport meta.** Without them a phone
   lays the page out at ~980px and scales it to ~40%. The artifact copy is a
@@ -261,9 +294,26 @@ these are scripted in `npm run verify` (`tools/phase0/verify.mjs`):
 12. Underdog puts an extra die on the table for the side behind, which is
     thrown and scored, and badges that side; Cursed Number's number is
     announced before every round and a die showing it counts 0.
+13. Pothole: a die that falls in lies in the pit, counts 0 and is written
+    "hole"; none waits over a hole; on 390×844 both holes are on screen.
+14. Cat Paw knocks the dice the rules name, from where they lay, and their
+    new faces count. Gusty Table's announced breeze is the one in the throw's
+    record.
+15. No Man's Land: no divider, and a die of yours across the middle or under
+    the result card is still picked up.
+16. Second Wind: losing a round offers the re-throw button, clear of every
+    resting spot (desktop and 390×844); taking it puts the round back, the
+    new throw replaces the old, and it's spent.
+17. Hit Points, Race to N and Tug of War each draw a bar per side, as the win
+    condition says, clear of the corners on a phone; a Hit Points match runs
+    to 0 HP and back to the menu. Doubles Again asks the player to throw
+    again and adds it on the card; Death Saves' fails are marked by the
+    hearts.
 
 Run `npm test` alongside; it needs no server.
 
 After a change to physics, also run `npm run phase0`. If throw outcomes change
 on purpose (tuning, colliders), re-record the determinism fixtures with
-`node tools/phase0/record-throws.mjs` (needs `npm run dev`).
+`node tools/phase0/record-throws.mjs`, and those onto the tables Spice change
+(holes, a breeze, no divider, a cat's knock) with `node
+tools/phase0/record-throws.mjs --table` (both need `npm run dev`).

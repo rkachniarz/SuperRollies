@@ -1,14 +1,22 @@
 // @ts-check
 // Spice: what is special about a match (DEV_PLAN.md §6). One per match (D9).
 //
-// Every Spice here changes only the rules: what the dice count for, who wins a
-// round, what it costs, and what each side throws. Physical ones (Pothole,
-// Cat Paw) come in Phase 5. Anything random - an exploding die's extra roll, a
-// cursed number - is drawn from the hook context's rng, the match's shared
-// rules stream (R5.2), never thrown on the table.
+// Most Spice change only the rules: what the dice count for, who wins a round,
+// what it costs, and what each side throws. Some change the table (a hole, a
+// breeze, no divider, a cat's paw) or let a side throw again; even those only
+// say what happens, as plain data, and the game carries it out (DEV_PLAN.md
+// R4.4). Anything random - an exploding die's extra roll, a cursed number,
+// where the hole is - is drawn from the hook context's rng, the match's shared
+// rules stream (R5.2). Extra rolls are drawn, not thrown; extra throws
+// (Doubles Again, Second Wind) are thrown.
 
-import { hearts } from './win-conditions.js';
+import {
+  hearts, hitPoints, raceTo, tugOfWar, DEATH_SAVES, DEATH_SAVE_DC, DEATH_SAVE_FAILS, failsFor, naturalOf,
+} from './win-conditions.js';
 import { DIE_MAX, extraDieType, keepHighest } from './dice-sets.js';
+import {
+  TRAY_HALF_WIDTH, DIVIDER_T, POTHOLE_RADIUS, POTHOLE_DEPTH, CAT_PAW_CHANCE, WIND_MIN, WIND_MAX,
+} from '../config.js';
 
 /** @typedef {import('./types.js').Spice} Spice */
 /** @typedef {import('./types.js').Side} Side */
@@ -17,13 +25,6 @@ import { DIE_MAX, extraDieType, keepHighest } from './dice-sets.js';
 
 /** @param {Side} side */
 const other = (side) => (side === 'player' ? 'opponent' : 'player');
-
-/**
- * The d20 that counted for `side`: the higher of two under advantage.
- * @param {Pick<Round, 'faces' | 'kept'>} round
- * @param {Side} side
- */
-const naturalOf = (round, side) => Math.max(...round.faces[side].filter((_, i) => round.kept[side][i]));
 
 /**
  * The round's damage with the loser's multiplied by `k`.
@@ -350,12 +351,275 @@ const CALTROPS = {
   },
 };
 
+// ---------- Phase 5: win conditions that count points ----------
+
+/** @type {Spice} */
+const HIT_POINTS = {
+  id: 'hit-points',
+  name: 'Hit Points',
+  icon: '🩸',
+  kind: 'win',
+  summary: 'Lose a round and you lose the difference in HP.',
+  rules: 'Instead of hearts, each side has hit points, more with dice that roll bigger totals (30 with The Classic). The round\'s loser loses as many as the totals differ by: 17 against 9 costs 8 HP. Run out and you lose the match.',
+  eligibility: {},
+  winCondition: hitPoints,
+};
+
+/** @type {Spice} */
+const RACE_TO_N = {
+  id: 'race-to-n',
+  name: 'Race to N',
+  icon: '🏁',
+  kind: 'win',
+  summary: 'Every total adds up. First to the target wins.',
+  rules: 'Every round, each side\'s total is added to its score, win or lose. The first to reach the target wins the match; the target is about five average throws (55 with The Classic). If you both get there in the same round, the higher score wins.',
+  eligibility: {},
+  winCondition: raceTo,
+};
+
+/** @type {Spice} */
+const TUG_OF_WAR = {
+  id: 'tug-of-war',
+  name: 'Tug of War',
+  icon: '💪',
+  kind: 'win',
+  summary: 'Each round pulls the rope towards the loser. Pull it to their edge.',
+  rules: 'A marker starts halfway between you. Each round it moves towards the loser by the difference between the totals. Whoever it reaches the edge of loses the match. The rope is longer with dice that roll bigger totals.',
+  eligibility: {},
+  winCondition: tugOfWar,
+};
+
+// ---------- Phase 5: re-throws ----------
+
+/** @typedef {{ used: import('./types.js').PerSide<boolean> }} RethrowState */
+
+/** @param {import('./types.js').StateContext} ctx */
+const usedOf = ({ state }) => /** @type {RethrowState} */ (state.spice).used;
+
+/**
+ * A re-throw each side may spend once a match, while `can` allows it.
+ * @param {(side: Side, ctx: import('./types.js').StateContext) => boolean} can
+ */
+const oncePerMatch = (can) => ({
+  can: (/** @type {Side} */ side, /** @type {import('./types.js').StateContext} */ ctx) =>
+    !usedOf(ctx)[side] && can(side, ctx),
+  spend: (/** @type {Side} */ side, /** @type {import('./types.js').StateContext} */ ctx) =>
+    ({ used: { ...usedOf(ctx), [side]: true } }),
+});
+
+/** @type {Spice} */
+const SECOND_WIND = {
+  id: 'second-wind',
+  name: 'Second Wind',
+  icon: '🌬️',
+  kind: 'rule',
+  summary: 'Once a match, throw all your dice again after seeing the result.',
+  rules: 'Each of you can call on a second wind once per match. When you lose a round, you can throw all your dice again once both results are shown, and the round is played out with your new throw. If that turns it around, your opponent can use theirs.',
+  eligibility: {},
+  setup: () => ({ used: { player: false, opponent: false } }),
+  rethrow: oncePerMatch(() => true),
+  edge: (ctx) => /** @type {Side[]} */ (['player', 'opponent'])
+    .filter((side) => !usedOf(ctx)[side])
+    .map((side) => ({ side, label: 'Second Wind ready' })),
+};
+
+/** How many hearts behind a side must be for Mercy (DEV_PLAN.md D30). */
+const MERCY_BEHIND = 2;
+
+/**
+ * How many hearts `side` is behind by.
+ * @param {Side} side
+ * @param {import('./types.js').StateContext} ctx
+ */
+const heartsBehind = (side, { state }) => {
+  const hearts = /** @type {import('./types.js').PerSide<number>} */ (state.win);
+  return hearts[other(side)] - hearts[side];
+};
+
+/** @type {Spice} */
+const MERCY = {
+  id: 'mercy',
+  name: 'Mercy',
+  icon: '🕊️',
+  kind: 'comeback',
+  summary: 'Fall two hearts behind and you get one free re-throw.',
+  rules: `Once you are ${MERCY_BEHIND} hearts behind, you are shown mercy: once in the match, after losing a round, you can throw all your dice again and have the round played out with your new throw.`,
+  eligibility: {},
+  setup: () => ({ used: { player: false, opponent: false } }),
+  rethrow: oncePerMatch((side, ctx) => heartsBehind(side, ctx) >= MERCY_BEHIND),
+  edge: (ctx) => /** @type {Side[]} */ (['player', 'opponent'])
+    .filter((side) => MERCY.rethrow.can(side, ctx))
+    .map((side) => ({ side, label: 'Mercy: a free re-throw' })),
+};
+
+// ---------- Phase 5: on the table ----------
+
+/**
+ * Pothole's hole, from where on the table it was drawn: a fraction across
+ * the middle of the tray (-1 to 1) and one along a half (0 to 1).
+ * @typedef {{ hole: number[] }} PotholeState
+ */
+
+/** @type {Spice} */
+const POTHOLE = {
+  id: 'pothole',
+  name: 'Pothole',
+  icon: '🕳️',
+  kind: 'table',
+  summary: 'A hole in each half of the table. A die that falls in counts as 0.',
+  rules: 'There is a hole in each half of the table, in the same place from where each of you sits. A die that falls in counts as 0. It stays down there until you pick your dice up again.',
+  eligibility: {},
+  setup: ({ rng }) => ({ hole: [rng.next() * 2 - 1, rng.next()] }),
+  // Arithmetic only, from the rules stream: every client puts the hole in
+  // exactly the same place (its record is the throw's, see physics.js). Near
+  // the middle across, so it's on screen on a phone held upright too; along
+  // the half, clear of the divider and the near wall.
+  table: ({ rules, state }) => {
+    const [u, v] = /** @type {PotholeState} */ (state.spice).hole;
+    const { halfWidth, depth: half } = rules.diceSet.tray;
+    const k = halfWidth / TRAY_HALF_WIDTH;
+    const r = POTHOLE_RADIUS * k;
+    const near = DIVIDER_T + r + 0.2 * k;
+    const far = half - r - 0.2 * k;
+    const x = u * 0.3 * halfWidth;
+    const z = near + v * (far - near);
+    const depth = POTHOLE_DEPTH * k;
+    return { holes: [{ x, z, r, depth }, { x: -x, z: -z, r, depth }] };
+  },
+  values: (faces, { fallen }) => faces.map((face, i) => (fallen[i] ? { value: 0, text: 'hole', tag: 'fallen' } : { value: face })),
+  explain: ({ fallen }) => {
+    const down = fallen.player.filter(Boolean).length + fallen.opponent.filter(Boolean).length;
+    return ['', 'Down the hole!', 'Two down the hole!'][down] ?? `${down} down the hole!`;
+  },
+};
+
+/** @type {Spice} */
+const CAT_PAW = {
+  id: 'cat-paw',
+  name: 'Cat Paw',
+  icon: '🐾',
+  kind: 'table',
+  summary: 'Once the dice settle, a paw might swipe in and knock one or two.',
+  rules: 'There is a cat under the table. After each throw, once the dice have settled, there is a good chance a paw swipes in and knocks one or two of the dice, from either side, and they roll again. What they land on counts.',
+  eligibility: {},
+  afterSettle: ({ dice, rng }) => {
+    if (rng.next() >= CAT_PAW_CHANCE) return { spice: { swiped: 0 } };
+    /** @type {{ side: Side, index: number }[]} */
+    const all = [];
+    for (const side of /** @type {Side[]} */ (['player', 'opponent'])) {
+      for (let index = 0; index < dice[side]; index++) all.push({ side, index });
+    }
+    const count = Math.min(all.length, rng.next() < 0.5 ? 1 : 2);
+    const swipes = [];
+    for (let i = 0; i < count; i++) {
+      const die = all.splice(rng.int(all.length), 1)[0];
+      swipes.push({ ...die, power: 0.5 + 0.5 * rng.next(), turn: rng.next() * 2 - 1 });
+    }
+    return { swipes, spice: { swiped: count } };
+  },
+  explain: (_round, { state }) => {
+    const swiped = /** @type {{ swiped?: number }} */ (state.spice ?? {}).swiped;
+    return swiped ? `🐾 The cat knocked ${swiped === 1 ? 'a die' : 'two dice'}!` : undefined;
+  },
+};
+
+// The breeze's directions, as the player sees the table: x to the right, z
+// towards them. Written out rather than from Math.cos, whose last bit may
+// differ between JavaScript engines, and the wind is part of a throw's
+// record (determinism, DEV_PLAN.md D10).
+const D = 0.7071067811865476;
+/** @type {[number, number, string][]} */
+const WINDS = [
+  [1, 0, '→'], [D, -D, '↗'], [0, -1, '↑'], [-D, -D, '↖'],
+  [-1, 0, '←'], [-D, D, '↙'], [0, 1, '↓'], [D, D, '↘'],
+];
+
+/** @type {Spice} */
+const GUSTY_TABLE = {
+  id: 'gusty-table',
+  name: 'Gusty Table',
+  icon: '💨',
+  kind: 'table',
+  summary: 'A breeze blows across the table, pushing the dice as they roll.',
+  rules: 'Each round a breeze blows across the table from a new direction, sometimes gently, sometimes hard. It pushes every die that is still rolling, yours and your opponent\'s alike, but can\'t shift one lying still. Its direction is shown before you throw.',
+  eligibility: {},
+  beforeThrow: ({ rng }) => {
+    const [dx, dz, arrow] = WINDS[rng.int(WINDS.length)];
+    const strength = WIND_MIN + rng.next() * (WIND_MAX - WIND_MIN);
+    const gale = strength > (WIND_MIN + WIND_MAX) / 2;
+    return { spice: { wind: [dx * strength, dz * strength] }, announce: `${gale ? 'Strong wind' : 'A breeze'} blowing ${arrow}` };
+  },
+  table: ({ state }) => ({ wind: /** @type {{ wind?: number[] }} */ (state.spice ?? {}).wind ?? null }),
+};
+
+/** @type {Spice} */
+const NO_MANS_LAND = {
+  id: 'no-mans-land',
+  name: 'No Man\'s Land',
+  icon: '⚔️',
+  kind: 'table',
+  summary: 'No divider: both sides throw into the same tray, and dice collide.',
+  rules: 'The wall down the middle of the table is gone. You both still throw from your own half, at the same time, but the dice can roll anywhere and knock into each other\'s.',
+  eligibility: {},
+  table: () => ({ divider: false }),
+};
+
+// ---------- Phase 5: for particular dice ----------
+
+/** Throws a side makes in a round at most under Doubles Again: two more. */
+const MAX_THROWS = 3;
+
+/**
+ * Whether two or more of `faces` are the same.
+ * @param {number[]} faces
+ */
+const hasDoubles = (faces) => new Set(faces).size < faces.length;
+
+/** @type {Spice} */
+const DOUBLES_AGAIN = {
+  id: 'doubles-again',
+  name: 'Doubles Again',
+  icon: '🎲',
+  kind: 'dice',
+  summary: 'Throw doubles and you throw again, adding it to your total.',
+  rules: `If two of your dice show the same number, you throw all your dice again and add the new throw to your total. Doubles again, and you throw once more, up to ${MAX_THROWS} throws a round.`,
+  eligibility: { diceSets: ['greatsword', 'ability-score'] },
+  again: (throws) => throws.length < MAX_THROWS && hasDoubles(throws.at(-1)),
+  adjust: ({ again }, { side }) => again[side].map((faces) => ({ label: 'again', value: faces.reduce((a, b) => a + b, 0) })),
+  explain: ({ again }) => (again.player.length || again.opponent.length ? 'Doubles! Thrown again.' : undefined),
+};
+
+/** @type {Spice} */
+const DEATH_SAVES_SPICE = {
+  id: 'death-saves',
+  name: 'Death Saves',
+  icon: '⚰️',
+  kind: 'dice',
+  summary: 'Roll under 10 and you fail a death save. Three fails and you\'re out.',
+  rules: `Hearts as usual, and every throw is also a death save, whatever your opponent threw: under ${DEATH_SAVE_DC} is a fail, a natural 1 is two, and a natural 20 wipes them all. ${DEATH_SAVE_FAILS} fails and you lose the match, hearts or not. Under Advantage, the higher d20 counts.`,
+  eligibility: { diceSets: D20_SETS },
+  winCondition: DEATH_SAVES,
+  explain: (round) => {
+    const said = /** @type {Side[]} */ (['player', 'opponent']).map((side) => {
+      const [who, whose] = side === 'player' ? ['you', 'yours'] : ['they', 'theirs'];
+      const fails = failsFor(naturalOf(round, side));
+      if (fails === null) return `${who} wipe ${whose} with a 20`;
+      return fails ? `${who} fail ${fails === 1 ? 'one' : 'two'}` : '';
+    }).filter(Boolean);
+    return said.length ? `Death saves: ${said.join('; ')}.` : undefined;
+  },
+};
+
 /** Every Spice, in the order the catalogue lists them. */
 /** @type {Record<string, Spice>} */
 export const SPICE = Object.fromEntries([
   VANILLA, SUDDEN_DEATH, MARATHON, MUTUAL_DESTRUCTION, LOWBALL, EXPLODING_DICE, RAISING_THE_STAKES, CURSED_NUMBER,
-  UNDERDOG, REVENGE,
+  SECOND_WIND,
+  HIT_POINTS, RACE_TO_N, TUG_OF_WAR,
+  UNDERDOG, REVENGE, MERCY,
+  POTHOLE, CAT_PAW, GUSTY_TABLE, NO_MANS_LAND,
   CRITICAL_HIT, CRITICAL_FUMBLE, INSPIRATION, BRUTAL_CRITICAL, SNAKE_EYES, TRIPLES, CALTROPS,
+  DOUBLES_AGAIN, DEATH_SAVES_SPICE,
 ].map((spice) => [spice.id, spice]));
 
 /** What each kind of Spice is called on its card. */
@@ -363,5 +627,6 @@ export const SPICE_KINDS = {
   rule: 'Rule change',
   win: 'How to win',
   comeback: 'Comeback',
+  table: 'On the table',
   dice: 'For these dice',
 };

@@ -58,14 +58,17 @@ export function createTable(arena) {
   /**
    * Lays the table out for a match: `types` is one side's dice (dieTypes in
    * rules/dice-sets.js), at the dice set's `scale`, in its `tray`. Without an
-   * `opponent` there's no opponent's dice and no divider (Zen).
+   * `opponent` there's no opponent's dice and no divider (Zen). A Spice may
+   * take the divider away anyway (No Man's Land) or put `holes` in the floor
+   * (Pothole); no die is put down over one.
    */
-  function setup({ types, scale: dieScale, tray, opponent }) {
+  function setup({ types, scale: dieScale, tray, opponent, divider = opponent, holes = [] }) {
     for (const die of [...sides.player, ...sides.opponent]) die.remove();
     byId.clear();
     scale = dieScale;
     arena.setTray(tray);
-    arena.setDivider(opponent);
+    arena.setHoles(holes);
+    arena.setDivider(divider, opponent);
     for (const side of /** @type {const} */ (['player', 'opponent'])) {
       sides[side] = side === 'opponent' && !opponent ? [] : types.map((type, i) => addDie(side, type, i));
       measureHand(side);
@@ -87,7 +90,19 @@ export function createTable(arena) {
         // starts from where they're held.
         die.placeAt(centre.x + ox, mirror * (centre.z + oz), i * 0.9);
       });
+      // Any that would sit over a hole are put down elsewhere.
+      sides[side].forEach((die, i) => {
+        const { x, z } = die.mesh.position;
+        if (holeClearance(x, z) >= die.radius) return;
+        const spot = clearestSpot(side, die.radius, die);
+        die.placeAt(spot.x, spot.z, i * 0.9);
+      });
     }
+  }
+
+  // How far (x, z) is from the edge of the nearest hole; Infinity with none.
+  function holeClearance(x, z) {
+    return Math.min(Infinity, ...arena.holes.map((h) => Math.hypot(h.x - x, h.z - z) - h.r));
   }
 
   /**
@@ -115,10 +130,11 @@ export function createTable(arena) {
     measureHand(side);
   }
 
-  // The spot in `side`'s half furthest from any of its dice, for a die of
-  // circumradius `radius` to be put down on. A coarse grid is plenty: it only
-  // decides where a die waits, never how a throw goes.
-  function clearestSpot(side, radius) {
+  // The spot in `side`'s half furthest from any of its dice (bar `except`),
+  // for a die of circumradius `radius` to be put down on, and never over a
+  // hole. A coarse grid is plenty: it only decides where a die waits, never
+  // how a throw goes.
+  function clearestSpot(side, radius, except = null) {
     const mirror = side === 'player' ? 1 : -1;
     const reach = { x: radius, z: radius };
     const far = arena.clampToTray(0, Infinity, reach).z;
@@ -129,7 +145,10 @@ export function createTable(arena) {
       for (let j = 0; j <= 6; j++) {
         const x = -wide + (2 * wide * i) / 8;
         const z = mirror * (near + ((far - near) * j) / 6);
-        const clear = Math.min(...sides[side].map((d) => Math.hypot(d.mesh.position.x - x, d.mesh.position.z - z)));
+        const hole = holeClearance(x, z);
+        if (hole < radius) continue;
+        const clear = Math.min(hole, ...sides[side].filter((d) => d !== except)
+          .map((d) => Math.hypot(d.mesh.position.x - x, d.mesh.position.z - z)));
         if (clear > best.clear) best = { x, z, clear };
       }
     }

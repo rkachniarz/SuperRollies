@@ -71,7 +71,9 @@ export function createThrowControls({
     return {
       sim: createHoldSim({
         arenaHalfWidth: arena.arenaHalfWidth,
-        divider: arena.divider,
+        // In the player's own half whenever the tray is split, even with no
+        // divider (No Man's Land), as clampToTray keeps the hand.
+        divider: arena.split,
         tray: arena.tray,
         dice: dice.map((d) => ({ type: d.type, s: d.scale, q: d.mesh.quaternion.toArray() })),
         centre: [c.x, c.z],

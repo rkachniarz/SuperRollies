@@ -6,6 +6,7 @@ import { initPhysics } from './physics.js';
 import { createRoller } from './roll.js';
 import { replayThrow } from './replay.js';
 import { createHud } from './hud.js';
+import { createEffects } from './effects.js';
 import { createGame } from './game.js';
 import { createThrowControls } from './input.js';
 
@@ -14,7 +15,8 @@ const arena = createArena(canvas);
 const table = createTable(arena);
 const roller = createRoller(table.meshFor);
 const hud = createHud();
-const game = createGame({ hud, roller, arena, table });
+const effects = createEffects(arena);
+const game = createGame({ hud, roller, arena, table, effects });
 // Something to look at behind the menu while the physics engine loads.
 table.setup({ types: ['d20'], scale: 1, tray: arena.tray, opponent: true });
 
@@ -62,6 +64,7 @@ function animate(now) {
   lastTime = now;
   roller.frame(dt);
   controls.frame(dt);
+  effects.frame(dt, roller.busy);
   if (!roller.busy) table.keepOnScreen();
   arena.renderer.render(arena.scene, arena.camera);
 }

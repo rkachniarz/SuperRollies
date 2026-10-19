@@ -7,7 +7,7 @@
        padding in the HUD styles actually resolve on notched screens. -->
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#12111a">
-  <meta name="description" content="Draft your dice, from a d20 to a Fireball's 8d6, add a pinch of Spice that bends the rules, and roll higher than your opponent. Or just roll, in Zen.">
+  <meta name="description" content="Draft your dice, from a d20 to a Fireball's 8d6, add a pinch of Spice that bends the rules or the table, and roll higher than your opponent. Or just roll, in Zen.">
   <title>Super Rollies</title>
 
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Karla:wght@400;600;700&display=swap">
@@ -41,9 +41,14 @@
   <span class="match-info-spice" id="matchInfoSpice"></span>
 </button>
 
+<!-- Each side's match state, as the win condition draws it: hearts (with any
+     marks beside them, such as failed death saves), or a bar (Hit Points, a
+     race's score, the ground left in a tug of war). -->
 <div class="hud top" id="opponentHud" hidden>
   <div class="label">Opponent <span class="edge" id="opponentEdge" hidden></span></div>
   <div class="hearts" id="opponentHearts"></div>
+  <div class="meter" id="opponentMeter" hidden><div class="meter-fill"></div><span class="meter-text"></span></div>
+  <div class="marks" id="opponentMarks" hidden></div>
 </div>
 
 <!-- What the Spice says about the coming round (a cursed number, the stakes).
@@ -51,9 +56,16 @@
 <div class="announce" id="announce" hidden></div>
 
 <div class="hud bottom" id="youHud" hidden>
+  <div class="marks" id="youMarks" hidden></div>
   <div class="hearts" id="youHearts"></div>
+  <div class="meter" id="youMeter" hidden><div class="meter-fill"></div><span class="meter-text"></span></div>
   <div class="label">You <span class="edge" id="youEdge" hidden></span></div>
 </div>
+
+<!-- A chance to throw again once the round's result is shown (Second Wind,
+     Mercy). Bottom-right, below the tray's near wall on every screen shape,
+     so no die can rest under it (DEV_PLAN.md 4.6a). -->
+<button class="rethrow-btn" id="rethrowBtn" hidden></button>
 
 <div id="result">
   <p class="headline" id="resultHeadline"></p>
@@ -63,7 +75,7 @@
 <div class="menu-overlay" id="menu">
   <div class="menu-card" id="menuMain">
     <h1 class="menu-title">Super Rollies</h1>
-    <p class="menu-subtitle">Quick Game: draft your dice and a Spice that bends the rules, then roll higher than your opponent.<br>Zen: just roll.</p>
+    <p class="menu-subtitle">Quick Game: draft your dice and a Spice that bends the rules (or the table), then roll higher than your opponent.<br>Zen: just roll.</p>
     <div class="menu-buttons">
       <button class="menu-btn" id="quickGameBtn" disabled>Loading…</button>
       <button class="menu-btn secondary" id="zenBtn" disabled>Zen</button>

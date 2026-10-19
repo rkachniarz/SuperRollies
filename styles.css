@@ -88,6 +88,69 @@
   @media (prefers-reduced-motion: reduce){
     .heart-full.losing{ animation:none; opacity:0; }
   }
+  .hearts[hidden]{ display:none; }
+
+  /* A side's bar, for win conditions that count points: Hit Points, a race's
+     score, the ground left in a tug of war. Shrinks or grows smoothly; a
+     drop gives it a shake, as losing a heart does. */
+  /* As wide as fits between the back button and the match label, centred:
+     about 130px on a 390px phone. */
+  .meter{
+    position:relative;
+    width:min(200px, calc(100vw - 260px));
+    height:18px;
+    border-radius:999px;
+    background:rgba(245,241,255,0.12);
+    border:1px solid rgba(245,241,255,0.25);
+    overflow:hidden;
+  }
+  .meter[hidden]{ display:none; }
+  .meter-fill{
+    position:absolute;
+    inset:0 auto 0 0;
+    width:100%;
+    background:#ff5470;
+    transition:width 500ms ease-out;
+  }
+  .meter.race .meter-fill{ background:#7ee0a1; }
+  .meter.tug .meter-fill{
+    background:repeating-linear-gradient(115deg, #e8d9b5 0 6px, #c9a86a 6px 12px);
+  }
+  .meter-text{
+    position:relative;
+    display:block;
+    text-align:center;
+    font-size:12px;
+    font-weight:700;
+    line-height:18px;
+    color:var(--ink);
+    text-shadow:0 1px 2px rgba(0,0,0,0.8);
+  }
+  .meter.hit{ animation:meter-hit 450ms cubic-bezier(.36,.07,.19,.97); }
+  @keyframes meter-hit{
+    20%{ transform:translateX(-4px); }
+    40%{ transform:translateX(4px); }
+    60%{ transform:translateX(-2px); }
+    80%{ transform:translateX(2px); }
+  }
+  @media (prefers-reduced-motion: reduce){
+    .meter-fill{ transition:none; }
+    .meter.hit{ animation:none; }
+  }
+
+  /* Marks beside the hearts: failed death saves. */
+  .marks{ display:flex; gap:4px; }
+  .marks[hidden]{ display:none; }
+  .mark{
+    width:18px;
+    height:18px;
+    border-radius:50%;
+    border:1.5px solid rgba(245,241,255,0.35);
+    font-size:11px;
+    line-height:15px;
+    text-align:center;
+  }
+  .mark.struck{ border-color:#ff5470; background:rgba(255,84,112,0.25); }
 
   /* ---------- Main menu ---------- */
   /* Scrolls when what's on it is taller than the screen (Zen's catalogue on
@@ -326,6 +389,35 @@
   }
   .back-btn[hidden]{ display:none; }
 
+  /* Throw again (Second Wind, Mercy): bottom-right, below the tray's near
+     wall on every screen shape, so no die can rest under it (4.6a). */
+  .rethrow-btn{
+    position:fixed;
+    bottom:calc(12px + env(safe-area-inset-bottom,0px));
+    right:calc(12px + env(safe-area-inset-right,0px));
+    z-index:4;
+    max-width:calc(50vw - 60px);
+    font-family:'Karla', system-ui, sans-serif;
+    font-size:14px;
+    font-weight:700;
+    color:var(--bg);
+    background:#7ee0a1;
+    border:none;
+    border-radius:10px;
+    padding:8px 14px;
+    cursor:pointer;
+    box-shadow:0 0 0 0 rgba(126,224,161,0.6);
+    animation:rethrow-pulse 1.6s ease-out infinite;
+  }
+  .rethrow-btn[hidden]{ display:none; }
+  @keyframes rethrow-pulse{
+    70%{ box-shadow:0 0 0 10px rgba(126,224,161,0); }
+    100%{ box-shadow:0 0 0 0 rgba(126,224,161,0); }
+  }
+  @media (prefers-reduced-motion: reduce){
+    .rethrow-btn{ animation:none; }
+  }
+
   /* The match's dice and Spice, top-right: mirrors the back button, outside
      the tray as drawn on every screen shape, so no die can rest under it
      (DEV_PLAN.md 4.6a). Kept narrow enough to stay clear of the hearts. */
@@ -481,6 +573,7 @@
   /* A die a Spice changed: one that exploded, one that was cursed to 0. */
   #result .exploded{ color:var(--player-accent); font-weight:700; }
   #result .cursed{ color:#ff5470; text-decoration:line-through; }
+  #result .fallen{ color:#ff8a9d; font-style:italic; }
   #result .adjustment{ color:#ff8a9d; }
   /* What the Spice decided, or announces for the next round. */
   #result .note{ display:block; margin-top:4px; color:#b9a6ff; font-weight:700; }

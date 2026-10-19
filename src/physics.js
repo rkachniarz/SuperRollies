@@ -14,6 +14,7 @@
 // makes "the same" mean bit-identical across browsers and machines.
 
 import RAPIER from '@dimforge/rapier3d-deterministic-compat';
+import { ShapeUtils, Vector2 } from 'three';
 import {
   TRAY_HALF_WIDTH, TRAY_DEPTH, WALL_T, DIVIDER_T, WALL_HALF_HEIGHT, DIE_RADIUS,
   PHYSICS_STEP, GRAVITY, SETTLE_SPEED, SETTLE_TIME, STILL_SPEED, STILL_TIME, SETTLE_TIMEOUT_MS,
@@ -21,7 +22,7 @@ import {
   WALL_FRICTION, WALL_RESTITUTION, DIE_LINEAR_DAMPING, DIE_ANGULAR_DAMPING,
   HELD_HEIGHT, HOLD_PALM_SIZE, HOLD_PALM_FLAT, HOLD_PALM_SLOPE, HOLD_PALM_LIP, HOLD_PALM_LIP_SLOPE, HOLD_PALM_FINGERS, HOLD_PALM_FRICTION, HOLD_PALM_RESTITUTION, HOLD_MAX_DIE_SPEED,
   HOLD_FOLLOW, HOLD_MAX_ACCEL, HOLD_SWAY, HOLD_SWAY_HZ, HOLD_TILT, HOLD_CALM_SPEED, HOLD_HOP_CHANCE, HOLD_HOP, HOLD_HOP_SPIN,
-  HOLD_SETTLE_STEPS, HOLD_SETTLE_DAMPING, HOLD_RELEASE_OVERLAP,
+  HOLD_SETTLE_STEPS, HOLD_SETTLE_DAMPING, HOLD_RELEASE_OVERLAP, WIND_FULL_TIME, WIND_END_TIME,
 } from './config.js';
 import { SHAPES } from './die-shapes.js';
 
@@ -42,10 +43,14 @@ import { SHAPES } from './die-shapes.js';
  * @typedef {{
  *   v: 1,
  *   arenaHalfWidth: number,  // how far out a die's centre can be and stay on screen (see sideWallFace)
- *   divider?: boolean,       // whether the wall splitting the tray is there (default true; Zen has none)
+ *   divider?: boolean,       // whether the wall splitting the tray is there (default true; Zen and No Man's Land have none)
  *   tray?: Tray,             // the dice set's tray (default: The Classic's)
+ *   holes?: Hole[],          // holes in the floor, each over a pit (Pothole; default none)
+ *   wind?: number[] | null,  // a steady breeze, [x, z] in units/s², on every die still moving (Gusty Table)
  *   dice: DieRelease[],
  * }} ThrowRecord
+ *
+ * @typedef {import('./rules/types.js').Hole} Hole
  *
  * The tray's size, inside its walls: half its width, and the depth of one
  * side (the whole tray is twice that).
@@ -76,6 +81,10 @@ const STILL_SPEED_SQ = STILL_SPEED * STILL_SPEED;
 const STILL_STEPS = Math.ceil(STILL_TIME / PHYSICS_STEP);
 export const TIMEOUT_STEPS = Math.ceil(SETTLE_TIMEOUT_MS / 1000 / PHYSICS_STEP);
 const SETTLE_SPEED_SQ = SETTLE_SPEED * SETTLE_SPEED;
+// A breeze blows at full strength for the first of these many steps of a
+// throw, then dies away by the second, so it can never keep a die from
+// settling.
+const WIND_STEPS = [Math.round(WIND_FULL_TIME / PHYSICS_STEP), Math.round(WIND_END_TIME / PHYSICS_STEP)];
 
 // How close a contact point has to be to count as touching. Rapier also
 // reports points a little apart (it predicts contacts before they happen).
@@ -112,16 +121,19 @@ export function sideWallFace(arenaHalfWidth, tray = CLASSIC_TRAY) {
   return Math.min(tray.halfWidth, arenaHalfWidth + DIE_RADIUS);
 }
 
-function addTray(world, divider, sideFace, { halfWidth, depth }) {
+function addTray(world, divider, sideFace, { halfWidth, depth }, holes = []) {
   // The floor is a thick slab rather than a plane, so a die driven hard into
   // it has a body of material to be pushed back out of, not a surface to slip
-  // past.
-  world.createCollider(
-    RAPIER.ColliderDesc.cuboid(halfWidth * 4, 1, depth * 4)
-      .setTranslation(0, -1, 0)
-      .setFriction(FLOOR_FRICTION)
-      .setRestitution(FLOOR_RESTITUTION)
-  );
+  // past. With holes in it, it's built round them instead (addHoledFloor).
+  if (holes.length) addHoledFloor(world, halfWidth + 1, depth + 1, holes);
+  else {
+    world.createCollider(
+      RAPIER.ColliderDesc.cuboid(halfWidth * 4, 1, depth * 4)
+        .setTranslation(0, -1, 0)
+        .setFriction(FLOOR_FRICTION)
+        .setRestitution(FLOOR_RESTITUTION)
+    );
+  }
 
   // Same layout as the visible walls in arena.js (bar the side walls on a
   // narrow screen, see sideWallFace), but WALL_HALF_HEIGHT tall: high enough
@@ -137,6 +149,123 @@ function addTray(world, divider, sideFace, { halfWidth, depth }) {
   addWall(0, -depth - WALL_T, halfWidth + WALL_T * 2, WALL_T); // far edge
   addWall(0, depth + WALL_T, halfWidth + WALL_T * 2, WALL_T); // near edge
   if (divider) addWall(0, 0, halfWidth + WALL_T * 2, DIVIDER_T);
+}
+
+// cos(k pi / 16) for k = 0..8: a hole is a 32-sided polygon. Written out
+// rather than computed, because Math.cos's last bit may differ between
+// JavaScript engines, and a hole's corners must be bit-identical everywhere
+// for a throw to replay the same (DEV_PLAN.md D10).
+const COS_16THS = [
+  1, 0.9807852804032304, 0.9238795325112867, 0.8314696123025452, 0.7071067811865476,
+  0.5555702330196023, 0.38268343236508984, 0.19509032201612833, 0,
+];
+/** The corners of a 32-sided polygon of radius 1, anticlockwise from +x (seen from below +y). */
+export const HOLE_CORNERS = Array.from({ length: 32 }, (_, k) => {
+  const q = k % 16;
+  const c = q <= 8 ? COS_16THS[q] : -COS_16THS[16 - q];
+  const s = q <= 8 ? COS_16THS[8 - q] : COS_16THS[q - 8];
+  return k < 16 ? [c, s] : [-c, -s];
+});
+
+/**
+ * The floor with holes in it (Pothole), each over a round pit: one triangle
+ * mesh for its top, the pits' walls and their bottoms, which join up, so
+ * there's no gap between pieces for a die to slip into. A few cm under the
+ * mesh, solid boxes stand in for the slab, so a die driven hard into the
+ * floor still has a body of material to be pushed back out of.
+ *
+ * Without Rapier's FIX_INTERNAL_EDGES, measured both ways: with it, a die
+ * spinning flat where several triangles meet could take 3 s or more to stop
+ * (on the slab, half a second), and Fireball timed out in 1 throw in 6.
+ * Without it, dice settle as fast as on the slab; the cost is a slightly
+ * bumpier floor where triangles meet (a sliding die's hardest bounce up 2.0
+ * units/s against the slab's 1.5).
+ * @param {RAPIER.World} world
+ * @param {number} w  Half the floor's width.
+ * @param {number} d  Half the floor's length.
+ * @param {Hole[]} holes
+ */
+function addHoledFloor(world, w, d, holes) {
+  const rims = holes.map(({ x, z, r }) => HOLE_CORNERS.map(([c, s]) => [x + c * r, z + s * r]));
+  /** @type {number[]} */
+  const verts = [];
+  /** @type {number[]} */
+  const indices = [];
+  const vertex = (/** @type {number} */ x, /** @type {number} */ y, /** @type {number} */ z) => {
+    verts.push(x, y, z);
+    return verts.length / 3 - 1;
+  };
+  // A triangle wound so its normal points `out` of the solid floor: along
+  // `out` as a direction, or towards it as a point if `toPoint`.
+  const triangle = (a, b, c, out, toPoint = false) => {
+    const at = (/** @type {number} */ i, /** @type {number} */ k) => verts[i * 3 + k];
+    const u = [0, 1, 2].map((k) => at(b, k) - at(a, k));
+    const v = [0, 1, 2].map((k) => at(c, k) - at(a, k));
+    const n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+    const dir = toPoint ? [0, 1, 2].map((k) => out[k] - at(a, k)) : out;
+    if (n[0] * dir[0] + n[1] * dir[1] + n[2] * dir[2] < 0) indices.push(a, c, b);
+    else indices.push(a, b, c);
+  };
+
+  // The top: the floor's outline with the holes cut out, triangulated.
+  const outline = [[-w, -d], [w, -d], [w, d], [-w, d]];
+  const top = [...outline, ...rims.flat()].map(([px, pz]) => vertex(px, 0, pz));
+  const triangles = ShapeUtils.triangulateShape(
+    outline.map(([px, pz]) => new Vector2(px, pz)),
+    rims.map((rim) => rim.map(([px, pz]) => new Vector2(px, pz)))
+  );
+  for (const [a, b, c] of triangles) triangle(top[a], top[b], top[c], [0, 1, 0]);
+
+  // Each pit: its wall, facing in, from the rim (the very same corners as
+  // the top's, so the mesh joins up) down to its bottom; and the bottom.
+  let first = outline.length;
+  holes.forEach(({ x, z, depth }, h) => {
+    const rim = rims[h].map((_, i) => top[first + i]);
+    first += rim.length;
+    const floor = rims[h].map(([px, pz]) => vertex(px, -depth, pz));
+    const middle = vertex(x, -depth, z);
+    const inside = [x, -depth / 2, z];
+    for (let i = 0; i < rim.length; i++) {
+      const j = (i + 1) % rim.length;
+      triangle(rim[i], rim[j], floor[j], inside, true);
+      triangle(rim[i], floor[j], floor[i], inside, true);
+      triangle(middle, floor[i], floor[j], [0, 1, 0]);
+    }
+  });
+  world.createCollider(
+    RAPIER.ColliderDesc.trimesh(new Float32Array(verts), new Uint32Array(indices), RAPIER.TriMeshFlags.MERGE_DUPLICATE_VERTICES)
+      .setFriction(FLOOR_FRICTION)
+      .setRestitution(FLOOR_RESTITUTION)
+  );
+
+  // The solid underneath, BACKING below the surface: a grid cut along each
+  // hole's bounding square, every cell bar those inside one (runs of cells
+  // along x merged into one box), and a slab under each pit's bottom.
+  const BACKING = 0.05;
+  const slab = (x0, x1, z0, z1, below) => world.createCollider(
+    RAPIER.ColliderDesc.cuboid((x1 - x0) / 2, 1, (z1 - z0) / 2)
+      .setTranslation((x0 + x1) / 2, -below - 1, (z0 + z1) / 2)
+      .setFriction(FLOOR_FRICTION)
+      .setRestitution(FLOOR_RESTITUTION)
+  );
+  const cuts = (/** @type {number} */ edge, /** @type {(h: Hole) => number} */ at) =>
+    [...new Set([-edge, edge, ...holes.flatMap((h) => [at(h) - h.r, at(h) + h.r])])].sort((a, b) => a - b);
+  const xs = cuts(w, (h) => h.x);
+  const zs = cuts(d, (h) => h.z);
+  const inHole = (/** @type {number} */ cx, /** @type {number} */ cz) =>
+    holes.some((h) => Math.abs(cx - h.x) < h.r && Math.abs(cz - h.z) < h.r);
+  for (let j = 0; j + 1 < zs.length; j++) {
+    let start = null;
+    for (let i = 0; i < xs.length; i++) {
+      const solid = i + 1 < xs.length && !inHole((xs[i] + xs[i + 1]) / 2, (zs[j] + zs[j + 1]) / 2);
+      if (solid && start === null) start = i;
+      if (!solid && start !== null) {
+        slab(xs[start], xs[i], zs[j], zs[j + 1], BACKING);
+        start = null;
+      }
+    }
+  }
+  for (const h of holes) slab(h.x - h.r, h.x + h.r, h.z - h.r, h.z + h.r, h.depth + BACKING);
 }
 
 /**
@@ -174,6 +303,21 @@ function restsOnFace(world, collider) {
   const points = [];
   world.contactPairsWith(collider, (other) => {
     const touching = other.parent() ? TOUCHING_DIE : TOUCHING;
+    // A floor with holes in it (a triangle mesh) has no solver contacts to
+    // read here: Rapier reports its contacts only as raw ones. Their point
+    // on the mesh is in world space, as the mesh sits at the origin,
+    // unturned. Only for the mesh, so every other floor settles exactly as
+    // its recorded throws did.
+    if (other.shapeType() === RAPIER.ShapeType.TriMesh) {
+      world.contactPair(collider, other, (manifold, flipped) => {
+        for (let i = 0; i < manifold.numContacts(); i++) {
+          if (manifold.contactDist(i) < touching) {
+            points.push(flipped ? manifold.localContactPoint1(i) : manifold.localContactPoint2(i));
+          }
+        }
+      });
+      return;
+    }
     world.contactPair(collider, other, (manifold) => {
       for (let i = 0; i < manifold.numSolverContacts(); i++) {
         if (manifold.solverContactDist(i) < touching) points.push(manifold.solverContactPoint(i));
@@ -534,7 +678,8 @@ export function createRoundSim(record, { clamp = true } = {}) {
   world.timestep = PHYSICS_STEP;
   const tray = record.tray ?? CLASSIC_TRAY;
   const sideFace = sideWallFace(record.arenaHalfWidth, tray);
-  addTray(world, record.divider ?? true, sideFace, tray);
+  addTray(world, record.divider ?? true, sideFace, tray, record.holes);
+  const wind = record.wind ?? null;
 
   const dice = record.dice.map((d) => {
     const [qx, qy, qz, qw] = d.q;
@@ -573,6 +718,19 @@ export function createRoundSim(record, { clamp = true } = {}) {
 
     step() {
       if (sim.done) return;
+      // A breeze (Gusty Table) pushes every die still on the move, as an
+      // impulse each step, for as long as the dice are rolling about, then
+      // dies away (WIND_STEPS). One that has all but stopped is left be:
+      // pushed on into a wall, a die jittered against it and never settled.
+      const gust = wind ? Math.max(0, Math.min(1, (WIND_STEPS[1] - sim.steps) / (WIND_STEPS[1] - WIND_STEPS[0]))) : 0;
+      if (gust > 0) {
+        for (const d of dice) {
+          const v = d.body.linvel();
+          if (d.settled || v.x * v.x + v.y * v.y + v.z * v.z < SETTLE_SPEED_SQ) continue;
+          const m = d.body.mass() * PHYSICS_STEP * gust;
+          d.body.applyImpulse({ x: wind[0] * m, y: 0, z: wind[1] * m }, true);
+        }
+      }
       world.step();
       sim.steps++;
       for (const d of dice) {
@@ -603,6 +761,16 @@ export function createRoundSim(record, { clamp = true } = {}) {
           return v2 < SETTLE_SPEED_SQ && w2 < SETTLE_SPEED_SQ &&
             (d.stillSteps >= STILL_STEPS || restsOnFace(world, d.collider));
         };
+
+        // Down a hole (Pothole), a die is out of play wherever it ends up,
+        // so nothing waits for it: a heap of dice in a pit can shuffle
+        // about for seconds. It goes on being simulated, so dice falling in
+        // after it still land on it.
+        if (d.fallen || d.curr.p[1] < 0) {
+          d.fallen = true;
+          d.settled = true;
+          continue;
+        }
 
         // A settled die stays settled until something moves it: one put to
         // sleep until another die knocks into it and wakes it, one left awake

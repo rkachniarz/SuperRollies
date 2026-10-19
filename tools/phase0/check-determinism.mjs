@@ -2,8 +2,8 @@
 //
 //   node tools/phase0/check-determinism.mjs
 //
-// Replays tools/phase0/throws.json (real throws, with the result the game
-// reached in Chromium when they were recorded) in Node, then in headless
+// Replays tools/phase0/throws.json and table-throws.json (real throws, with
+// the result the game reached in Chromium when they were recorded) in Node, then in headless
 // Chromium via determinism.html, and compares every final position and
 // orientation bit for bit. Needs the dev server running (npm run dev).
 //
@@ -17,7 +17,12 @@ import { initPhysics } from '../../src/physics.js';
 import { replayThrow } from '../../src/replay.js';
 import { openGame } from './driver.mjs';
 
-const { throws, recordedIn } = JSON.parse(await readFile(new URL('./throws.json', import.meta.url), 'utf8'));
+const load = async (file) => JSON.parse(await readFile(new URL(file, import.meta.url), 'utf8'));
+// Plain throws, and throws onto the tables Spice change (holes, a breeze, no
+// divider, a cat's knock): record-throws.mjs --table.
+const { throws: plain, recordedIn } = await load('./throws.json');
+const { throws: table } = await load('./table-throws.json');
+const throws = [...plain, ...table];
 let failures = 0;
 
 // ---------- Node ----------

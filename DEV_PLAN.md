@@ -20,6 +20,9 @@ Since Phase 3 (2026-10-18): every die type, d4 to d20 and percentile.
 Since Phase 4 (2026-10-18): the two-card draft (dice, then Spice), sixteen
 rules-only Spice, the in-match Dice/Spice label with its rules, and Zen's
 catalogue of cards.
+Since Phase 5 (2026-10-19): Spice on the table (Pothole, Cat Paw, Gusty Table,
+No Man's Land), re-throws (Second Wind, Mercy), three more ways to win (Hit
+Points, Race to N, Tug of War), Doubles Again and Death Saves: 28 Spice.
 
 ---
 
@@ -84,6 +87,15 @@ Some Spice works with any dice; some only makes sense with particular dice
 | D27 | 2026-10-18 | **Random draws for each side happen player first.** Exploding Dice and Brutal Critical roll their extra dice from the rules stream, the player's side before the opponent's. So in multiplayer **both clients evaluate the engine from the same seat** (the host as `player`) and the guest mirrors the outcome for display, rather than each evaluating from its own side as `types.js` used to suggest. Settles part of Phase 7's protocol early (7.6). |
 | D28 | 2026-10-18 | **Phase 4's Spice hooks.** Beyond R3.1: `hand` (what a side throws this round: Underdog's extra die, Inspiration's advantage; it depends on the match state only, so the game asks it before the throw and the engine after), `values` (what each die counts for: exploded, cursed), `adjust` (named additions to a total: Caltrops), `edge` (who holds a state-based advantage, R3.5) and `explain` (a line for the result card). `score` is replaced by `values`; `compare` gets the whole round, faces included (Snake Eyes, Triples). The engine records the previous round's winner (`state.previous`) for Revenge, Inspiration and Raising the Stakes. Extra rolls (Exploding Dice, Brutal Critical) are **drawn, not thrown**: rules-only, as Phase 4 is; a thrown version would be Phase 5 `afterSettle` work. **Underdog's extra die** is the set's commonest die type, the smallest on a tie (a d4 for The Whole Bag, a d6 for Sneak Attack). **Cursed Number** is drawn from 1 to the smallest die's highest face, so it can land on any die. Eligibility gains `excludeDiceSets`; Exploding Dice, Cursed Number and Underdog exclude Percentile, whose two dice are digits rather than a total. |
 | D29 | 2026-10-18 | **The draft is the only way into a Quick Game; Zen's picker is the catalogue.** D19's interim list is gone. Quick Game always deals two dice cards, then two Spice cards (R1.2), with no "see all"; the catalogue screen (4.3) is the same cards as a list, used by Zen now and the multiplayer host in Phase 7. The draft deals from its own streams (`draft-dice`, `draft-spice`) of the match seed, and the match is played with that seed. |
+| D30 | 2026-10-19 | **Mercy is two hearts behind, not three.** With three hearts a side, three behind means you have already lost, so §6.3's rule could never apply. Two behind (one heart against three) is the furthest a side can fall and play on. One free re-throw a match, while two behind, after losing a round. |
+| D31 | 2026-10-19 | **Re-throws (Second Wind, Mercy) replay the round from where it started.** The engine stays pure, so taking one is going back to the state the round began in (`spendRethrow`) and playing it out again (`playRound`) with the re-thrower's new faces; the other side's dice stay as they lay. Only the round's loser is offered one, once its result is shown: the player by a button (bottom-right, below the tray's near wall, 4.6a), which stays up until they pick their dice up for the next round; if the round ended the match, until they tap the table to accept it. If the re-throw turns the round, the other side may then use theirs. The opponent (AI) uses its re-throw only when the loss would cost it the match. Single-player only until Q1. |
+| D32 | 2026-10-19 | **Pothole's holes are real openings.** The floor becomes one triangle mesh with the holes cut out, each over a pit with a bottom, so a die drops in, lies there visibly, and is counted as fallen when its centre is below the table (one cocked over the rim is read as it lies, D24). Built only when there are holes: every other table keeps the slab, so recorded throws replay unchanged. Without Rapier's `FIX_INTERNAL_EDGES`: measured, it left a die spinning for 3 s where triangles meet (Fireball timed out 1 throw in 6), where without it dice settle as on the slab, at the cost of a slightly bumpier floor. Against the mesh Rapier gives no solver contacts, so `restsOnFace` reads its raw contacts. A fallen die stops being waited for (a heap in a pit shuffles for seconds). The holes mirror each other, are placed from the rules stream (arithmetic only, so every client agrees), near the middle across so they are on screen on a phone, and no die is put down over one. |
+| D33 | 2026-10-19 | **Gusty Table's breeze is a gust in the record.** Drawn each round from eight directions written out as numbers (not `Math.cos`, whose last bit can differ between engines) at 2.5-5 units/s², always under what floor friction holds, so it never moves a die lying still. It pushes only dice moving faster than the settle speed, at full strength for 1.5 s then fading out by 2.5 s: pushed on into a wall, a die jittered and never settled. Drawn with streaks while the dice roll. |
+| D34 | 2026-10-19 | **Cat Paw is the first `afterSettle`.** Once the round's main throw has settled, the rules (from their stream) say whether a paw swipes (40%) and at which one or two dice, of either side, how hard and at what angle; the game knocks them from the nearer side wall towards the middle (arithmetic only) and simulates every die again from where it lay. A knock is an ordinary throw record. The paw is drawn but not simulated. |
+| D35 | 2026-10-19 | **Doubles Again is thrown, not drawn.** Unlike Phase 4's extra rolls (D28), the extra throw is the side's own dice thrown again, the player by hand and the opponent on its own, both together if both threw doubles; each is added to the total as `+ 9 again`. "Doubles" with three d6s is any two the same (44% of throws), so it's capped at three throws a round. A new engine input carries each side's extra throws (`again`), alongside which dice fell in a hole (`fallen`). |
+| D36 | 2026-10-19 | **Death Saves is Hearts plus fails.** Every round each side's d20 that counts (D26) is also a save, whatever the other side threw: under 10 is one fail, a natural 1 two, a natural 20 wipes them. Three fails loses the match; both out together is a draw. The fails are marks beside the hearts. |
+| D37 | 2026-10-19 | **The point-counting win conditions scale to the dice.** From each set's exact distribution of totals (`scoreStats`): Hit Points start at 4.5 times the average gap between two totals, Race to N's target is five average totals, Tug of War's rope reaches 3 average gaps each way. Simulated, every set then lasts about the same: Hit Points ~7 rounds, Race ~5, Tug of War ~9 (long-tailed: a random walk). The Classic: 30 HP, race to 55, 20 each way. A win condition may now be made for its dice set (`winCondition` as a function), and draws a bar per side (`kind: 'bar'`). |
+| D38 | 2026-10-19 | **No Man's Land keeps the halves, not the wall.** Each side still throws from its own half (the hand is held to it as if the divider were there), the floor stays two colours, and the dice go anywhere. Dice can now rest under the result card in the middle; it takes no pointer events, so they're still picked up through it (checked). A new kind of Spice, "On the table", covers it, Pothole, Cat Paw and Gusty Table. |
 
 ---
 
@@ -260,7 +272,7 @@ Some Spice works with any dice; some only makes sense with particular dice
 |---|---|
 | Underdog | Whoever is behind on the win condition throws one extra die (never above the 8-dice cap). |
 | Revenge | Winning a round straight after losing one deals double damage. |
-| Mercy | A player who falls three hearts behind gets one free re-throw. |
+| Mercy | A player who falls two hearts behind gets one free re-throw. *(D30)* |
 
 ### 6.4 Universal: physical and interactive
 
@@ -271,7 +283,7 @@ Some Spice works with any dice; some only makes sense with particular dice
 | Pothole | A hole in each half of the table; a die that falls in counts as 0. | |
 | Gusty Table | A random breeze pushes the dice while they roll. | |
 | No Man's Land | The divider is removed and both sides throw at once; dice can knock into each other. | Multiplayer depends on Q1 |
-| Difficult terrain | The board is covered in bumps and strange geometry, influencing the rolls |
+| Difficult terrain | The board is covered in bumps and strange geometry, influencing the rolls | Not yet scheduled |
 
 ### 6.5 Specific to particular dice
 
@@ -694,25 +706,43 @@ Behaviour is unchanged: 1d20 vs. AI plays exactly as it does today.
 
 ### Phase 5 — Physical Spice and win conditions
 
-- [ ] **5.1** Pothole: hole geometry and physics in each half; fallen dice count 0.
+- [x] **5.1** Pothole: hole geometry and physics in each half; fallen dice count 0.
   - The floor needs a real opening (or a trigger volume), not a single plane.
   - A fallen die must be removed from the settle check. Otherwise it never
     sleeps and every round waits out the full settle timeout.
   - `clampToArena` clamps x and z only, so it does not fight a falling die;
     keep it that way.
-- [ ] **5.2** Cat Paw: paw animation, impulse on chosen dice, re-settle.
-- [ ] **5.3** Gusty Table: wind force while dice are moving.
-- [ ] **5.4** Second Wind: charge UI and re-throw flow (single-player).
-- [ ] **5.5** Mercy.
-- [ ] **5.6** No Man's Land: divider removed, both sides throw together
+  *D32. A real opening over a pit with a bottom, so a die settles down there
+  anyway; it's still taken out of the wait, as heaps in a pit shuffle about.
+  The new `tools/phase0/check-table.mjs` found what the mesh floor broke:
+  no solver contacts against it, so no die ever "rested on a face" there,
+  and FIX_INTERNAL_EDGES leaving dice spinning; both fixed and measured.
+  The card writes a fallen die `hole`.*
+- [x] **5.2** Cat Paw: paw animation, impulse on chosen dice, re-settle.
+  *D34. `afterSettle` is wired up (D16): the rules pick the dice, the game
+  knocks them. The paw is a long grey arm reaching in over a side wall
+  (`effects.js`).*
+- [x] **5.3** Gusty Table: wind force while dice are moving. *D33. The
+  announcement pill gives its direction as an arrow.*
+- [x] **5.4** Second Wind: charge UI and re-throw flow (single-player).
+  *D31. Each side's unspent Second Wind is an edge badge; the player's
+  gives way to the button while it's offered.*
+- [x] **5.5** Mercy. *D30, D31.*
+- [x] **5.6** No Man's Land: divider removed, both sides throw together
   (single-player). Without the divider, dice can come to rest in the centre
   where the `#result` card sits; re-check the card's pointer-events reasoning
-  for this mode.
-- [ ] **5.7** Win conditions: Hit Points, Race to N, Tug of War, each with its
-  own HUD.
-- [ ] **5.8** Spice: Doubles Again, Death Saves.
-- [ ] **5.9** Verification checklist passes; artifact republished.
-- [ ] **5.10** Docs refresh.
+  for this mode. *D38. Re-checked: the card still takes no pointer events
+  bar the match-over card, and `npm run verify` picks up a die across the
+  middle or under the card.*
+- [x] **5.7** Win conditions: Hit Points, Race to N, Tug of War, each with its
+  own HUD. *D37. A bar per side: red HP, a green race, a striped rope
+  showing how far the marker is from each side's edge.*
+- [x] **5.8** Spice: Doubles Again, Death Saves. *D35, D36.*
+- [x] **5.9** Verification checklist passes; artifact republished.
+  *`npm test` (192), `npm run phase0` (now with `check-table.mjs`, and
+  determinism over 44 fixtures: 20 plain, 24 onto changed tables) and
+  `npm run verify` (71 checks) all pass. Republished as version 25.*
+- [x] **5.10** Docs refresh.
 
 ### Phase 6 — Alternative scoring
 

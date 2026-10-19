@@ -4,6 +4,9 @@
 //
 // Chromium only for now (DEV_PLAN.md, D14). An engine name as the argument
 // (firefox, webkit) runs it elsewhere, for the post-MVP compatibility work.
+// A second argument runs only the checks whose label contains it:
+//
+//   node tools/phase0/verify.mjs chromium "second wind"
 //
 // Needs the dev server running (npm run dev). Each check gets a fresh match, so
 // one that happens to end early can't leave the next on the game-over card.
@@ -11,11 +14,12 @@
 import { TRAY_DEPTH, TRAY_HALF_WIDTH, DIE_RADIUS } from '../../src/config.js';
 import { DICE_SETS } from '../../src/rules/dice-sets.js';
 import { SPICE } from '../../src/rules/spice.js';
-import { isEligible } from '../../src/rules/engine.js';
+import { isEligible, matchConfig, resolveRules, startMatch, beginRound, afterSettle } from '../../src/rules/engine.js';
 import { dealDice, dealSpice } from '../../src/rules/draft.js';
 import { openGame, startQuickGame, startMode, waitForDiceAtRest, dieScreenPos, drag, throwAndWait } from './driver.mjs';
 
 const engine = process.argv[2] ?? 'chromium';
+const ONLY = process.argv[3];
 const DESKTOP = { width: 1280, height: 800 };
 const PHONE = { width: 390, height: 844 };
 
@@ -30,6 +34,7 @@ function report(name, ok, detail = '') {
  * set (Quick Game) or die type (Zen) to choose; see startMode in driver.mjs.
  */
 async function withMatch(viewport, label, fn, button = '#quickGameBtn', options) {
+  if (ONLY && !label.includes(ONLY)) return;
   const { browser, page, errors } = await openGame(engine, viewport);
   try {
     await startMode(page, button, options);
@@ -542,6 +547,292 @@ await withMatch(PHONE, 'cursed', async (page) => {
     ok && round.outcome.values.player.filter((v, i) => round.outcome.faces.player[i] === before.cursed).every((v) => v === 0),
     `"${before.text}", then "${after.text}"; ${cursedFaces} of the player's dice cursed`);
 }, '#quickGameBtn', { pick: 'classic', spice: 'cursed-number' });
+
+// ---------- Phase 5: Spice on the table, re-throws, other ways to win ----------
+
+/**
+ * Throws and waits for the round to finish, throwing again whenever the round
+ * asks the player to (doubles). Resolves with the round's entry, and what the
+ * card said each time the player was asked.
+ */
+async function playARound(page, dx = 0, dy = -260) {
+  const before = await page.evaluate(() => window.superRollies.rounds.length);
+  const asked = [];
+  await drag(page, dx, dy);
+  for (let i = 0; i < 60; i++) {
+    const s = await page.evaluate(() => ({
+      n: window.superRollies.rounds.length,
+      awaiting: window.superRollies.game.awaiting,
+      busy: window.superRollies.roller.busy,
+    }));
+    if (s.n > before) break;
+    if (s.awaiting && !s.busy) {
+      asked.push(await page.textContent('#resultHeadline'));
+      await drag(page, dx, dy);
+    }
+    await page.waitForTimeout(250);
+  }
+  await waitForDiceAtRest(page);
+  const round = await page.evaluate(() => JSON.parse(JSON.stringify(window.superRollies.rounds.at(-1))));
+  return { ...round, asked };
+}
+
+/** How far a control is from the nearest spot a die can rest in a tray corner (px; negative overlaps). */
+function clearanceFrom(page, selector, corner) {
+  return page.evaluate(({ selector, corner, TRAY_HALF_WIDTH, DIE_RADIUS }) => {
+    const { arena, dice } = window.superRollies;
+    const k = arena.tray.halfWidth / TRAY_HALF_WIDTH;
+    const xMax = Math.min(arena.tray.halfWidth, arena.arenaHalfWidth + DIE_RADIUS) - 0.45 * k;
+    const r = arena.renderer.domElement.getBoundingClientRect();
+    const toScreen = (v) => { v.project(arena.camera); return { x: (v.x + 1) / 2 * r.width, y: (1 - v.y) / 2 * r.height }; };
+    const p = dice.player[0].mesh.position.clone()
+      .set(corner.x * xMax, DIE_RADIUS * k, corner.z * (arena.tray.depth - 0.45 * k));
+    const centre = toScreen(p.clone());
+    const radius = Math.abs(toScreen(p.clone().setX(p.x - DIE_RADIUS * k)).x - centre.x);
+    const box = document.querySelector(selector).getBoundingClientRect();
+    const dx = Math.max(box.left - centre.x, 0, centre.x - box.right);
+    const dy = Math.max(box.top - centre.y, 0, centre.y - box.bottom);
+    return Math.hypot(dx, dy) - radius;
+  }, { selector, corner, TRAY_HALF_WIDTH, DIE_RADIUS });
+}
+
+// Pothole (5.1): a die that falls in lies in the pit and counts 0, written
+// "hole"; no die waits over a hole; and on a phone held upright both holes
+// are on screen.
+await withMatch(DESKTOP, 'pothole', async (page) => {
+  const overHole = await page.evaluate(() => {
+    const { arena, dice } = window.superRollies;
+    return [...dice.player, ...dice.opponent].filter((d) =>
+      arena.holes.some((h) => Math.hypot(d.mesh.position.x - h.x, d.mesh.position.z - h.z) < h.r)).length;
+  });
+  let round = null;
+  for (let i = 0; i < 10 && !round; i++) {
+    const r = await playARound(page, (i % 5 - 2) * 60, -200);
+    if (r.result.dice.some((d) => d.fallen)) round = r;
+    if (await page.locator('#result.game-over').count()) await startQuickGame(page, 'fireball', 'pothole');
+  }
+  if (!round) throw new Error('no die fell in a hole in ten rounds');
+  const { outcome, result } = round;
+  const fallen = result.dice.filter((d) => d.fallen);
+  const inPits = await page.evaluate((ids) => {
+    const { arena, table } = window.superRollies;
+    return ids.every((id) => {
+      const { x, y, z } = table.meshFor(id).position;
+      return y < 0 && arena.holes.some((h) => Math.hypot(x - h.x, z - h.z) < h.r);
+    });
+  }, fallen.map((d) => d.id));
+  const counted = ['player', 'opponent'].every((side) => outcome.fallen[side].every((f, i) => !f || outcome.values[side][i] === 0));
+  const written = await page.$$eval('#result .fallen', (els) => els.map((el) => el.textContent));
+  report('Pothole: a die that falls in lies in the pit, counts 0 and is written "hole"; none waits over a hole',
+    overHole === 0 && inPits && counted && written.length === fallen.length && written.every((t) => t === 'hole'),
+    `${fallen.length} fell in; ${written.length} written "hole"; ${overHole} waited over a hole`);
+
+  await page.setViewportSize(PHONE);
+  await page.waitForTimeout(200);
+  const onScreen = await page.evaluate(({ width, height }) => {
+    const { arena } = window.superRollies;
+    const r = arena.renderer.domElement.getBoundingClientRect();
+    return arena.holes.every((h) => [[-1, 0], [1, 0], [0, -1], [0, 1]].every(([dx, dz]) => {
+      const v = window.superRollies.dice.player[0].mesh.position.clone().set(h.x + dx * h.r, 0, h.z + dz * h.r).project(arena.camera);
+      const x = (v.x + 1) / 2 * r.width;
+      const y = (1 - v.y) / 2 * r.height;
+      return x > 0 && x < width && y > 0 && y < height;
+    }));
+  }, PHONE);
+  report('Pothole: on 390x844 both holes are wholly on screen', onScreen);
+}, '#quickGameBtn', { pick: 'fireball', spice: 'pothole' });
+
+// Cat Paw (5.2): with a seed whose first round has a swipe, the paw knocks
+// the dice it names from where they lay, they roll again, and what they land
+// on is what counts.
+await withMatch(DESKTOP, 'cat paw', async (page) => {
+  let seed = 1;
+  const swipesFor = (s) => {
+    const rules = resolveRules(matchConfig({ seed: s, diceSet: 'ability-score', spice: 'cat-paw' }));
+    const { state } = beginRound(rules, startMatch(rules));
+    return afterSettle(rules, state, { player: 3, opponent: 3 }).swipes;
+  };
+  while (!swipesFor(seed).length) seed++;
+  const swipes = swipesFor(seed);
+  await page.evaluate((seed) => window.superRollies.game.start('quick', { seed, diceSet: 'ability-score', spice: 'cat-paw' }), seed);
+  await waitForDiceAtRest(page);
+  const { throws, outcome } = await playARound(page);
+  const [first, knock] = throws;
+  const lay = Object.fromEntries((first?.result.dice ?? []).map((d) => [d.id, d.p.join()]));
+  const fromRest = knock?.record.dice.every((d) => lay[d.id] === d.p.join());
+  const knocked = knock?.record.dice.filter((d) => d.v.some((v) => v !== 0)).map((d) => d.id).sort().join();
+  const named = swipes.map((s) => `${s.side}-${s.index}`).sort().join();
+  const faces = ['player', 'opponent'].every((side) =>
+    outcome.faces[side].join() === knock?.result.dice.filter((d) => d.id.startsWith(side)).map((d) => d.face).join());
+  const note = await page.textContent('#resultDetail');
+  report('Cat Paw: the paw knocks the dice the rules name, from where they lay, and their new faces count',
+    throws.length === 2 && fromRest && knocked === named && faces && /The cat knocked/.test(note),
+    `seed ${seed}: knocked ${knocked} (named ${named}); ${throws.length} throws; "${note.match(/🐾[^.!]*!/)?.[0] ?? 'no note'}"`);
+}, '#quickGameBtn', { pick: 'ability-score', spice: 'cat-paw' });
+
+// Gusty Table (5.3): the breeze announced is the one in the throw's record.
+await withMatch(PHONE, 'gusty', async (page) => {
+  const before = await page.evaluate(() => ({
+    wind: window.superRollies.game.match.spice.wind,
+    announce: document.getElementById('announce').textContent,
+  }));
+  const { record } = await playARound(page);
+  const [wx, wz] = before.wind;
+  const arrow = { '1,0': '→', '1,-1': '↗', '0,-1': '↑', '-1,-1': '↖', '-1,0': '←', '-1,1': '↙', '0,1': '↓', '1,1': '↘' }[
+    `${Math.sign(Math.round(wx * 10))},${Math.sign(Math.round(wz * 10))}`];
+  report('Gusty Table: the breeze is announced with its direction, and blows in the throw\'s record',
+    JSON.stringify(record.wind) === JSON.stringify(before.wind) && before.announce.endsWith(arrow),
+    `"${before.announce}", record wind ${record.wind?.map((n) => n.toFixed(2)).join(', ')}`);
+}, '#quickGameBtn', { pick: 'ability-score', spice: 'gusty-table' });
+
+// No Man's Land (5.6): no divider, the hand still kept to its own half, and a
+// die of yours that ends up in the opponent's half - or under the result card
+// in the middle, which takes no pointer events - can still be picked up.
+await withMatch(DESKTOP, "no man's land", async (page) => {
+  const table = await page.evaluate(() => ({ divider: window.superRollies.arena.divider, split: window.superRollies.arena.split }));
+  let found = null;
+  let record = null;
+  for (let i = 0; i < 10 && !found; i++) {
+    ({ record } = await playARound(page, (i % 3 - 1) * 40, -320));
+    found = await page.evaluate(() => {
+      const card = document.getElementById('result').getBoundingClientRect();
+      const { arena, dice } = window.superRollies;
+      const r = arena.renderer.domElement.getBoundingClientRect();
+      for (const d of dice.player) {
+        const v = d.mesh.position.clone().project(arena.camera);
+        const p = { x: (v.x + 1) / 2 * r.width, y: (1 - v.y) / 2 * r.height };
+        const underCard = p.x > card.left && p.x < card.right && p.y > card.top && p.y < card.bottom;
+        if (d.mesh.position.z < 0 || underCard) return { ...p, far: d.mesh.position.z < 0, underCard };
+      }
+      return null;
+    });
+    if (await page.locator('#result.game-over').count()) await startQuickGame(page, 'ability-score', 'no-mans-land');
+  }
+  if (!found) throw new Error('no die of the player\'s ended up across the middle or under the card in ten rounds');
+  const said = await pressAt(page, found);
+  report("No Man's Land: no divider; a die of yours across the middle or under the card is still picked up",
+    !table.divider && table.split && record.divider === false && said === 'Let go to throw',
+    `${found.far ? "in the opponent's half" : 'by the middle'}${found.underCard ? ', under the card' : ''}; card said "${said}"`);
+}, '#quickGameBtn', { pick: 'ability-score', spice: 'no-mans-land' });
+
+// Second Wind (5.4): lose a round and the button offers a re-throw. It sits
+// clear of every spot a die can rest (4.6a); taking it puts the round back,
+// your re-throw replaces your dice, the round is played out again, and it's
+// spent.
+for (const [name, viewport] of [['desktop', DESKTOP], ['390x844', PHONE]]) {
+  await withMatch(viewport, `second wind (${name})`, async (page) => {
+    let lost = null;
+    for (let i = 0; i < 12 && !lost; i++) {
+      const before = await page.evaluate(() => window.superRollies.game.match.win);
+      const round = await playARound(page);
+      if (await page.evaluate(() => window.superRollies.game.offered)) lost = { round, before };
+      else if (await page.locator('#result.game-over').count()) await startQuickGame(page, 'ability-score', 'second-wind');
+    }
+    if (!lost) throw new Error('never lost a round in twelve');
+    const shown = await page.locator('#rethrowBtn:not([hidden])').count() === 1;
+    const clearance = Math.min(await clearanceFrom(page, '#rethrowBtn', { x: 1, z: 1 }), await clearanceFrom(page, '#rethrowBtn', { x: 0, z: 1 }));
+    report(`Second Wind (${name}): the re-throw button is offered, clear of the nearest resting die`,
+      shown && clearance > 0, `${clearance.toFixed(0)}px clear`);
+
+    const count = await page.evaluate(() => window.superRollies.rounds.length);
+    await page.click('#rethrowBtn');
+    const undone = await page.evaluate(() => ({
+      win: window.superRollies.game.match.win,
+      said: document.getElementById('resultHeadline').textContent,
+      awaiting: window.superRollies.game.awaiting,
+    }));
+    const again = await playARound(page);
+    const after = await page.evaluate(() => ({
+      count: window.superRollies.rounds.length,
+      button: !document.getElementById('rethrowBtn').hidden,
+      badge: document.getElementById('youEdge').hidden ? '' : document.getElementById('youEdge').textContent,
+    }));
+    const thrown = again.throws.at(-1).result.dice.filter((d) => d.id.startsWith('player')).map((d) => d.face).join();
+    const replays = again.throws.length > lost.round.throws.length && after.count === count;
+    report(`Second Wind (${name}): taking it puts the round back, and your new throw replaces the old`,
+      JSON.stringify(undone.win) === JSON.stringify(lost.before) && undone.said === 'Second Wind!' && undone.awaiting === 'throw' &&
+        replays && (again.outcome.faces.player.join() === thrown || again.throws.at(-1).record.dice.every((d) => d.id.startsWith('opponent'))) &&
+        !after.button && after.badge === '',
+      `"${undone.said}", ${again.throws.length} throws in the round, ${after.count} rounds; ` +
+        `${again.outcome.winner ?? 'tie'} this time`);
+  }, '#quickGameBtn', { pick: 'ability-score', spice: 'second-wind' });
+}
+
+// Hit Points, Race to N, Tug of War (5.7): each draws its own bar per side,
+// not hearts, matching the win condition; on a phone they stay clear of the
+// corner controls.
+for (const spice of ['hit-points', 'race-to-n', 'tug-of-war']) {
+  await withMatch(PHONE, spice, async (page) => {
+    await playARound(page);
+    const hud = await page.evaluate(() => {
+      const { game } = window.superRollies;
+      const view = game.rules.winCondition.view(game.match.win);
+      const box = (el) => el.getBoundingClientRect();
+      const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+      const meters = [...document.querySelectorAll('.meter:not([hidden])')];
+      return {
+        texts: meters.map((m) => m.querySelector('.meter-text').textContent),
+        want: [view.sides.opponent.text, view.sides.player.text],
+        hearts: document.querySelectorAll('.hearts:not([hidden])').length,
+        overlaps: meters.some((m) => ['backBtn', 'matchInfo'].some((id) => hit(box(m), box(document.getElementById(id))))),
+      };
+    });
+    report(`${SPICE[spice].name}: a bar per side, as the win condition says, clear of the corners on 390x844`,
+      hud.texts.join() === hud.want.join() && hud.hearts === 0 && !hud.overlaps, hud.texts.join(' | '));
+  }, '#quickGameBtn', { pick: 'ability-score', spice });
+}
+
+// A whole Hit Points match, to the end and back to the menu (§8, 5).
+await withMatch(DESKTOP, 'hit points match', async (page) => {
+  let announced = null;
+  for (let i = 0; i < 40 && !announced; i++) {
+    await playARound(page, (i % 5 - 2) * 30, -260);
+    if (await page.locator('#result.game-over').count()) announced = await page.textContent('#resultHeadline');
+  }
+  const drained = await page.evaluate(() => {
+    const { win } = window.superRollies.game.match;
+    return win.player === 0 || win.opponent === 0;
+  });
+  await page.waitForSelector('#menu:not([hidden])', { timeout: 6000 }).catch(() => null);
+  const backAtMenu = await page.locator('#menu:not([hidden])').count() === 1;
+  report('Hit Points: a full match drains a side to 0 HP, announces it and returns to the menu',
+    !!announced && drained && backAtMenu, `"${announced}"`);
+}, '#quickGameBtn', { pick: 'greataxe', spice: 'hit-points' });
+
+// Doubles Again (5.8): doubles throw again - the player is asked to, the
+// opponent just does - and the extra throw is added on the card.
+await withMatch(DESKTOP, 'doubles', async (page) => {
+  let seen = null;
+  for (let i = 0; i < 20 && !seen; i++) {
+    const round = await playARound(page);
+    const { again } = round.outcome;
+    if (again.player.length || again.opponent.length) seen = round;
+    if (await page.locator('#result.game-over').count()) await startQuickGame(page, 'greatsword', 'doubles-again');
+  }
+  if (!seen) throw new Error('no doubles in twenty rounds');
+  const { again, adjustments } = seen.outcome;
+  const card = await page.$$eval('#result .adjustment', (els) => els.map((el) => el.textContent.trim()));
+  const extra = again.player.length + again.opponent.length;
+  report('Doubles Again: doubles throw again, the player asked to, and each extra throw is added on the card',
+    (again.player.length === 0 || seen.asked.every((a) => a === 'Doubles! Throw again') && seen.asked.length === again.player.length) &&
+      card.length === extra && card.every((t) => /^\+ \d+ again$/.test(t)) &&
+      adjustments.player.length === again.player.length,
+    `player threw again ${again.player.length}x, opponent ${again.opponent.length}x; card: ${card.join(', ')}`);
+}, '#quickGameBtn', { pick: 'greatsword', spice: 'doubles-again' });
+
+// Death Saves (5.8): each side's failed saves are marked by its hearts.
+await withMatch(PHONE, 'death saves', async (page) => {
+  await playARound(page);
+  const marks = await page.evaluate(() => ({
+    fails: window.superRollies.game.match.win.fails,
+    shown: {
+      player: document.querySelectorAll('#youMarks .mark.struck').length,
+      opponent: document.querySelectorAll('#opponentMarks .mark.struck').length,
+    },
+  }));
+  report('Death Saves: failed saves are marked by each side\'s hearts',
+    JSON.stringify(marks.fails) === JSON.stringify(marks.shown), JSON.stringify(marks.shown));
+}, '#quickGameBtn', { pick: 'classic', spice: 'death-saves' });
 
 console.log(failures ? `\n${failures} check(s) failed (${engine})` : `\nAll checks passed (${engine})`);
 process.exit(failures ? 1 : 0);

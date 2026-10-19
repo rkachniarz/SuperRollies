@@ -91,6 +91,10 @@
  * What happened in a round, before the win condition has its say.
  * @typedef {Object} Round
  * @property {PerSide<number[]>} faces  As thrown.
+ * @property {PerSide<boolean[]>} fallen  Which dice ended up in a hole
+ *   (Pothole). All false on a table without one.
+ * @property {PerSide<number[][]>} again  The faces of each further throw a
+ *   side made this round (Doubles Again). Usually none.
  * @property {PerSide<number[]>} values  What each die counted for, once a
  *   Spice has had its say (an exploded die, a cursed one). Usually the faces.
  * @property {PerSide<boolean[]>} kept  Which dice counted, per the hand's scorer.
@@ -102,8 +106,13 @@
 
 /**
  * The match-state HUD a win condition asks for. hud.js draws whichever kind it
- * is given, and assumes nothing else (R3.4).
- * @typedef {{ kind: 'hearts', sides: PerSide<{ left: number, max: number }> }} MatchView
+ * is given, and assumes nothing else (R3.4): a row of hearts per side, with a
+ * row of marks beside them if the win condition counts something else too
+ * (Death Saves' fails); or a bar per side, styled as HP, a race's progress,
+ * or the ground left in a tug of war.
+ * @typedef {{ kind: 'hearts', sides: PerSide<{ left: number, max: number }>,
+ *   marks?: PerSide<{ count: number, max: number, label: string }> }
+ *   | { kind: 'bar', style: 'hp' | 'race' | 'tug', sides: PerSide<{ value: number, max: number, text: string }> }} MatchView
  */
 
 /**
@@ -154,7 +163,27 @@
 
 /**
  * A hook context for one side's dice in a round.
- * @typedef {HookContext & { side: Side, hand: Hand }} SideContext
+ * @typedef {HookContext & { side: Side, hand: Hand, fallen: boolean[] }} SideContext
+ */
+
+/**
+ * A hole in the table (Pothole): its centre and radius on the floor, and how
+ * deep the pit under it is.
+ * @typedef {{ x: number, z: number, r: number, depth: number }} Hole
+ */
+
+/**
+ * What the table is like for a round, beyond the dice set's tray: holes in
+ * it, a steady breeze across it (an acceleration along x and z, in units/s²,
+ * felt by every die still moving), and whether the divider is up. All of it
+ * goes in the throw's record, so a replay meets the same table.
+ * @typedef {{ holes: Hole[], wind: number[] | null, divider: boolean }} TableEffects
+ */
+
+/**
+ * One die a cat's paw knocks once the dice have settled (Cat Paw): which, how
+ * hard (0-1), and how far off straight across the table it goes (-1-1).
+ * @typedef {{ side: Side, index: number, power: number, turn: number }} Swipe
  */
 
 /**
@@ -170,31 +199,41 @@
  * @property {string} id
  * @property {string} name
  * @property {string} icon  An emoji, for its card.
- * @property {'rule' | 'win' | 'comeback' | 'dice'} kind  What sort of change
- *   it is, written on its card: a rule, a win condition, a comeback rule, or
- *   one for particular dice.
+ * @property {'rule' | 'win' | 'comeback' | 'table' | 'dice'} kind  What sort of
+ *   change it is, written on its card: a rule, a win condition, a comeback
+ *   rule, something on the table, or one for particular dice.
  * @property {string} summary  One line, for its card.
  * @property {string} rules  The full rules, for the in-match rules popup (R1.5).
  * @property {Eligibility} eligibility
- * @property {WinCondition<any>} [winCondition]  Replaces Hearts.
+ * @property {WinCondition<any> | ((diceSet: DiceSet) => WinCondition<any>)} [winCondition]
+ *   Replaces Hearts. Made for the dice set, where it scales to it (Hit Points).
  * @property {(ctx: HookContext) => unknown} [setup]  Starting state for this
  *   Spice's own bookkeeping (stored as MatchState.spice).
  * @property {(ctx: HookContext) => { spice?: unknown, announce?: string } | void} [beforeThrow]
  *   Per-round setup, before anyone throws.
- * @property {(ctx: HookContext) => void} [afterSettle]  Acts on settled dice:
- *   nudge, remove or re-throw them. Physical, so the game calls it around the
- *   simulation rather than the rules engine (wired up with the first Spice that
- *   needs it, Phase 5).
+ * @property {(ctx: HookContext & { dice: PerSide<number> }) => { swipes?: Swipe[], spice?: unknown } | void} [afterSettle]
+ *   Acts on settled dice (Cat Paw). Says what happens to them, drawing from
+ *   the rules stream; the game carries it out on the table, then reads the
+ *   faces. `dice` is how many each side has.
+ * @property {(ctx: StateContext) => Partial<TableEffects>} [table]  The table
+ *   this round is thrown on (TableEffects). Depends on the match state only.
+ * @property {(throws: number[][], ctx: StateContext & { side: Side }) => boolean} [again]
+ *   Whether a side throws once more this round, given the faces of each throw
+ *   it has made in it so far (Doubles Again).
+ * @property {{ can: (side: Side, ctx: StateContext) => boolean, spend: (side: Side, ctx: StateContext) => unknown }} [rethrow]
+ *   A side's chance to throw its dice again once the round's result is shown
+ *   (Second Wind, Mercy): whether it may, from the state the round started
+ *   in, and the Spice's state once it has.
  * @property {(side: Side, base: Hand, ctx: StateContext) => Hand} [hand]
  *   What a side throws this round, given the dice set's. Asked by the game
  *   before the round (to lay the dice out) and by the engine after it (to
  *   score them), so it must depend on the match state only.
- * @property {(ctx: StateContext) => Edge | null} [edge]  Who holds a
- *   state-based advantage this round, if anyone (R3.5).
+ * @property {(ctx: StateContext) => Edge | Edge[] | null} [edge]  Who holds a
+ *   state-based advantage this round, if anyone (R3.5). Both sides can.
  * @property {(faces: number[], ctx: SideContext) => DieValue[]} [values]
  *   What each of a side's dice counts for, one entry per die, before the
  *   scorer totals them.
- * @property {(round: Pick<Round, 'faces' | 'values'>, ctx: SideContext) => Adjustment[]} [adjust]
+ * @property {(round: Pick<Round, 'faces' | 'values' | 'again'>, ctx: SideContext) => Adjustment[]} [adjust]
  *   Added to (or taken off) a side's total after the scorer.
  * @property {(round: Omit<Round, 'winner'>, ctx: HookContext) => Side | null} [compare]
  *   Decides the round winner. Default: higher score wins, equal is a tie.

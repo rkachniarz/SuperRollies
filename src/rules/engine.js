@@ -7,7 +7,13 @@
 //
 // A match: startMatch, then for each round beginRound before anyone throws and
 // playRound once the dice have settled, until the outcome has a matchWinner.
-// Between the two, handOf says what each side throws this round.
+// Between the two, handOf says what each side throws this round and tableOf
+// what the table is like (a hole, a breeze); afterSettle what happens to the
+// dice once they've landed (a cat's paw); throwsAgain whether a side throws
+// once more this round (doubles). After playRound, canRethrow and
+// spendRethrow let a side throw its dice again and have the round played out
+// once more from where it started (Second Wind): every one of these is pure,
+// so going back to the state before the round undoes it.
 
 import { createRng, deriveSeed } from '../rng.js';
 import { DICE_SETS, dieTypes } from './dice-sets.js';
@@ -45,11 +51,14 @@ export function matchConfig({ seed, diceSet = 'classic', spice = 'vanilla' }) {
  */
 export function resolveRules(config) {
   const spice = SPICE[config.spice];
+  const diceSet = DICE_SETS[config.diceSet];
+  const { winCondition = HEARTS } = spice;
   return {
     config,
-    diceSet: DICE_SETS[config.diceSet],
+    diceSet,
     spice,
-    winCondition: spice.winCondition ?? HEARTS,
+    // Hit Points and the like scale to the dice, so they're made for the set.
+    winCondition: typeof winCondition === 'function' ? winCondition(diceSet) : winCondition,
   };
 }
 
@@ -121,10 +130,76 @@ export function handOf(rules, state, side) {
  * Who holds a state-based advantage this round, if anyone (R3.5).
  * @param {Rules} rules
  * @param {MatchState} state
- * @returns {import('./types.js').Edge | null}
+ * @returns {import('./types.js').Edge | import('./types.js').Edge[] | null}
  */
 export function edgeOf(rules, state) {
-  return rules.spice.edge?.({ rules, state }) ?? null;
+  const edge = rules.spice.edge?.({ rules, state }) ?? null;
+  return Array.isArray(edge) ? (edge.length ? edge : null) : edge;
+}
+
+/**
+ * The table this round is thrown on: holes in it, a breeze across it, and
+ * whether the divider is up. Depends on the match state only, like handOf.
+ * @param {Rules} rules
+ * @param {MatchState} state
+ * @returns {import('./types.js').TableEffects}
+ */
+export function tableOf(rules, state) {
+  return { holes: [], wind: null, divider: true, ...rules.spice.table?.({ rules, state }) };
+}
+
+/**
+ * Once the round's dice have settled: anything the Spice does to them where
+ * they lie (Cat Paw's swipe), drawn from the rules stream. `dice` is how many
+ * each side has on the table. The game carries out what it returns, then
+ * reads the faces for playRound.
+ * @param {Rules} rules
+ * @param {MatchState} state
+ * @param {import('./types.js').PerSide<number>} dice
+ * @returns {{ state: MatchState, swipes: import('./types.js').Swipe[] }}
+ */
+export function afterSettle(rules, state, dice) {
+  if (!rules.spice.afterSettle) return { state, swipes: [] };
+  const { value, rng } = withContext(rules, state, (ctx) => rules.spice.afterSettle({ ...ctx, dice }));
+  const next = { ...state, rng };
+  if (value && 'spice' in value) next.spice = value.spice;
+  return { state: next, swipes: value?.swipes ?? [] };
+}
+
+/**
+ * Whether `side` throws its dice once more this round, given the faces of
+ * every throw it has made in it so far (Doubles Again).
+ * @param {Rules} rules
+ * @param {MatchState} state
+ * @param {Side} side
+ * @param {number[][]} throws
+ */
+export function throwsAgain(rules, state, side, throws) {
+  return rules.spice.again?.(throws, { rules, state, side }) ?? false;
+}
+
+/**
+ * Whether `side` may throw its dice again and have this round played out
+ * once more (Second Wind, Mercy). `state` is the one the round started from.
+ * @param {Rules} rules
+ * @param {MatchState} state
+ * @param {Side} side
+ */
+export function canRethrow(rules, state, side) {
+  return rules.spice.rethrow?.can(side, { rules, state }) ?? false;
+}
+
+/**
+ * The state the round is played out again from, once `side` has used its
+ * re-throw: the state it started from, the re-throw spent.
+ * @param {Rules} rules
+ * @param {MatchState} state
+ * @param {Side} side
+ * @returns {MatchState}
+ */
+export function spendRethrow(rules, state, side) {
+  if (!canRethrow(rules, state, side)) throw new Error(`${side} has no re-throw to spend`);
+  return { ...state, spice: rules.spice.rethrow.spend(side, { rules, state }) };
 }
 
 /**
@@ -151,13 +226,16 @@ export function scoreDice(scorer, faces, values) {
 
 /**
  * Plays out one round from both sides' settled face values (each in the order
- * of that side's hand, handOf).
+ * of that side's hand, handOf). `fallen` says which dice ended up in a hole
+ * (Pothole); `again` holds the faces of any further throws a side made this
+ * round (Doubles Again), one array per throw. Both default to none.
  * @param {Rules} rules
  * @param {MatchState} state
  * @param {Faces} faces
+ * @param {{ fallen?: import('./types.js').PerSide<boolean[]>, again?: import('./types.js').PerSide<number[][]> }} [table]
  * @returns {{ outcome: import('./types.js').RoundOutcome, state: MatchState }}
  */
-export function playRound(rules, state, faces) {
+export function playRound(rules, state, faces, { fallen, again } = {}) {
   if (state.winner) throw new Error('The match is already over');
   const { spice, winCondition } = rules;
   const hands = { player: handOf(rules, state, 'player'), opponent: handOf(rules, state, 'opponent') };
@@ -166,24 +244,31 @@ export function playRound(rules, state, faces) {
       throw new Error(`${side} threw ${faces[side].length} dice, expected ${hands[side].types.length}`);
     }
   }
+  fallen = {
+    player: fallen?.player ?? faces.player.map(() => false),
+    opponent: fallen?.opponent ?? faces.opponent.map(() => false),
+  };
+  again = { player: again?.player ?? [], opponent: again?.opponent ?? [] };
 
   const { value: round, rng } = withContext(rules, state, (ctx) => {
     // Each side in turn, the player's first: a Spice drawing random numbers
     // for each side's dice draws them in that order (see Side in types.js).
     const sides = Object.fromEntries(SIDES.map((side) => {
-      const sideCtx = { ...ctx, side, hand: hands[side] };
+      const sideCtx = { ...ctx, side, hand: hands[side], fallen: fallen[side] };
       const values = spice.values?.(faces[side], sideCtx);
       return [side, { sideCtx, ...scoreDice(hands[side].scorer, faces[side], values) }];
     }));
     const values = { player: sides.player.values, opponent: sides.opponent.values };
     const adjustments = {
-      player: spice.adjust?.({ faces, values }, sides.player.sideCtx) ?? [],
-      opponent: spice.adjust?.({ faces, values }, sides.opponent.sideCtx) ?? [],
+      player: spice.adjust?.({ faces, values, again }, sides.player.sideCtx) ?? [],
+      opponent: spice.adjust?.({ faces, values, again }, sides.opponent.sideCtx) ?? [],
     };
     const total = (/** @type {Side} */ side) =>
       adjustments[side].reduce((sum, { value }) => sum + value, sides[side].score);
     const scored = {
       faces,
+      fallen,
+      again,
       values,
       kept: { player: sides.player.kept, opponent: sides.opponent.kept },
       dice: { player: sides.player.dice, opponent: sides.opponent.dice },

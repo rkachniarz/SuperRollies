@@ -24,6 +24,9 @@ export function summarise(sim) {
     p: d.curr.p,
     q: d.curr.q,
     face: readFace(d.type, d.curr.q),
+    // Down a hole (Pothole): its centre below the table's surface. A die
+    // cocked over the rim, its centre still above it, is read as it lies.
+    fallen: d.curr.p[1] < 0,
   }));
   return { steps: sim.steps, timedOut: sim.timedOut, dice, digest: digest(dice) };
 }

@@ -13,6 +13,7 @@ export const SCENE_BACKGROUND = 0x12111a;
 export const OPPONENT_FLOOR_COLOR = 0x241c38;
 export const PLAYER_FLOOR_COLOR = 0x2a1c11;
 export const WALL_COLOR = 0xe8d9b5;
+export const PIT_COLOR = 0x08070c; // inside a pothole's pit
 
 // ---------- The tray ----------
 export const TRAY_HALF_WIDTH = 3.1;
@@ -146,5 +147,24 @@ export const HOLD_RELEASE_OVERLAP = 0.005;
 
 // ---------- Match ----------
 export const HEARTS_PER_SIDE = 3;
+
+// ---------- Spice on the table ----------
+// Pothole: each hole's radius on The Classic's tray (scaled with the tray),
+// wide enough for its biggest die, a d20, to drop in; and how deep the pit
+// under it is, so a die down there sits wholly below the table.
+export const POTHOLE_RADIUS = 0.85;
+export const POTHOLE_DEPTH = 1.1;
+// Cat Paw: the chance a paw swipes in once a round's dice have settled.
+export const CAT_PAW_CHANCE = 0.4;
+// Gusty Table: how hard the breeze pushes, as an acceleration (units/s²).
+// Always well under what the floor's friction holds (~9), so it never shifts
+// a die lying still; it only drifts the ones rolling.
+export const WIND_MIN = 2.5;
+export const WIND_MAX = 5;
+// A gust, not a gale: full strength for the first WIND_FULL_TIME seconds of a
+// throw, while the dice roll about, then dying away to nothing by
+// WIND_END_TIME, so it never keeps a die from settling.
+export const WIND_FULL_TIME = 1.5;
+export const WIND_END_TIME = 2.5;
 export const SETTLE_TIMEOUT_MS = 4000; // simulated time; give up waiting for a die to come to rest
 export const GAME_OVER_LINGER_MS = 2600; // how long the match-over card stays up

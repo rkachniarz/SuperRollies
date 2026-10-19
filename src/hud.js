@@ -57,11 +57,17 @@ export function createHud() {
   const resultDetailEl = document.getElementById('resultDetail');
   const menuStatusEl = document.getElementById('menuStatus');
 
+  const rethrowBtn = document.getElementById('rethrowBtn');
+
   // Each side's row of hearts, and how many of them are currently drawn full.
   const heartRows = {
     player: { container: document.getElementById('youHearts'), fulls: [], left: 0 },
     opponent: { container: document.getElementById('opponentHearts'), fulls: [], left: 0 },
   };
+  // Each side's bar (Hit Points, Race to N, Tug of War) and row of marks
+  // (failed death saves).
+  const meters = { player: document.getElementById('youMeter'), opponent: document.getElementById('opponentMeter') };
+  const marks = { player: document.getElementById('youMarks'), opponent: document.getElementById('opponentMarks') };
 
   // Brings one side's hearts in line with `left` of `max`. A heart that goes
   // from full to empty gets a little "pop and fade" animation, so the loss
@@ -89,11 +95,53 @@ export function createHud() {
     row.left = left;
   }
 
-  /** Draws the match state, as given by the win condition's `view`. */
+  /**
+   * One side's bar: filled `value` of `max`, labelled `text`, in `style`'s
+   * look. A drop flashes, like a heart lost.
+   */
+  function showMeter(el, style, { value, max, text }) {
+    const fill = el.querySelector('.meter-fill');
+    const before = Number(el.dataset.value ?? value);
+    el.className = `meter ${style}`;
+    el.dataset.value = String(value);
+    fill.style.width = `${(100 * Math.max(0, Math.min(value, max))) / max}%`;
+    el.querySelector('.meter-text').textContent = text;
+    if (value < before) {
+      el.classList.remove('hit');
+      void el.offsetWidth; // restart the animation
+      el.classList.add('hit');
+    }
+  }
+
+  /** A row of `max` marks, `count` of them struck (failed death saves). */
+  function showMarks(el, mark) {
+    el.hidden = !mark;
+    if (!mark) return;
+    el.title = `${mark.count} of ${mark.max} ${mark.label}`;
+    el.setAttribute('aria-label', el.title);
+    el.replaceChildren(...Array.from({ length: mark.max }, (_, i) => {
+      const dot = document.createElement('span');
+      dot.className = i < mark.count ? 'mark struck' : 'mark';
+      dot.textContent = i < mark.count ? '💀' : '';
+      return dot;
+    }));
+  }
+
+  /**
+   * Draws the match state, as given by the win condition's `view`: hearts,
+   * with marks beside them if it brings any, or a bar per side.
+   * @param {import('./rules/types.js').MatchView} view
+   */
   function showMatch(view) {
-    if (view.kind !== 'hearts') throw new Error(`No HUD for match state "${view.kind}"`);
-    showHearts(heartRows.player, view.sides.player);
-    showHearts(heartRows.opponent, view.sides.opponent);
+    if (view.kind !== 'hearts' && view.kind !== 'bar') throw new Error(`No HUD for match state "${view.kind}"`);
+    for (const side of /** @type {const} */ (['player', 'opponent'])) {
+      const hearts = view.kind === 'hearts';
+      heartRows[side].container.hidden = !hearts;
+      meters[side].hidden = hearts;
+      if (hearts) showHearts(heartRows[side], view.sides[side]);
+      else showMeter(meters[side], view.style, view.sides[side]);
+      showMarks(marks[side], hearts ? view.marks?.[side] : undefined);
+    }
   }
 
   function showResult(headline, detail, { gameOver = false } = {}) {
@@ -173,15 +221,29 @@ export function createHud() {
 
   /**
    * Marks the side holding a state-based advantage this round, by its name
-   * (R3.5): `You  +1 die`.
-   * @param {import('./rules/types.js').Edge | null} edge
+   * (R3.5): `You  +1 die`. Both sides can hold one (Second Wind).
+   * @param {import('./rules/types.js').Edge | import('./rules/types.js').Edge[] | null} edge
    */
   function showEdge(edge) {
+    const edges = edge ? [edge].flat() : [];
     for (const [side, el] of Object.entries(edgeEls)) {
-      const on = edge?.side === side;
-      el.hidden = !on;
-      el.textContent = on ? edge.label : '';
+      const held = edges.find((e) => e.side === side);
+      el.hidden = !held;
+      el.textContent = held ? held.label : '';
     }
+  }
+
+  /**
+   * Offers the player a re-throw of the round just shown (Second Wind,
+   * Mercy): a short `label` for the button, and a `title` saying what it is.
+   * null takes the offer away.
+   * @param {{ label: string, title: string } | null} offer
+   */
+  function showRethrow(offer) {
+    rethrowBtn.hidden = !offer;
+    rethrowBtn.textContent = offer?.label ?? '';
+    rethrowBtn.title = offer?.title ?? '';
+    if (offer) rethrowBtn.setAttribute('aria-label', offer.title);
   }
 
   // The cards behind the match label, for its rules popup.
@@ -222,6 +284,7 @@ export function createHud() {
     hideRules();
     showAnnounce(undefined);
     showEdge(null);
+    showRethrow(null);
   }
 
   // The menu is up before the physics engine has finished loading (its
@@ -254,6 +317,7 @@ export function createHud() {
     youHudEl.hidden = true;
     backBtn.hidden = true;
     matchInfoBtn.hidden = true;
+    showRethrow(null);
     showMenuCard(menuMainEl);
   }
 
@@ -303,7 +367,8 @@ export function createHud() {
   return {
     showMatch,
     showResult, showRound, hideResult, showBoard, showMenu, showPicker, showDraft, setLoaded, setLoadFailed,
-    showMatchInfo, showAnnounce, showEdge,
+    showMatchInfo, showAnnounce, showEdge, showRethrow,
+    onRethrow(handler) { rethrowBtn.addEventListener('click', handler); },
     onQuickGame(handler) { quickGameBtn.addEventListener('click', handler); },
     onZen(handler) { zenBtn.addEventListener('click', handler); },
     onBack(handler) { backBtn.addEventListener('click', handler); },

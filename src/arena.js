@@ -7,8 +7,9 @@
 // table, and the camera pulls back to fit it.
 
 import * as THREE from 'three';
+import { HOLE_CORNERS } from './physics.js';
 import {
-  SCENE_BACKGROUND, OPPONENT_FLOOR_COLOR, PLAYER_FLOOR_COLOR, WALL_COLOR,
+  SCENE_BACKGROUND, OPPONENT_FLOOR_COLOR, PLAYER_FLOOR_COLOR, WALL_COLOR, PIT_COLOR,
   TRAY_HALF_WIDTH, TRAY_DEPTH, WALL_T, DIVIDER_T, WALL_HALF_HEIGHT, WALL_VISIBLE_HALF_HEIGHT,
   DIE_RADIUS, CAMERA_FOV, CAMERA_POSITION, CAMERA_LOOK_AT, CAMERA_DEPTH_MARGIN,
 } from './config.js';
@@ -51,6 +52,15 @@ export function createArena(canvas) {
   let opponentFloor = null;
   let dividerMesh = null;
   let divider = true;
+  // Whether the tray is two sides' halves, each throwing from its own: a
+  // match, with or without the wall between them (No Man's Land has none).
+  // Zen's one tray is not.
+  let split = true;
+  // Holes in the floor (Pothole), each over a pit.
+  /** @type {import('./rules/types.js').Hole[]} */
+  let holes = [];
+  const pitMaterial = new THREE.MeshStandardMaterial({ color: PIT_COLOR, roughness: 1, side: THREE.BackSide });
+  const pitFloorMaterial = new THREE.MeshStandardMaterial({ color: PIT_COLOR, roughness: 1 });
 
   function buildTray() {
     if (trayGroup) {
@@ -58,7 +68,7 @@ export function createArena(canvas) {
       trayGroup.traverse((o) => {
         if (!o.isMesh) return;
         o.geometry.dispose();
-        if (o.material !== wallVisualMaterial) o.material.dispose();
+        if (![wallVisualMaterial, pitMaterial, pitFloorMaterial].includes(o.material)) o.material.dispose();
       });
     }
     trayGroup = new THREE.Group();
@@ -66,20 +76,42 @@ export function createArena(canvas) {
     const { halfWidth, depth } = tray;
 
     // Two tinted halves matching each side's colour identity, split by the
-    // divider wall added below.
-    function addFloor(color, z) {
+    // divider wall added below, with any holes in them cut out: the same
+    // 32-sided outline as the floor's collider (physics.js), so a die drops
+    // in exactly where the hole is drawn. Drawn in the floor's plane, x
+    // across and -z away from the camera, then laid flat.
+    function addFloor(color, z0, z1) {
+      const shape = new THREE.Shape()
+        .moveTo(-halfWidth, -z0).lineTo(halfWidth, -z0).lineTo(halfWidth, -z1).lineTo(-halfWidth, -z1).closePath();
+      for (const h of holes.filter((hole) => hole.z > z0 && hole.z < z1)) {
+        const path = new THREE.Path();
+        HOLE_CORNERS.forEach(([c, s], i) => path[i ? 'lineTo' : 'moveTo'](h.x + c * h.r, -(h.z + s * h.r)));
+        path.closePath();
+        shape.holes.push(path);
+      }
       const floor = new THREE.Mesh(
-        new THREE.PlaneGeometry(halfWidth * 2, depth),
+        new THREE.ShapeGeometry(shape),
         new THREE.MeshStandardMaterial({ color, roughness: 0.95 })
       );
       floor.rotation.x = -Math.PI / 2;
-      floor.position.set(0, 0, z);
       floor.receiveShadow = true;
       trayGroup.add(floor);
       return floor;
     }
-    opponentFloor = addFloor(OPPONENT_FLOOR_COLOR, -depth / 2);
-    addFloor(PLAYER_FLOOR_COLOR, depth / 2);
+    opponentFloor = addFloor(OPPONENT_FLOOR_COLOR, -depth, 0);
+    addFloor(PLAYER_FLOOR_COLOR, 0, depth);
+
+    // Each hole's pit: a dark well, open at the top, the dice that fall in
+    // lying at its bottom.
+    for (const h of holes) {
+      const wall = new THREE.Mesh(new THREE.CylinderGeometry(h.r, h.r, h.depth, HOLE_CORNERS.length, 1, true), pitMaterial);
+      wall.position.set(h.x, -h.depth / 2, h.z);
+      const bottom = new THREE.Mesh(new THREE.CircleGeometry(h.r, HOLE_CORNERS.length), pitFloorMaterial);
+      bottom.rotation.x = -Math.PI / 2;
+      bottom.position.set(h.x, -h.depth, h.z);
+      bottom.receiveShadow = true;
+      trayGroup.add(wall, bottom);
+    }
 
     // Only a short strip at the base of each wall is drawn; its collider (in
     // physics.js) is WALL_HALF_HEIGHT tall, so it blocks throws well above what
@@ -105,11 +137,22 @@ export function createArena(canvas) {
   }
 
   // Zen mode takes the divider out, giving one die the whole tray - and paints
-  // the floor one colour, so it reads as one tray rather than two halves.
-  function setDivider(on) {
+  // the floor one colour, so it reads as one tray rather than two halves. No
+  // Man's Land takes the wall out but keeps the two halves (`split`): each
+  // side still throws from its own.
+  function setDivider(on, halves = on) {
     divider = on;
+    split = halves;
     dividerMesh.visible = on;
-    opponentFloor.material.color.set(on ? OPPONENT_FLOOR_COLOR : PLAYER_FLOOR_COLOR);
+    opponentFloor.material.color.set(split ? OPPONENT_FLOOR_COLOR : PLAYER_FLOOR_COLOR);
+  }
+
+  /** Cuts `next` holes (Pothole) in the floor, or fills them in again. */
+  function setHoles(next = []) {
+    if (JSON.stringify(next) === JSON.stringify(holes)) return;
+    holes = next;
+    buildTray();
+    fitCamera();
   }
 
   // ---------- Camera ----------
@@ -124,7 +167,7 @@ export function createArena(canvas) {
   // once caused the etched numbers to lose the depth test against the very
   // face they sit on - on some GPUs only. The box measured here is everything
   // that is ever on screen: the tray with its walls, up to the top of the wall
-  // colliders, which no die gets above.
+  // colliders, which no die gets above, and down to the bottom of any pit.
   const viewDir = new THREE.Vector3();
   const corner = new THREE.Vector3();
   function fitCamera() {
@@ -136,7 +179,8 @@ export function createArena(canvas) {
     let far = 0;
     const xs = tray.halfWidth + WALL_T * 2;
     const zs = tray.depth + WALL_T * 2;
-    for (const x of [-xs, xs]) for (const y of [0, WALL_HALF_HEIGHT * 2]) for (const z of [-zs, zs]) {
+    const bottom = -Math.max(0, ...holes.map((h) => h.depth));
+    for (const x of [-xs, xs]) for (const y of [bottom, WALL_HALF_HEIGHT * 2]) for (const z of [-zs, zs]) {
       const d = corner.set(x, y, z).sub(camera.position).dot(viewDir);
       near = Math.min(near, d);
       far = Math.max(far, d);
@@ -204,9 +248,14 @@ export function createArena(canvas) {
   // clears it in any orientation. Any closer and the throw would start inside
   // the wall's collider, and Rapier's push back out of it would fling the die
   // the other way before the throw had even begun.
+  //
+  // In a match the hand stays in the player's own half even with no divider
+  // (No Man's Land), as far from the middle as if the divider were there:
+  // the same bound as the hold simulation's palm, which is given a divider
+  // whenever the tray is split (see holdHandful in input.js).
   function clampToTray(x, z, reach) {
     const xMax = sideFace() - reach.x;
-    const zMin = (divider ? DIVIDER_T : -tray.depth) + reach.z;
+    const zMin = (split ? DIVIDER_T : -tray.depth) + reach.z;
     return {
       x: within(x, -xMax, xMax),
       z: within(z, zMin, tray.depth - reach.z),
@@ -253,9 +302,12 @@ export function createArena(canvas) {
 
   return {
     renderer, scene, camera,
-    clampToTray, opponentZone, resize, setDivider, setTray,
+    clampToTray, opponentZone, resize, setDivider, setTray, setHoles,
     get divider() { return divider; },
+    /** Whether the tray is two halves, each side throwing from its own. */
+    get split() { return split; },
     get tray() { return tray; },
+    get holes() { return holes; },
     get arenaHalfWidth() { return arenaHalfWidth; },
     /** How far out the centre of a die of circumradius `radius` can be: against a side wall. */
     xLimit: (radius) => sideFace() - radius,

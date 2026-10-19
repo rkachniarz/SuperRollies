@@ -2,14 +2,14 @@
   "name": "super-rollies",
   "version": "0.1.0",
   "private": true,
-  "description": "A dice roll-off game. Draft your dice and a Spice that bends the rules, throw them, roll higher than your opponent - or just roll, in Zen.",
+  "description": "A dice roll-off game. Draft your dice and a Spice that bends the rules or the table, throw them, roll higher than your opponent - or just roll, in Zen.",
   "type": "module",
   "scripts": {
     "dev": "serve . --listen 8000",
     "build": "node tools/build-artifact.mjs",
     "test": "node --test \"test/**/*.test.js\"",
     "verify": "node tools/phase0/verify.mjs",
-    "phase0": "node tools/phase0/check-dice.mjs && node tools/phase0/check-tunnelling.mjs && node tools/phase0/check-handfuls.mjs && node tools/phase0/check-determinism.mjs"
+    "phase0": "node tools/phase0/check-dice.mjs && node tools/phase0/check-tunnelling.mjs && node tools/phase0/check-handfuls.mjs && node tools/phase0/check-table.mjs && node tools/phase0/check-determinism.mjs"
   },
   "devDependencies": {
     "@dimforge/rapier3d-deterministic-compat": "0.21.0",

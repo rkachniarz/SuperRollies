@@ -31,7 +31,7 @@
 <body>
 <h1>Super Rollies: determinism check</h1>
 <p class="dim">Check D, DEV_PLAN 0.7. Replays the recorded throws in
-  <code>throws.json</code> and compares every final position and orientation, bit
+  <code>throws.json</code> and <code>table-throws.json</code> and compares every final position and orientation, bit
   for bit, with what the game reached when they were recorded.</p>
 <p class="dim" id="agent"></p>
 <div id="verdict">Running…</div>
@@ -46,10 +46,14 @@
   document.getElementById('agent').textContent = navigator.userAgent;
 
   try {
-    const [{ throws, recordedIn }] = await Promise.all([
+    // Plain throws, and throws onto the tables Spice change (holes, a breeze,
+    // no divider, a cat's knock).
+    const [{ throws: plain, recordedIn }, { throws: table }] = await Promise.all([
       fetch('./throws.json').then((r) => r.json()),
+      fetch('./table-throws.json').then((r) => r.json()),
       initPhysics(),
     ]);
+    const throws = [...plain, ...table];
     const mismatches = [];
     throws.forEach(({ record, digest, faces }, i) => {
       const result = replayThrow(record);

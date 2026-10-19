@@ -139,6 +139,65 @@ export const DICE_SETS = Object.fromEntries([
 export const DIE_MAX = { d4: 4, d6: 6, d8: 8, d10: 10, 'd%': 100, d12: 12, d20: 20 };
 
 /**
+ * Every face of a die type, as it counts: 1 up to its highest, a percentile
+ * die's in tens.
+ * @param {string} type
+ */
+export function dieFaces(type) {
+  const step = type === 'd%' ? 10 : 1;
+  return Array.from({ length: DIE_MAX[type] / step }, (_, i) => (i + 1) * step);
+}
+
+const statsCache = new Map();
+
+/**
+ * What a dice set's totals look like: the average total, and how far apart
+ * two sides' totals are on average. Worked out exactly, from every way the
+ * dice can land - a sum by adding up each die's spread of faces in turn, any
+ * other scorer by trying every combination (at most a few thousand). What
+ * the win conditions that count points scale to (Hit Points, Race to N, Tug
+ * of War), so a match with eight d6s lasts about as long as one with a d20.
+ * @param {DiceSet} diceSet
+ * @returns {{ mean: number, meanGap: number }}
+ */
+export function scoreStats(diceSet) {
+  if (statsCache.has(diceSet.id)) return statsCache.get(diceSet.id);
+  const types = dieTypes(diceSet);
+  /** @type {Map<number, number>} total -> probability */
+  let totals = new Map([[0, 1]]);
+  if (diceSet.scorer === sum) {
+    for (const type of types) {
+      const faces = dieFaces(type);
+      const next = new Map();
+      for (const [total, p] of totals) {
+        for (const face of faces) next.set(total + face, (next.get(total + face) ?? 0) + p / faces.length);
+      }
+      totals = next;
+    }
+  } else {
+    totals = new Map();
+    const lists = types.map(dieFaces);
+    const weight = 1 / lists.reduce((n, list) => n * list.length, 1);
+    const walk = (/** @type {number[]} */ faces) => {
+      if (faces.length === lists.length) {
+        const total = diceSet.scorer(faces);
+        totals.set(total, (totals.get(total) ?? 0) + weight);
+        return;
+      }
+      for (const face of lists[faces.length]) walk([...faces, face]);
+    };
+    walk([]);
+  }
+  let mean = 0;
+  for (const [total, p] of totals) mean += total * p;
+  let meanGap = 0;
+  for (const [a, p] of totals) for (const [b, q] of totals) meanGap += Math.abs(a - b) * p * q;
+  const stats = { mean, meanGap };
+  statsCache.set(diceSet.id, stats);
+  return stats;
+}
+
+/**
  * The die a Spice adds when it gives a side one more (Underdog): the set's
  * commonest type, the smallest of those on a tie. Sneak Attack gets another
  * d6, The Whole Bag a d4, The Classic a d20.
