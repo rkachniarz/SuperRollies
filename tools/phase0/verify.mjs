@@ -548,6 +548,60 @@ await withMatch(PHONE, 'cursed', async (page) => {
     `"${before.text}", then "${after.text}"; ${cursedFaces} of the player's dice cursed`);
 }, '#quickGameBtn', { pick: 'classic', spice: 'cursed-number' });
 
+// Cursed Number on the table: a die showing the cursed number shows a red 0
+// in its place (every place it's printed: three times on a d4), until the
+// next throw.
+await withMatch(DESKTOP, 'cursed red 0', async (page) => {
+  const marked = () => page.evaluate(() => {
+    const { dice } = window.superRollies;
+    return Object.fromEntries([...dice.player, ...dice.opponent].map((d) => [d.id, d.mesh.children
+      .filter((c) => c.userData.printed && c.material.map !== c.userData.printed).map((c) => c.userData.number)]));
+  });
+  let round;
+  for (let i = 0; i < 6; i++) {
+    round = await throwAndWait(page);
+    if (Object.values(round.outcome.dice).flat().some((d) => d.tag === 'cursed')) break;
+  }
+  const shown = await marked();
+  const wrong = ['player', 'opponent'].flatMap((side) => round.outcome.dice[side].map((d, i) => {
+    const want = d.tag === 'cursed' ? [round.outcome.faces[side][i]] : [];
+    return shown[`${side}-${i}`].join() === want.join() ? null : `${side}-${i} shows ${shown[`${side}-${i}`]} for ${want}`;
+  })).filter(Boolean);
+  const cursed = Object.values(round.outcome.dice).flat().filter((d) => d.tag === 'cursed').length;
+  await drag(page, 0, -260);
+  const cleared = Object.values(await marked()).every((list) => !list.length);
+  await waitForDiceAtRest(page);
+  report('Cursed Number: a cursed die shows a red 0 for its number until the next throw',
+    cursed > 0 && !wrong.length && cleared, wrong.join('; ') || `${cursed} dice cursed${cleared ? ', cleared on the throw' : ', still marked after it'}`);
+}, '#quickGameBtn', { pick: 'fireball', spice: 'cursed-number' });
+
+// Exploding Dice on the table: each extra roll pops out of its die as a die
+// of its own, lands on that roll, and bumps none of the dice already read;
+// the card waits for it, and the next throw takes the pops away.
+await withMatch(DESKTOP, 'exploding pops', async (page) => {
+  let round;
+  let pops = [];
+  for (let i = 0; i < 6 && !pops.length; i++) {
+    round = await throwAndWait(page);
+    pops = await page.evaluate(async () => {
+      const { table } = window.superRollies;
+      const { SHAPES } = await import('./src/die-shapes.js');
+      return table.pops.map((p) => SHAPES[p.type].faceUp(p.mesh.quaternion.clone().multiply(p.face.mesh.quaternion).toArray()));
+    });
+  }
+  const extra = ['player', 'opponent'].flatMap((side) => round.outcome.dice[side].flatMap((d) => d.extra ?? []));
+  const moved = await page.evaluate((dice) => dice.filter((d) => {
+    const mesh = window.superRollies.table.meshFor(d.id);
+    return mesh.position.distanceTo({ x: d.p[0], y: d.p[1], z: d.p[2] }) > 1e-4;
+  }).map((d) => d.id), round.throws.at(-1).result.dice);
+  await drag(page, 0, -260);
+  const left = await page.evaluate(() => window.superRollies.table.pops.length);
+  await waitForDiceAtRest(page);
+  report('Exploding Dice: every extra roll pops out as a die showing it, the dice read stay put, and the next throw clears them',
+    pops.length > 0 && [...pops].sort().join() === [...extra].sort().join() && !moved.length && left === 0,
+    `pops show ${pops.join(', ')} for rolls ${extra.join(', ')}${moved.length ? `; moved: ${moved.join(', ')}` : ''}${left ? `; ${left} left after the throw` : ''}`);
+}, '#quickGameBtn', { pick: 'fireball', spice: 'exploding-dice' });
+
 // The test bench (D39): only with ?dev; every dice set, then every Spice that
 // set allows, set-specific first; back goes to the dice; picking one starts it.
 const BENCH = 'Test bench: only with ?dev; every dice set, then every Spice for it (set-specific first), and that match';
@@ -821,6 +875,13 @@ for (const spice of ['hit-points', 'race-to-n', 'tug-of-war']) {
     });
     report(`${SPICE[spice].name}: a bar per side, as the win condition says, clear of the corners on 390x844`,
       hud.texts.join() === hud.want.join() && hud.hearts === 0 && !hud.overlaps, hud.texts.join(' | '));
+    if (spice !== 'hit-points') return;
+    // The card says who lost how many HP.
+    const { damage } = await page.evaluate(() => window.superRollies.rounds.at(-1).outcome);
+    const notes = await page.$$eval('#resultDetail .note', (els) => els.map((el) => el.textContent));
+    const want = damage.player ? `You lose ${damage.player} HP.` : damage.opponent ? `Your opponent loses ${damage.opponent} HP.` : null;
+    report('Hit Points: the card says who lost how many HP',
+      want ? notes.includes(want) : !notes.some((n) => n.includes('HP')), notes.join(' | ') || 'no notes (a tie)');
   }, '#quickGameBtn', { pick: 'ability-score', spice });
 }
 

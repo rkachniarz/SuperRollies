@@ -2,10 +2,12 @@
 // between throws. Rebuilt for every match, since the dice set decides how many
 // dice there are, of which types, and how big the tray is. Between rounds a
 // side can gain a die or lose one again, when a Spice changes its hand
-// (Underdog's extra die, Inspiration's advantage).
+// (Underdog's extra die, Inspiration's advantage). After a round, a die the
+// rules exploded has its extra rolls pop out of it as dice of their own, and
+// a cursed one shows a red 0: both only for show, until the next throw.
 
 import * as THREE from 'three';
-import { THEMES } from './config.js';
+import { THEMES, DIVIDER_T } from './config.js';
 import { createDie } from './dice.js';
 import { SHAPES } from './die-shapes.js';
 import { handLayout } from './handful.js';
@@ -14,6 +16,14 @@ import { handLayout } from './handful.js';
 // a little, and a die resting against a wall must never be moved.
 const WALL_GIVE = 0.02;
 const corner = new THREE.Vector3();
+
+// How many ways a popped die is tried in, looking for the most room.
+const POP_DIRECTIONS = 24;
+// How it's sent off (units/s): up, and away faster the more room it has.
+const POP_UP = 2.6;
+const POP_AWAY = [2, 6];
+const POP_SPIN = 9;
+const POP_GLOW = 0xff8a1f;
 
 /**
  * How far a die reaches to its left and to its right from its centre, as it
@@ -41,6 +51,8 @@ export function createTable(arena) {
   const hands = { player: handLayout(1, 1), opponent: handLayout(1, 1) };
   // This match's die scale, for dice added between rounds.
   let scale = 1;
+  // Dice popped out of exploded ones this round (popOut).
+  const pops = [];
 
   function addDie(side, type, i) {
     const die = createDie({ type, theme: THEMES[side], scale, scene: arena.scene });
@@ -63,6 +75,7 @@ export function createTable(arena) {
    * (Pothole); no die is put down over one.
    */
   function setup({ types, scale: dieScale, tray, opponent, divider = opponent, holes = [] }) {
+    tidy();
     for (const die of [...sides.player, ...sides.opponent]) die.remove();
     byId.clear();
     scale = dieScale;
@@ -172,9 +185,95 @@ export function createTable(arena) {
     }
   }
 
+  /**
+   * A die popped out of `source` (an exploded die, or a die popped out of
+   * one) for `side`, of the same type: put down just above it, and the
+   * release that sends it off - up, and away towards wherever in that side's
+   * half has most room, rolling as it goes. Its pose is the physics' to set
+   * (it's a body in the throw record); `face` is its die, inside it, which
+   * the game turns so it lands on the roll the rules drew (turnShowing in
+   * die-shapes.js). Shown, never thrown: tidy() takes it away.
+   */
+  function popOut(side, source) {
+    const face = createDie({ type: source.type, theme: THEMES[side], scale: source.scale, scene: arena.scene });
+    // Aglow, so it's told apart from the dice thrown.
+    face.mesh.material.emissive.set(POP_GLOW);
+    face.mesh.material.emissiveIntensity = 0.45;
+    const mesh = new THREE.Group();
+    mesh.add(face.mesh);
+    arena.scene.add(mesh);
+    const id = `pop-${side}-${pops.length}`;
+    const pop = { id, type: source.type, scale: source.scale, radius: face.radius, mesh, face };
+    const { x, z, dx, dz, room } = openest(side, source, pop.radius);
+    mesh.position.set(x, source.mesh.position.y + source.radius + pop.radius + 0.05, z);
+    mesh.quaternion.copy(source.mesh.quaternion);
+    byId.set(id, mesh);
+    pops.push(pop);
+    const away = Math.min(POP_AWAY[1], Math.max(POP_AWAY[0], POP_AWAY[0] + room));
+    return {
+      pop,
+      release: {
+        id, type: pop.type, s: pop.scale, p: mesh.position.toArray(), q: mesh.quaternion.toArray(),
+        v: [dx * away, POP_UP, dz * away],
+        // Tumbling forwards, about the axis across its path, with a twist.
+        w: [dz * POP_SPIN, POP_SPIN / 3, -dx * POP_SPIN],
+      },
+    };
+  }
+
+  /**
+   * Where a die of circumradius `radius` popping out of `source` starts (over
+   * it, but clear of the walls), and the way out of there with most room
+   * before it would hit a wall or another die (bar `source`, which it flies
+   * over): its direction and how far that is.
+   */
+  function openest(side, source, radius) {
+    const { depth } = arena.tray;
+    const xMax = arena.xLimit(radius);
+    const [zMin, zMax] = !arena.divider ? [-depth, depth] : side === 'player' ? [DIVIDER_T, depth] : [-depth, -DIVIDER_T];
+    const x = Math.max(-xMax, Math.min(xMax, source.mesh.position.x));
+    const z = Math.max(zMin + radius, Math.min(zMax - radius, source.mesh.position.z));
+    const others = [...sides.player, ...sides.opponent, ...pops].filter((d) => d !== source);
+    let best = { x, z, dx: 0, dz: side === 'player' ? 1 : -1, room: -Infinity };
+    for (let k = 0; k < POP_DIRECTIONS; k++) {
+      const dx = Math.cos((2 * Math.PI * k) / POP_DIRECTIONS);
+      const dz = Math.sin((2 * Math.PI * k) / POP_DIRECTIONS);
+      // To the walls...
+      let room = Math.min(
+        dx > 0 ? (xMax - x) / dx : dx < 0 ? (-xMax - x) / dx : Infinity,
+        dz > 0 ? (zMax - radius - z) / dz : dz < 0 ? (zMin + radius - z) / dz : Infinity,
+      );
+      // ...and to the first die in the way.
+      for (const die of others) {
+        const ox = die.mesh.position.x - x;
+        const oz = die.mesh.position.z - z;
+        const along = ox * dx + oz * dz;
+        const reach = die.radius + radius;
+        const across = ox * ox + oz * oz - along * along;
+        if (along > 0 && across < reach * reach) room = Math.min(room, along - Math.sqrt(reach * reach - across));
+      }
+      if (room > best.room) best = { x, z, dx, dz, room: Math.max(0, room) };
+    }
+    return best;
+  }
+
+  /** Clears what the last round left on the table: popped dice, cursed numbers. */
+  function tidy() {
+    for (const pop of pops.splice(0)) {
+      arena.scene.remove(pop.mesh);
+      pop.face.remove();
+      byId.delete(pop.id);
+    }
+    for (const die of [...sides.player, ...sides.opponent]) die.showCursed(null);
+  }
+
   return {
     setup,
     setHand,
+    popOut,
+    tidy,
+    /** Dice popped out of exploded ones this round. */
+    pops,
     keepOnScreen,
     sides,
     /** The mesh of the die with this id (as in a throw record), e.g. 'player-0'. */

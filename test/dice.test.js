@@ -118,6 +118,16 @@ for (const type of DIE_TYPES) {
         if (a.face === b.face) assert.ok(!overlap(decalSquare(a), decalSquare(b)), `${a.text} and ${b.text}`);
       }));
     });
+
+    test('can be turned onto itself to show any number instead of any other (an explosion\'s pop)', () => {
+      for (const shown of shape.faces) {
+        const q = lyingOn(shape, shown);
+        for (const wanted of expected.numbers) {
+          const turned = q.clone().multiply(shape.turnShowing(shown.number, wanted));
+          assert.equal(shape.faceUp(turned.toArray()), wanted, `${shown.number} turned to ${wanted}`);
+        }
+      }
+    });
   });
 }
 

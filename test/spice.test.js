@@ -260,6 +260,8 @@ describe('Exploding Dice', () => {
     assert.ok(rolls.slice(0, -1).every((r) => r === 6) && rolls.at(-1) >= 1 && rolls.at(-1) <= 6);
     assert.ok(rolls.length > 10 || rolls.at(-1) !== 6);
     assert.equal(last.values.player[0], rolls.reduce((a, b) => a + b));
+    // The extra rolls, for the table to pop out as dice.
+    assert.deepEqual(exploded.extra, rolls.slice(1));
     assert.deepEqual(plain, { text: '3', kept: true });
     assert.equal(last.scores.player, last.values.player[0] + 3);
     assert.equal(last.scores.opponent, 7);
@@ -426,6 +428,7 @@ describe('Brutal Critical', () => {
       const [die] = last.dice.player;
       const extra = Number(die.text.slice(1, -1).split('+')[1]);
       assert.equal(die.text, `(12+${extra})`);
+      assert.deepEqual(die.extra, [extra]);
       assert.ok(extra >= 1 && extra <= 12);
       assert.equal(last.scores.player, 12 + extra);
       assert.deepEqual(last.dice.opponent, [{ text: '7', kept: true }]);

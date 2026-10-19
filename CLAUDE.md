@@ -222,6 +222,15 @@ someone (or something) tidying with good intentions.
   with the new faces; nothing is "un-applied". Every await in a round checks
   `matchId`, so a round still waiting on a throw, a pause or a paw stops
   when the player leaves the match.
+- **`src/game.js` (`showOnTable`) — a die popped out by an explosion is
+  turned onto itself to show its roll; it isn't thrown to it.** The rules
+  draw the extra rolls (D28); the pop's tumble is simulated (`replayThrow`)
+  with every other die *fixed* in the record, then its die is drawn turned by
+  a symmetry of its shape (`turnShowing` in `die-shapes.js`) so the face it
+  lands on shows the drawn roll, then the same record plays on screen. Same
+  outline, so it looks right. Don't let pops push the dice the rules read
+  (their faces could change after scoring), and don't put pops in a round's
+  records: they're for show.
 - **`src/dice.js` — dice start each match *placed* flat on a face, never
   dropped.** Dropped from rest in the default orientation, a d20 lands exactly
   on a level edge and, the simulation being deterministic, stays balanced
@@ -294,7 +303,10 @@ these are scripted in `npm run verify` (`tools/phase0/verify.mjs`):
     clear both corners.
 12. Underdog puts an extra die on the table for the side behind, which is
     thrown and scored, and badges that side; Cursed Number's number is
-    announced before every round and a die showing it counts 0.
+    announced before every round, a die showing it counts 0 and shows a red
+    0 until the next throw. Exploding Dice pops each extra roll out of its
+    die as a die showing it, moving none of the dice read, gone at the next
+    throw.
 13. Pothole: a die that falls in lies in the pit, counts 0 and is written
     "hole"; none waits over a hole; on 390×844 both holes are on screen.
 14. Cat Paw knocks the dice the rules name, from where they lay, and their
@@ -307,7 +319,8 @@ these are scripted in `npm run verify` (`tools/phase0/verify.mjs`):
     new throw replaces the old, and it's spent.
 17. Hit Points, Race to N and Tug of War each draw a bar per side, as the win
     condition says, clear of the corners on a phone; a Hit Points match runs
-    to 0 HP and back to the menu. Doubles Again asks the player to throw
+    to 0 HP and back to the menu, its card saying who lost how many HP.
+    Doubles Again asks the player to throw
     again and adds it on the card; Death Saves' fails are marked by the
     hearts.
 18. The test bench is hidden without `?dev`; with it, it lists every dice

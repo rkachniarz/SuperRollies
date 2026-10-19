@@ -37,6 +37,7 @@ import { SHAPES } from './die-shapes.js';
  *   q: number[],         // orientation quaternion [x, y, z, w]
  *   v: number[],         // linear velocity
  *   w: number[],         // angular velocity
+ *   fixed?: boolean,     // held where it is, for the others to bounce off (an explosion's pop)
  * }} DieRelease
  *
  * Everything needed to reproduce a throw.
@@ -684,7 +685,7 @@ export function createRoundSim(record, { clamp = true } = {}) {
   const dice = record.dice.map((d) => {
     const [qx, qy, qz, qw] = d.q;
     const body = world.createRigidBody(
-      RAPIER.RigidBodyDesc.dynamic()
+      (d.fixed ? RAPIER.RigidBodyDesc.fixed() : RAPIER.RigidBodyDesc.dynamic())
         .setTranslation(d.p[0], d.p[1], d.p[2])
         .setRotation({ x: qx, y: qy, z: qz, w: qw })
         .setLinvel(d.v[0], d.v[1], d.v[2])
@@ -706,7 +707,8 @@ export function createRoundSim(record, { clamp = true } = {}) {
     );
     const pose = readPose(body);
     const radius = radiusOf(d.type, d.s ?? 1);
-    return { id: d.id, type: d.type, radius, body, collider, prev: pose, curr: pose, quietSteps: 0, stillSteps: 0, settled: false, asleep: false };
+    const fixed = Boolean(d.fixed);
+    return { id: d.id, type: d.type, radius, body, collider, prev: pose, curr: pose, quietSteps: 0, stillSteps: 0, settled: fixed, asleep: false, fixed };
   });
 
   const sim = {
@@ -734,6 +736,7 @@ export function createRoundSim(record, { clamp = true } = {}) {
       world.step();
       sim.steps++;
       for (const d of dice) {
+        if (d.fixed) continue;
         if (clamp) clampToArena(d.body, sideFace, tray.depth, d.radius);
         d.prev = d.curr;
         d.curr = readPose(d.body);

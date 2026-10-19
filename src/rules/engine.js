@@ -218,8 +218,8 @@ export function scoreDice(scorer, faces, values) {
   /** @type {import('./types.js').DieTerm[]} */
   const dice = faces.map((face, i) => {
     const term = { text: values?.[i]?.text ?? labels?.[i] ?? String(counted[i]), kept: kept[i] };
-    const tag = values?.[i]?.tag;
-    return tag ? { ...term, tag } : term;
+    const { tag, extra } = values?.[i] ?? {};
+    return { ...term, ...(tag ? { tag } : {}), ...(extra ? { extra } : {}) };
   });
   return { values: counted, kept, dice, score: scorer(counted) };
 }

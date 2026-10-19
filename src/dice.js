@@ -65,8 +65,14 @@ const PIPS = {
 // whichever way up the die lies.
 const UNDERLINED = new Set(['6', '9']);
 
-function labelTexture(value, text, style, colorHex, fill = 0.68) {
-  const key = (style === 'pips' ? value : text) + '|' + style + '|' + colorHex + '|' + fill;
+// A cursed die's number (Cursed Number) is shown as a red 0 until the next
+// throw, outlined so it reads on either side's colour.
+const CURSED_TEXT = '0';
+const CURSED_COLOR = '#ff2b2b';
+const CURSED_OUTLINE = '#1a0606';
+
+function labelTexture(value, text, style, colorHex, fill = 0.68, outlineHex = null) {
+  const key = (style === 'pips' ? value : text) + '|' + style + '|' + colorHex + '|' + fill + '|' + outlineHex;
   let tex = labelTextureCache.get(key);
   if (tex) return tex;
   const size = 256;
@@ -93,6 +99,12 @@ function labelTexture(value, text, style, colorHex, fill = 0.68) {
     }
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    if (outlineHex) {
+      ctx.strokeStyle = outlineHex;
+      ctx.lineWidth = px * 0.12;
+      ctx.lineJoin = 'round';
+      ctx.strokeText(text, size / 2, size / 2 + size * 0.02);
+    }
     ctx.fillText(text, size / 2, size / 2 + size * 0.02);
     if (UNDERLINED.has(text)) ctx.fillRect(size / 2 - px * 0.22, size / 2 + px * 0.42, px * 0.44, px * 0.07);
   }
@@ -170,6 +182,19 @@ export function createDie({ type, theme, scale = 1, scene }) {
       mesh.quaternion.setFromAxisAngle(Y_AXIS, yaw).multiply(shape.restQuaternion);
     },
     /** Takes it off the table for good. Its geometry and textures are shared, so they stay. */
+    /**
+     * Shows a red 0 wherever `number` is printed (a d4 prints it three
+     * times), as the number it rolled is cursed; null puts the numbers back.
+     * @param {number | null} number
+     */
+    showCursed(number) {
+      const cursed = labelTexture(0, CURSED_TEXT, 'numeral', CURSED_COLOR, shape.numeralFill, CURSED_OUTLINE);
+      for (const decal of mesh.children) {
+        if (decal.userData.number === undefined) continue;
+        decal.userData.printed ??= decal.material.map;
+        decal.material.map = decal.userData.number === number ? cursed : decal.userData.printed;
+      }
+    },
     remove() {
       scene.remove(mesh);
       material.dispose();

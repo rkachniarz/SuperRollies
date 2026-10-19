@@ -97,6 +97,7 @@ Some Spice works with any dice; some only makes sense with particular dice
 | D37 | 2026-10-19 | **The point-counting win conditions scale to the dice.** From each set's exact distribution of totals (`scoreStats`): Hit Points start at 4.5 times the average gap between two totals, Race to N's target is five average totals, Tug of War's rope reaches 3 average gaps each way. Simulated, every set then lasts about the same: Hit Points ~7 rounds, Race ~5, Tug of War ~9 (long-tailed: a random walk). The Classic: 30 HP, race to 55, 20 each way. A win condition may now be made for its dice set (`winCondition` as a function), and draws a bar per side (`kind: 'bar'`). |
 | D38 | 2026-10-19 | **No Man's Land keeps the halves, not the wall.** Each side still throws from its own half (the hand is held to it as if the divider were there), the floor stays two colours, and the dice go anywhere. Dice can now rest under the result card in the middle; it takes no pointer events, so they're still picked up through it (checked). A new kind of Spice, "On the table", covers it, Pothole, Cat Paw and Gusty Table. |
 | D39 | 2026-10-19 | **A test bench, for development only, behind `?dev`.** For live-testing every Spice without the draft's luck: a third menu button, shown only with `?dev` in the address, opens the catalogue (4.3) of every dice set, then every Spice that set allows, those made for particular sets first (`testBenchSpice`), and starts a Quick Game with them. Its seed is logged to the console, and `?seed=` in the address replays it. Not part of the finished game; the flag keeps it out of players' way, and it can be removed outright before release. |
+| D40 | 2026-10-19 | **What the rules did to the dice is shown on the dice** (playtest feedback). An exploded die's extra rolls (Exploding Dice, Brutal Critical) **pop out of it as dice of their own**, with a burst, towards the most open part of that side's half, and land on the rolls drawn; a chain pops out of the pop. They glow, so they're told apart from the dice thrown, and go at the next throw. The rolls are still **drawn, not thrown** (D28): each pop's tumble is simulated with every die already on the table held fixed, so nothing the rules read is moved, and once it's known which face it lands on, its die is turned onto itself by one of its symmetries (`turnShowing`) so the face it lands on shows the drawn roll. The outline is the same, so nothing looks off, and the rules never depend on physics. A pop is for show only and is in no throw record. A **cursed die shows a red 0** in place of its number until the next throw. **Hit Points' card says who lost how many HP** (`You lose 8 HP.`): a win condition can name its unit (`unit`), and the game writes the line from the player's seat, so a multiplayer guest can mirror it. |
 
 ---
 
@@ -744,6 +745,9 @@ Behaviour is unchanged: 1d20 vs. AI plays exactly as it does today.
   determinism over 44 fixtures: 20 plain, 24 onto changed tables) and
   `npm run verify` (71 checks) all pass. Republished as version 25.*
 - [x] **5.10** Docs refresh.
+- [x] **5.11** Playtest feedback (D40): exploded dice pop out extra dice that
+  land on their rolls; a cursed die shows a red 0; Hit Points' card says who
+  lost how many HP. *Scripted in `npm run verify`.*
 
 ### Phase 6 — Alternative scoring
 

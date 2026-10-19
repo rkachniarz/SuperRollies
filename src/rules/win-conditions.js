@@ -109,6 +109,7 @@ export function hitPoints(diceSet) {
   const side = (/** @type {number} */ hp) => ({ value: hp, max, text: `${hp} HP` });
   return {
     id: 'hit-points',
+    unit: 'HP',
     init: () => ({ player: max, opponent: max }),
     damage: loserPaysGap,
     apply: (state, _round, damage) => ({

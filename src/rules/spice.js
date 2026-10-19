@@ -129,7 +129,7 @@ const EXPLODING_DICE = {
       roll = 1 + rng.int(max);
       rolls.push(roll);
     }
-    return { value: rolls.reduce((a, b) => a + b, 0), text: `(${rolls.join('+')})`, tag: 'exploded' };
+    return { value: rolls.reduce((a, b) => a + b, 0), text: `(${rolls.join('+')})`, tag: 'exploded', extra: rolls.slice(1) };
   }),
 };
 
@@ -279,7 +279,7 @@ const BRUTAL_CRITICAL = {
   values: (faces, { rng }) => faces.map((face) => {
     if (face !== 12) return { value: face };
     const extra = 1 + rng.int(12);
-    return { value: face + extra, text: `(12+${extra})`, tag: 'exploded' };
+    return { value: face + extra, text: `(12+${extra})`, tag: 'exploded', extra: [extra] };
   }),
 };
 

@@ -56,13 +56,15 @@ src/
   dice.js     drawing a die of any type: faceted body, etched numbers or pips
   handful.js  several dice as one handful: how they sit together, how they
               scatter when thrown, and the opponent's throw
-  table.js    the dice on the table this match, and where they wait
+  table.js    the dice on the table this match, and where they wait; dice
+              popped out by an explosion, and a cursed die's red 0
   arena.js    the tray as drawn - renderer, camera, lights, walls, any holes
               in the floor - sized per dice set, and how much of it is on screen
   physics.js  the tray's colliders (a floor with holes, a breeze), the dice
               in flight, and a handful being held (in an unseen palm); no
               DOM, so it runs in Node too
-  effects.js  drawn but never simulated: the breeze's streaks, the cat's paw
+  effects.js  drawn but never simulated: the breeze's streaks, the cat's paw,
+              an explosion's burst
   roll.js     plays a throw on screen: fixed-step physics, smooth drawing
   replay.js   replays a recorded throw to rest; reads the faces
   input.js    grab / drag / release, and telling a throw from a fumble

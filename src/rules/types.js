@@ -72,13 +72,15 @@
 /**
  * What a Spice says one die counts for, when that isn't just its face. `text`
  * is how the result card writes it (`(6+6+2)` for a die that exploded twice);
- * `tag` marks it for the card to style ('exploded', 'cursed').
- * @typedef {{ value: number, text?: string, tag?: string }} DieValue
+ * `tag` marks it for the card to style ('exploded', 'cursed'). `extra` is
+ * any rolls the game made for it and added on (an exploded die's), in order,
+ * for the table to show them rolled.
+ * @typedef {{ value: number, text?: string, tag?: string, extra?: number[] }} DieValue
  */
 
 /**
- * One die in the breakdown on the result card (R2.5).
- * @typedef {{ text: string, kept: boolean, tag?: string }} DieTerm
+ * One die in the breakdown on the result card (R2.5), and on the table.
+ * @typedef {{ text: string, kept: boolean, tag?: string, extra?: number[] }} DieTerm
  */
 
 /**
@@ -120,6 +122,8 @@
  * @template S  This win condition's slice of the match state.
  * @typedef {Object} WinCondition
  * @property {string} id
+ * @property {string} [unit]  What a side loses, if it's a count worth naming
+ *   on the result card ('HP': `You lose 8 HP.`). Hearts are seen going.
  * @property {() => S} init
  * @property {(round: Round) => PerSide<number>} damage  What the round costs
  *   each side by default, in this win condition's own units.

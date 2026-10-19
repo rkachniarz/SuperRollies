@@ -1,5 +1,6 @@
 // Things on the table that are drawn but never simulated: streaks on the
-// breeze (Gusty Table) and the cat's paw (Cat Paw). Neither touches a die -
+// breeze (Gusty Table), the cat's paw (Cat Paw), and the burst where a die
+// explodes (Exploding Dice). None of them touches a die -
 // the breeze's push and the paw's knock are in the throw's record (physics.js)
 // - so they're free to use Math.random: nothing here decides a result.
 
@@ -18,8 +19,17 @@ const PAW_OUT = 0.45;
 const FUR = 0x9a8f86;
 const TOES = 0xd8cfc7;
 
+// An explosion: how long its flash and ring last, and how long a die
+// popping out of it takes to grow to full size (seconds).
+const BURST_TIME = 0.6;
+const GROW_TIME = 0.22;
+const BURST_COLOR = 0xffb02e;
+const FLASH_COLOR = 0xfff1b8;
+
 const easeIn = (t) => t * t;
 const easeOut = (t) => 1 - (1 - t) * (1 - t);
+// Overshoots a little and settles back: a pop.
+const easeOutBack = (t) => 1 + 2.7 * (t - 1) ** 3 + 1.7 * (t - 1) ** 2;
 
 export function createEffects(arena) {
   const group = new THREE.Group();
@@ -155,11 +165,10 @@ export function createEffects(arena) {
       onContact = null;
       resolve();
     }
-    if (swipes.every((s) => s.t >= PAW_IN + PAW_FOLLOW + PAW_OUT)) clear();
+    if (swipes.every((s) => s.t >= PAW_IN + PAW_FOLLOW + PAW_OUT)) clearPaws();
   }
 
-  /** Takes any paw away at once (a match left mid-swipe). */
-  function clear() {
+  function clearPaws() {
     for (const { paw } of swipes) {
       group.remove(paw);
       paw.traverse((o) => { if (o.isMesh) o.geometry.dispose(); });
@@ -168,14 +177,87 @@ export function createEffects(arena) {
     onContact = null;
   }
 
+  // ---------- Explosions ----------
+  /** @type {{ ring: THREE.Mesh, flash: THREE.Mesh, size: number, t: number }[]} */
+  let bursts = [];
+  /** @type {{ object: THREE.Object3D, scale: number, t: number }[]} */
+  let growing = [];
+
+  /**
+   * A die exploding at `at` ([x, y, z]): a flash there, and a ring spreading
+   * across the floor, both `size` across to start with (the die's).
+   */
+  function burst(at, size) {
+    const [x, y, z] = at;
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.75, 1, 48),
+      new THREE.MeshBasicMaterial({ color: BURST_COLOR, transparent: true, depthWrite: false, side: THREE.DoubleSide })
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(x, 0.03, z);
+    const flash = new THREE.Mesh(
+      new THREE.SphereGeometry(1, 20, 14),
+      new THREE.MeshBasicMaterial({
+        color: FLASH_COLOR, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+      })
+    );
+    flash.position.set(x, y, z);
+    group.add(ring, flash);
+    bursts.push({ ring, flash, size, t: 0 });
+  }
+
+  /** Grows `object` from nothing to its present size, with a pop. */
+  function grow(object) {
+    growing.push({ object, scale: object.scale.x, t: 0 });
+    object.scale.setScalar(0.01);
+  }
+
+  function frameBursts(dt) {
+    for (const b of bursts) {
+      b.t += dt;
+      const k = Math.min(1, b.t / BURST_TIME);
+      b.ring.scale.setScalar(b.size * (0.6 + 2.4 * easeOut(k)));
+      b.ring.material.opacity = 0.9 * (1 - k);
+      b.flash.scale.setScalar(b.size * (0.4 + 1.2 * easeOut(k)));
+      b.flash.material.opacity = 0.85 * (1 - k) ** 2;
+    }
+    for (const b of bursts.filter((b) => b.t >= BURST_TIME)) removeBurst(b);
+    bursts = bursts.filter((b) => b.t < BURST_TIME);
+    for (const g of growing) {
+      g.t += dt;
+      g.object.scale.setScalar(g.scale * Math.max(0.01, easeOutBack(Math.min(1, g.t / GROW_TIME))));
+    }
+    growing = growing.filter((g) => g.t < GROW_TIME);
+  }
+
+  function removeBurst({ ring, flash }) {
+    for (const mesh of [ring, flash]) {
+      group.remove(mesh);
+      mesh.geometry.dispose();
+      mesh.material.dispose();
+    }
+  }
+
+  /** Takes everything away at once (a match left mid-swipe or mid-burst). */
+  function clear() {
+    clearPaws();
+    for (const b of bursts) removeBurst(b);
+    bursts = [];
+    for (const g of growing) g.object.scale.setScalar(g.scale);
+    growing = [];
+  }
+
   return {
     setWind,
     swipe,
+    burst,
+    grow,
     clear,
     /** Called once per frame; `rolling` while dice are in motion. */
     frame(dt, rolling) {
       frameWind(dt, rolling);
       framePaws(dt);
+      frameBursts(dt);
     },
   };
 }

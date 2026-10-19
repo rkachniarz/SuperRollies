@@ -22,6 +22,8 @@ import { GAME_OVER_LINGER_MS } from './config.js';
 import { randomHandful } from './handful.js';
 import { DIE_TYPES } from './die-shapes.js';
 import { createRng, deriveSeed, randomSeed } from './rng.js';
+import { replayThrow } from './replay.js';
+import { SHAPES } from './die-shapes.js';
 import {
   matchConfig, resolveRules, startMatch, beginRound, playRound, handOf, edgeOf, scoreDice,
   tableOf, afterSettle, throwsAgain, canRethrow, spendRethrow,
@@ -47,6 +49,9 @@ const other = (side) => (side === 'player' ? 'opponent' : 'player');
 // How long the opponent seems to think before throwing again on its own (a
 // re-throw, doubles), so the player sees why the dice are moving.
 const OPPONENT_BEAT_MS = 1100;
+
+// After a die explodes, how long before what it popped out explodes in turn.
+const POP_BEAT_MS = 250;
 
 // Zen's table: nothing on it but the dice.
 const PLAIN_TABLE = { holes: [], wind: null, divider: false };
@@ -126,6 +131,7 @@ export function createGame({ hud, roller, arena, table, effects }) {
 
   /** Throws `releases` (by side) and resolves with the record and result, once settled. */
   async function roll(releases) {
+    table.tidy();
     const record = recordFor(releases);
     return { record, result: await roller.start(record) };
   }
@@ -253,6 +259,7 @@ export function createGame({ hud, roller, arena, table, effects }) {
     matchId++;
     roller.cancel();
     effects.clear();
+    table.tidy();
     rolling = false;
     awaiting = null;
     offer = null;
@@ -359,12 +366,14 @@ export function createGame({ hud, roller, arena, table, effects }) {
   async function playOut(before, round, throws, id) {
     for (;;) {
       const { outcome, state: after } = playRound(rules, before, round.faces, round);
+      await showOnTable(outcome, id);
+      if (id !== matchId) return;
       const loser = outcome.winner && other(outcome.winner);
       // The opponent calls on it when this loss would cost it the match.
       if (loser === 'opponent' && canRethrow(rules, before, loser) && outcome.matchWinner === 'player') {
         hud.showMatch(rules.winCondition.view(after.win));
         hud.showRound(ROUND_HEADLINES.player, breakdownOf(outcome),
-          { notes: [outcome.note, `Your opponent calls on its ${rules.spice.name}!`] });
+          { notes: [...notesOf(outcome), `Your opponent calls on its ${rules.spice.name}!`] });
         await pause(OPPONENT_BEAT_MS);
         if (id !== matchId) return;
         before = spendRethrow(rules, before, 'opponent');
@@ -380,6 +389,60 @@ export function createGame({ hud, roller, arena, table, effects }) {
       commit(before, round, throws, outcome, after);
       return;
     }
+  }
+
+  /**
+   * Shows on the table what the rules made of the dice where they lie: a
+   * cursed die's number turned to a red 0, and each extra roll an exploded
+   * die was given popping out of it as a die of its own, landing on that
+   * roll. A pop that is itself a maximum pops out another, and so on. Only
+   * for show, so nothing here is in the round's records: the rules decided
+   * the round already, from the rules stream (R4.4).
+   */
+  async function showOnTable(outcome, id) {
+    for (const side of SIDES) {
+      outcome.dice[side].forEach((term, i) => {
+        if (term.tag === 'cursed') table.sides[side][i].showCursed(outcome.faces[side][i]);
+      });
+    }
+    let popping = SIDES.flatMap((side) => outcome.dice[side].flatMap((term, i) =>
+      (term.extra ? [{ side, from: table.sides[side][i], rolls: term.extra }] : [])));
+    for (let n = 0; popping.length; n++) {
+      // Everything already on the table stays put for the pops to bounce
+      // off, so no die the rules have read is moved.
+      const still = [...table.sides.player, ...table.sides.opponent, ...table.pops].map((d) => ({
+        id: d.id, type: d.type, s: d.scale, p: d.mesh.position.toArray(), q: d.mesh.quaternion.toArray(),
+        v: [0, 0, 0], w: [0, 0, 0], fixed: true,
+      }));
+      const popped = popping.map((source) => ({ source, ...table.popOut(source.side, source.from) }));
+      const record = recordOf([...still, ...popped.map((p) => p.release)]);
+      // Run it once first to see where each pop lands, then turn its die so
+      // it lands on its roll; playing it on screen runs it exactly the same.
+      const landed = Object.fromEntries(replayThrow(record).dice.map((d) => [d.id, d.face]));
+      for (const { source, pop } of popped) {
+        pop.face.mesh.quaternion.copy(SHAPES[pop.type].turnShowing(landed[pop.id], source.rolls[n]));
+        effects.burst(source.from.mesh.position.toArray(), source.from.radius);
+        effects.grow(pop.face.mesh);
+      }
+      await roller.start(record);
+      if (id !== matchId) return;
+      popping = popped.filter(({ source }) => source.rolls.length > n + 1)
+        .map(({ source, pop }) => ({ ...source, from: pop }));
+      if (popping.length) await pause(POP_BEAT_MS);
+      if (id !== matchId) return;
+    }
+  }
+
+  /**
+   * The lines under a round's breakdown: what it cost, where the win
+   * condition counts that in something to name (`You lose 8 HP.`), and what
+   * the Spice says about it.
+   */
+  function notesOf(outcome) {
+    const { unit } = rules.winCondition;
+    const cost = unit && SIDES.filter((side) => outcome.damage[side] > 0).map((side) =>
+      `${side === 'player' ? 'You lose' : 'Your opponent loses'} ${outcome.damage[side]} ${unit}.`).join(' ');
+    return [cost || undefined, outcome.note];
   }
 
   const breakdownOf = (outcome) => SIDES.map((side) => ({
@@ -406,7 +469,7 @@ export function createGame({ hud, roller, arena, table, effects }) {
     hud.showMatch(rules.winCondition.view(after.win));
     const rethrow = outcome.winner === 'opponent' && canRethrow(rules, before, 'player');
     offer = rethrow ? { before, round, throws, outcome, announced } : null;
-    const notes = [outcome.note];
+    const notes = notesOf(outcome);
     if (rethrow) notes.push(`Not happy? Use your ${rules.spice.name} to throw again.`);
 
     if (outcome.matchWinner && !rethrow) {
@@ -419,7 +482,7 @@ export function createGame({ hud, roller, arena, table, effects }) {
       hud.showAnnounce(undefined);
       hud.showEdge(null);
       hud.showRound(MATCH_HEADLINES[outcome.matchWinner], breakdownOf(outcome),
-        { notes: [outcome.note, `Use your ${rules.spice.name} to throw again, or tap the table to accept it.`] });
+        { notes: [...notesOf(outcome), `Use your ${rules.spice.name} to throw again, or tap the table to accept it.`] });
     } else {
       prepareRound();
       hud.showRound(ROUND_HEADLINES[outcome.winner ?? 'tie'], breakdownOf(outcome), { notes: [...notes, announced] });
@@ -436,7 +499,7 @@ export function createGame({ hud, roller, arena, table, effects }) {
     hud.showRethrow(null);
     hud.showAnnounce(undefined);
     hud.showEdge(null);
-    hud.showRound(MATCH_HEADLINES[outcome.matchWinner], breakdownOf(outcome), { gameOver: true, notes: [outcome.note] });
+    hud.showRound(MATCH_HEADLINES[outcome.matchWinner], breakdownOf(outcome), { gameOver: true, notes: notesOf(outcome) });
     rolling = false;
     const id = matchId;
     setTimeout(() => { if (state === 'ended' && id === matchId) returnToMenu(); }, GAME_OVER_LINGER_MS);
@@ -512,6 +575,7 @@ export function createGame({ hud, roller, arena, table, effects }) {
     onGrab() {
       // Dice still dropping from a fumble are caught again mid-fall.
       roller.cancel();
+      table.tidy();
       // Picking the dice up for the next round lets the last one stand.
       if (offer && !awaiting) {
         offer = null;

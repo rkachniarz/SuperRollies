@@ -103,6 +103,36 @@ export function defineShape(spec) {
       }
       return best.number;
     },
+    /**
+     * A turn of the die onto itself (one of its symmetries) that makes a die
+     * showing `shown` show `wanted` instead: drawn at `q` times this turn, a
+     * die whose physics lies at `q` looks exactly the same, outline and all,
+     * but with `wanted` where `shown` was. How a die popped out by an
+     * explosion lands on the roll the rules drew for it, without the rules
+     * depending on physics.
+     * @param {number} shown
+     * @param {number} wanted
+     */
+    turnShowing(shown, wanted) {
+      const from = faces.find((f) => f.number === wanted);
+      const to = faces.find((f) => f.number === shown);
+      const frame = (f, corner) => {
+        const a = f.normal;
+        const b = new THREE.Vector3().subVectors(v[corner], f.centroid).normalize();
+        return new THREE.Matrix4().makeBasis(a, b, new THREE.Vector3().crossVectors(a, b));
+      };
+      const tolerance = 1e-6 * circumradius * circumradius;
+      const fromFrame = frame(from, from.verts[0]).transpose();
+      for (const corner of to.verts) {
+        const turn = frame(to, corner).multiply(fromFrame);
+        const onItself = v.every((p) => {
+          const q = p.clone().applyMatrix4(turn);
+          return v.some((r) => r.distanceToSquared(q) < tolerance);
+        });
+        if (onItself) return new THREE.Quaternion().setFromRotationMatrix(turn);
+      }
+      throw new Error(`No turn of a ${spec.type} shows ${wanted} for ${shown}`);
+    },
   };
 }
 
