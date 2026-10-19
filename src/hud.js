@@ -41,6 +41,7 @@ export function createHud() {
   const draftBackBtn = document.getElementById('draftBack');
   const quickGameBtn = document.getElementById('quickGameBtn');
   const zenBtn = document.getElementById('zenBtn');
+  const testBenchBtn = document.getElementById('testBenchBtn');
   const backBtn = document.getElementById('backBtn');
   const matchInfoBtn = document.getElementById('matchInfo');
   const matchInfoDiceEl = document.getElementById('matchInfoDice');
@@ -293,6 +294,7 @@ export function createHud() {
   function setLoaded() {
     quickGameBtn.disabled = false;
     zenBtn.disabled = false;
+    testBenchBtn.disabled = false;
     quickGameBtn.textContent = 'Quick Game';
   }
 
@@ -341,22 +343,31 @@ export function createHud() {
     draftCardsEl.querySelector('button')?.focus();
   }
 
+  // Where the catalogue's back button goes: the menu, unless a step says
+  // otherwise (the test bench's Spice step goes back to its dice).
+  let pickerBack = showMenu;
+
   /**
    * The catalogue (DEV_PLAN.md 4.3): every card on offer, as a list, one to
-   * pick. Zen's picker now; the multiplayer host's later (R4.2). Back returns
-   * to the menu.
+   * pick. Zen's picker and the test bench now; the multiplayer host's later
+   * (R4.2). Back goes to `onBack`, the menu by default.
    * @param {string} title
    * @param {import('./cards.js').CardData[]} cards
    * @param {(id: string) => void} onPick
+   * @param {() => void} [onBack]
    */
-  function showPicker(title, cards, onPick) {
+  function showPicker(title, cards, onPick, onBack = showMenu) {
     pickerTitleEl.textContent = title;
     pickerOptionsEl.replaceChildren(...cards.map((card) => renderCard(card, { onPick, compact: true })));
+    pickerBack = onBack;
     showMenuCard(pickerEl);
     pickerOptionsEl.querySelector('button')?.focus();
   }
 
-  pickerBackBtn.addEventListener('click', showMenu);
+  // The test bench is for development only: shown with ?dev in the address.
+  testBenchBtn.hidden = !new URLSearchParams(window.location.search).has('dev');
+
+  pickerBackBtn.addEventListener('click', () => pickerBack());
   draftBackBtn.addEventListener('click', () => draftBack());
   matchInfoBtn.addEventListener('click', showRules);
   rulesCloseBtn.addEventListener('click', hideRules);
@@ -371,6 +382,7 @@ export function createHud() {
     onRethrow(handler) { rethrowBtn.addEventListener('click', handler); },
     onQuickGame(handler) { quickGameBtn.addEventListener('click', handler); },
     onZen(handler) { zenBtn.addEventListener('click', handler); },
+    onTestBench(handler) { testBenchBtn.addEventListener('click', handler); },
     onBack(handler) { backBtn.addEventListener('click', handler); },
     onResultClick(handler) { resultEl.addEventListener('click', handler); },
   };

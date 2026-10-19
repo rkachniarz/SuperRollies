@@ -34,6 +34,18 @@ export function eligibleSpice(diceSet) {
 }
 
 /**
+ * Every Spice the test bench offers with this dice set (DEV_PLAN.md D39):
+ * all it allows, those made for particular dice sets first, each group in
+ * catalogue order.
+ * @param {string} diceSet  An id.
+ */
+export function testBenchSpice(diceSet) {
+  const eligible = eligibleSpice(diceSet);
+  const specific = (/** @type {import('./types.js').Spice} */ spice) => Boolean(spice.eligibility.diceSets);
+  return [...eligible.filter(specific), ...eligible.filter((spice) => !specific(spice))];
+}
+
+/**
  * The dice-set cards a match seeded with `seed` offers: ids.
  * @param {number} seed
  */

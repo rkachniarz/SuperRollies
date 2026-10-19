@@ -28,7 +28,7 @@ import {
 } from './rules/engine.js';
 import { DICE_SETS, THE_CLASSIC, dieTypes, sum } from './rules/dice-sets.js';
 import { SPICE } from './rules/spice.js';
-import { dealDice, dealSpice } from './rules/draft.js';
+import { dealDice, dealSpice, testBenchSpice } from './rules/draft.js';
 import { diceSetCard, dieCard, spiceCard } from './cards.js';
 
 // Zen's catalogue: every dice set, then each die type a set doesn't already
@@ -224,6 +224,19 @@ export function createGame({ hud, roller, arena, table, effects }) {
       onPick: (spice) => start('quick', { seed, diceSet, spice }),
       onBack: pickDice,
     });
+    pickDice();
+  }
+
+  /**
+   * The test bench, for development only (behind ?dev, DEV_PLAN.md D39): a
+   * Quick Game without the draft's luck. Every dice set, then every Spice that
+   * set allows, those made for it first (testBenchSpice in rules/draft.js).
+   */
+  function openTestBench() {
+    const pickDice = () => hud.showPicker('Test bench: choose your dice',
+      Object.values(DICE_SETS).map(diceSetCard), pickSpice);
+    const pickSpice = (diceSet) => hud.showPicker(`Test bench: Spice for ${DICE_SETS[diceSet].name}`,
+      testBenchSpice(diceSet).map(spiceCard), (spice) => start('quick', { diceSet, spice }), pickDice);
     pickDice();
   }
 
@@ -458,6 +471,7 @@ export function createGame({ hud, roller, arena, table, effects }) {
   hud.onQuickGame(() => openDraft());
   hud.onZen(() => hud.showPicker('Zen: choose your dice', ZEN_CARDS,
     (id) => start('zen', id.startsWith('die:') ? { dieType: id.slice(4) } : { diceSet: id })));
+  hud.onTestBench(openTestBench);
   hud.onBack(returnToMenu);
   hud.onRethrow(useRethrow);
 

@@ -12,7 +12,7 @@ import {
 import { DICE_SETS, DIE_MAX, dieFaces, scoreStats } from '../src/rules/dice-sets.js';
 import { SPICE } from '../src/rules/spice.js';
 import { failsFor } from '../src/rules/win-conditions.js';
-import { eligibleSpice, OFFERS } from '../src/rules/draft.js';
+import { eligibleSpice, testBenchSpice, OFFERS } from '../src/rules/draft.js';
 import {
   TRAY_HALF_WIDTH, DIVIDER_T, POTHOLE_RADIUS, CAT_PAW_CHANCE, WIND_MIN, WIND_MAX,
 } from '../src/config.js';
@@ -75,6 +75,19 @@ describe('Phase 5 in the catalogue', () => {
     const { outcome } = playRound(rules, state, { player: [3, 3], opponent: [1, 2] });
     assert.deepEqual(outcome.fallen, { player: [false, false], opponent: [false, false] });
     assert.deepEqual(outcome.again, { player: [], opponent: [] });
+  });
+});
+
+describe('the test bench (D39)', () => {
+  test('offers every Spice a set allows, those made for particular sets first', () => {
+    for (const id of Object.keys(DICE_SETS)) {
+      const offered = testBenchSpice(id);
+      assert.deepEqual(new Set(offered), new Set(eligibleSpice(id)), id);
+      const firstGeneral = offered.findIndex((s) => !s.eligibility.diceSets);
+      assert.ok(offered.slice(firstGeneral).every((s) => !s.eligibility.diceSets), id);
+    }
+    assert.deepEqual(testBenchSpice('greatsword').slice(0, 2).map((s) => s.id), ['snake-eyes', 'doubles-again']);
+    assert.equal(testBenchSpice('fireball')[0].id, 'vanilla');
   });
 });
 

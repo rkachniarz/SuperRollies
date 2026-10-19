@@ -21,6 +21,7 @@ npm run build   # -> dist/artifact.html, the single-file copy for claude.ai only
 npm test        # unit tests (node:test): RNG, rules engine, scorers, handfuls, die shapes
 npm run verify  # the browser checks below, in headless Chromium (needs npm run dev)
 node tools/phase0/verify.mjs chromium "second wind"   # only the checks whose label contains that
+# http://localhost:8000/?dev adds a Test bench to the menu: any dice set, then any Spice it allows (D39)
 npm run phase0  # physics checks: every die settles flat, tunnelling, handfuls, tables Spice change, determinism (needs npm run dev)
 ```
 

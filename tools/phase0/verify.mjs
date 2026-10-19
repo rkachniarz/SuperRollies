@@ -548,6 +548,40 @@ await withMatch(PHONE, 'cursed', async (page) => {
     `"${before.text}", then "${after.text}"; ${cursedFaces} of the player's dice cursed`);
 }, '#quickGameBtn', { pick: 'classic', spice: 'cursed-number' });
 
+// The test bench (D39): only with ?dev; every dice set, then every Spice that
+// set allows, set-specific first; back goes to the dice; picking one starts it.
+if (!ONLY || 'test bench'.includes(ONLY)) {
+  const plain = await openGame(engine, DESKTOP);
+  await plain.page.waitForSelector('#quickGameBtn:not([disabled])', { timeout: 30000 });
+  const hiddenWithoutFlag = await plain.page.locator('#testBenchBtn').isHidden();
+  await plain.browser.close();
+
+  const { browser, page, errors } = await openGame(engine, DESKTOP, '?dev');
+  try {
+    await page.waitForSelector('#testBenchBtn:not([disabled])', { timeout: 30000 });
+    await page.click('#testBenchBtn');
+    const picks = () => page.$$eval('#pickerOptions [data-pick]', (els) => els.map((el) => el.dataset.pick));
+    const sets = await picks();
+    await page.click('#pickerOptions [data-pick="greatsword"]');
+    const spice = await picks();
+    await page.click('#pickerBack');
+    const backToDice = (await picks()).join() === sets.join();
+    await page.click('#pickerOptions [data-pick="greatsword"]');
+    await page.click('#pickerOptions [data-pick="snake-eyes"]');
+    await waitForDiceAtRest(page);
+    const config = await page.evaluate(() => window.superRollies.game.config);
+    const expected = Object.values(SPICE).filter((s) => isEligible(s, DICE_SETS.greatsword));
+    report('Test bench: only with ?dev; every dice set, then every Spice for it (set-specific first), and that match',
+      hiddenWithoutFlag && sets.join() === Object.keys(DICE_SETS).join() && spice.length === expected.length &&
+        spice.slice(0, 2).join() === 'snake-eyes,doubles-again' && backToDice &&
+        config.diceSet === 'greatsword' && config.spice === 'snake-eyes' && errors.length === 0,
+      `${sets.length} sets; Greatsword offers ${spice.join(', ')}`);
+  } catch (e) {
+    report('Test bench', false, e.message.split('\n')[0]);
+  }
+  await browser.close();
+}
+
 // ---------- Phase 5: Spice on the table, re-throws, other ways to win ----------
 
 /**
