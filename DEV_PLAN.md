@@ -773,11 +773,10 @@ Behaviour is unchanged: 1d20 vs. AI plays exactly as it does today.
 - [x] **6.3** Burnout (dice pool shrinks across rounds). *D44.*
 - [x] **6.4** Crown. *D43.*
 - [x] **6.5** Wild Magic surge table. *D45. Six surges.*
-- [ ] **6.6** Verification checklist passes; artifact republished.
+- [x] **6.6** Verification checklist passes; artifact republished.
   *`npm test` (235), `npm run phase0` (now with redraws in
   `check-table.mjs`; determinism unchanged, 51 of 51) and `npm run verify`
-  all pass. Not yet republished: the published version was being
-  playtested.*
+  all pass. Republished as version 27.*
 - [x] **6.7** Docs refresh.
 
 ### Phase 7 — Multiplayer
