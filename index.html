@@ -41,14 +41,22 @@
   <span class="match-info-spice" id="matchInfoSpice"></span>
 </button>
 
-<!-- Each side's match state, as the win condition draws it: hearts (with any
-     marks beside them, such as failed death saves), or a bar (Hit Points, a
-     race's score, the ground left in a tug of war). -->
+<!-- Each side's card (DEV_PLAN.md R6.4): its name, any state-based advantage
+     it holds, and its match state as the win condition draws it: hearts
+     (with any marks, such as failed death saves), or a bar (Hit Points, a
+     race's score, the ground left in a tug of war). Takes no pointer events. -->
 <div class="hud top" id="opponentHud" hidden>
-  <div class="label">Opponent <span class="edge" id="opponentEdge" hidden></span></div>
-  <div class="hearts" id="opponentHearts"></div>
-  <div class="meter" id="opponentMeter" hidden><div class="meter-fill"></div><span class="meter-text"></span></div>
-  <div class="marks" id="opponentMarks" hidden></div>
+  <div class="player-card" id="opponentCard">
+    <div class="pc-name" id="opponentName">Opponent</div>
+    <div class="pc-foot">
+      <span class="edge" id="opponentEdge" hidden></span>
+      <div class="pc-state">
+        <div class="marks" id="opponentMarks" hidden></div>
+        <div class="hearts" id="opponentHearts"></div>
+        <div class="meter" id="opponentMeter" hidden><div class="meter-fill"></div><span class="meter-text"></span></div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- What the Spice says about the coming round (a cursed number, the stakes).
@@ -56,10 +64,17 @@
 <div class="announce" id="announce" hidden></div>
 
 <div class="hud bottom" id="youHud" hidden>
-  <div class="marks" id="youMarks" hidden></div>
-  <div class="hearts" id="youHearts"></div>
-  <div class="meter" id="youMeter" hidden><div class="meter-fill"></div><span class="meter-text"></span></div>
-  <div class="label">You <span class="edge" id="youEdge" hidden></span></div>
+  <div class="player-card" id="youCard">
+    <div class="pc-name" id="youName"></div>
+    <div class="pc-foot">
+      <span class="edge" id="youEdge" hidden></span>
+      <div class="pc-state">
+        <div class="marks" id="youMarks" hidden></div>
+        <div class="hearts" id="youHearts"></div>
+        <div class="meter" id="youMeter" hidden><div class="meter-fill"></div><span class="meter-text"></span></div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- A chance to throw again once the round's result is shown (Second Wind,
@@ -76,7 +91,15 @@
 <div class="menu-overlay" id="menu">
   <div class="menu-card" id="menuMain">
     <h1 class="menu-title">Super Rollies</h1>
-    <p class="menu-subtitle">Quick Game: draft your dice and a Spice that bends the rules (or the table), then roll higher than your opponent.<br>Zen: just roll.</p>
+    <div class="menu-player">
+      <div class="player-card" id="menuCard">
+        <div class="pc-name" id="menuName"></div>
+        <div class="pc-foot"><span class="pc-look" id="menuLook"><span class="pc-look-die"></span></span></div>
+      </div>
+      <button class="edit-btn" id="editBtn" aria-label="Edit your player" title="Edit your player">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4"/></svg>
+      </button>
+    </div>
     <div class="menu-buttons">
       <button class="menu-btn" id="quickGameBtn" disabled>Loading…</button>
       <button class="menu-btn secondary" id="zenBtn" disabled>Zen</button>
@@ -92,6 +115,30 @@
     <p class="draft-chosen" id="draftChosen" hidden></p>
     <div class="draft-cards" id="draftCards"></div>
     <button class="picker-back" id="draftBack">&larr; Back</button>
+  </div>
+  <!-- The player editor (R6.8): over the table, which shows the tray and
+       dice in the colours picked as they're picked. -->
+  <div class="menu-card editor" id="editor" hidden>
+    <h2 class="picker-title">Your player</h2>
+    <div class="player-card" id="editorCard">
+      <div class="pc-name" id="editorCardName"></div>
+      <div class="pc-foot"><span class="pc-look" id="editorLook"><span class="pc-look-die"></span></span></div>
+    </div>
+    <label class="editor-name">
+      <span class="editor-label">Name</span>
+      <input id="editorName" type="text" autocomplete="off" autocapitalize="words" spellcheck="false" enterkeyhint="done">
+      <span class="editor-count" id="editorCount"></span>
+    </label>
+    <div class="editor-row"><span class="editor-label" id="editorCardsLabel">Card</span>
+      <div class="swatches" id="editorCards" role="radiogroup" aria-labelledby="editorCardsLabel"></div></div>
+    <div class="editor-row"><span class="editor-label" id="editorTraysLabel">Tray</span>
+      <div class="swatches" id="editorTrays" role="radiogroup" aria-labelledby="editorTraysLabel"></div></div>
+    <div class="editor-row"><span class="editor-label" id="editorDiceLabel">Dice</span>
+      <div class="swatches" id="editorDice" role="radiogroup" aria-labelledby="editorDiceLabel"></div></div>
+    <div class="editor-buttons">
+      <button class="picker-back" id="editorBack">&larr; Back</button>
+      <button class="menu-btn" id="editorSave">Save</button>
+    </div>
   </div>
   <div class="menu-card wide" id="picker" hidden>
     <h2 class="picker-title" id="pickerTitle"></h2>

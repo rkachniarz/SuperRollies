@@ -18,7 +18,7 @@ record new decisions in its log rather than silently changing requirements.
 npm install
 npm run dev     # http://localhost:8000 - must be served, ES modules don't load over file://
 npm run build   # -> dist/artifact.html, the single-file copy for claude.ai only
-npm test        # unit tests (node:test): RNG, rules engine, scorers, handfuls, die shapes
+npm test        # unit tests (node:test): RNG, rules engine, scorers, handfuls, die shapes, profile
 npm run verify  # the browser checks below, in headless Chromium (needs npm run dev)
 node tools/phase0/verify.mjs chromium "second wind"   # only the checks whose label contains that
 # http://localhost:8000/?dev adds a Test bench to the menu: any dice set, then any Spice it allows (D39); ?dev&seed=N replays a match it logged
@@ -295,6 +295,21 @@ someone (or something) tidying with good intentions.
   the divider (and, with No Man's Land's divider gone, anywhere in the
   middle); if it took pointer events, the tap that should pick up the die
   would dismiss the card instead. Board taps dismiss it (see `input.js`).
+- **`src/profile.js`, `src/game.js` — a player's colours never reach the
+  rules or a throw record** (DEV_PLAN.md R6.10). The opponent's are drawn
+  from a stream of their own (`deriveSeed(seed, 'looks')`), so adding them
+  moved no other stream and every recorded throw replays unchanged.
+- **`styles.css` — the cards are measured against real dice, not spheres.**
+  The top card sits level with the corner controls; a d20 resting against
+  the far wall comes within ~9 px of it on desktop. `npm run verify` tries
+  each die against the wall turned twelve ways, by its actual corners: a
+  sphere round it overstates its reach by 30 px and more, and failed cards
+  that were clear. A taller card (a bigger name, more padding) needs that
+  check to pass.
+- **`styles.css` — `.hearts.many:not([hidden])`.** Marathon's two rows of
+  hearts on a phone are a grid, and `display:grid` beat `.hearts[hidden]`,
+  so a bar in the next match sat under an empty block of hearts and the card
+  grew 50 px, over the dice at the far wall.
 - **`index.html` must keep its doctype and viewport meta.** Without them a phone
   lays the page out at ~980px and scales it to ~40%. The artifact copy is a
   *fragment* without them on purpose — claude.ai supplies its own wrapper.
@@ -377,6 +392,14 @@ these are scripted in `npm run verify` (`tools/phase0/verify.mjs`):
     of the corners on a phone; Crown counts one die a side, `+ 5 👑` for
     each on its maximum; Wild Magic's matching digits set off a surge, said
     on the card.
+21. Player cards (desktop and 390×844): the editor shows its picks on its
+    card, the tray and the dice as they're made, stops a name at 16
+    characters, drops them on Back and keeps them past a reload on Save.
+    Each side's card is named, clear of the corners and of any die resting
+    against its wall, on small and big trays and with six hearts; a
+    16-emoji name stays inside it. The player's half and dice are in their
+    colours, the opponent's dice never, and the same seed gives the
+    opponent the same look; Zen's tray is all the player's colour.
 
 Run `npm test` alongside; it needs no server.
 

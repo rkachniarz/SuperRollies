@@ -10,7 +10,8 @@ you score and win: poker hands with a redraw, only the sixes counting, dice
 that burn out on a 1, hit points, a race to a target, a tug of war. Pick them up, throw
 them, roll higher than your opponent. Lose a round and you lose a heart; lose
 them all and the match is over. Or pick **Zen** and just throw: any of the
-dice, the whole tray, no score.
+dice, the whole tray, no score. Make it yours on the menu: your name, your
+card, the colour of your half of the tray and of your dice.
 
 Real rigid-body physics (Rapier, in its deterministic build, so a throw replays
 identically on any machine), proper dice - every polyhedral from the d4 to the
@@ -45,9 +46,12 @@ CDN at runtime.
 
 ```
 index.html    the page: markup, and the import map pinning three.js / Rapier
-styles.css    all styling - HUD, hearts, menu, draft and cards, result card
+styles.css    all styling - player cards, hearts, menu, editor, draft and cards, result card
 src/
-  config.js   every tunable number and colour, in one place
+  config.js   every tunable number and colour, in one place, and the colours
+              a player can pick for their card, tray and dice
+  profile.js  the player's name and colours, saved on the device; the AI
+              opponent's, drawn for each match
   d4.js d6.js d8.js d10.js d12.js d20.js
               each die type's shape and numbering (d10.js also has the
               percentile die, 00-90)
@@ -73,12 +77,14 @@ src/
               tap that picks a die out from a drag that throws
   cards.js    a dice set, Spice or single die as a card: the draft, Zen's
               catalogue and the rules popup all draw them
-  hud.js      the match state (hearts, or a bar for HP and the like), the
-              message card, the match label and its rules popup, the
-              re-throw button, the menu, the draft and the catalogue
+  hud.js      each side's card with its match state (hearts, or a bar for HP
+              and the like), the message card, the match label and its rules
+              popup, the re-throw button, the menu, the player editor, the
+              draft and the catalogue
   game.js     match flow: the draft, starting a match, a round's throws (and
               a paw's knock, dice picked out and thrown again, doubles
-              thrown again, a re-throw), handing them to the rules, and Zen
+              thrown again, a re-throw), handing them to the rules, Zen, and
+              the editor's dice on the table
   rng.js      the seeded random number generator every outcome draws from
   rules/      the rules, as pure functions with no DOM or physics:
     engine.js         match config, and what a round's dice mean for the match
@@ -96,8 +102,8 @@ src/
     draft.js          the two cards offered at each step of the draft
     types.js          the JSDoc types they share
   main.js     wires it together and runs the frame loop
-test/         unit tests for the RNG, the rules and every Spice, handfuls and
-              die shapes (npm test)
+test/         unit tests for the RNG, the rules and every Spice, handfuls, die
+              shapes and the player profile (npm test)
 tools/
   build-artifact.mjs   bundles everything into one file (see below)
   phase0/              browser checks and physics checks (see below)

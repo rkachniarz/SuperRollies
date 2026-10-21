@@ -2,16 +2,39 @@
 // and feels without hunting through the logic.
 
 // ---------- Colours ----------
-// `number` is the colour of the etched numerals on that die. The player's are
-// near-black on orange, the opponent's near-white on purple.
-export const THEMES = {
-  player: { body: 0xf2a33d, edge: 0xd68522, number: 0x2b1b10 },
-  opponent: { body: 0x7c5cff, edge: 0x4c3b8c, number: 0xf5f1ff },
-};
+// What a player can pick for their card, their half of the tray and their
+// dice (profile.js, DEV_PLAN.md R6.3), in the order they're offered. The
+// first of each is the default. A choice is known by its id, which is what a
+// saved profile stores, so one can be added (or unlocked, later) without
+// touching anything else.
+
+// Card backgrounds: light, under dark text.
+export const CARD_COLORS = [
+  { id: 'parchment', name: 'Parchment', color: '#efe2ae' },
+  { id: 'mint', name: 'Mint', color: '#cdeedb' },
+  { id: 'sky', name: 'Sky', color: '#cfe2f6' },
+  { id: 'blush', name: 'Blush', color: '#f6d4dc' },
+];
+
+// A side's half of the tray. Dark enough under the lights that every dice
+// colour below stands out on it.
+export const TRAY_COLORS = [
+  { id: 'billiard', name: 'Billiard green', color: 0x1d5236 },
+  { id: 'satin', name: 'Satin red', color: 0x5a1620 },
+  { id: 'deep-blue', name: 'Deep blue', color: 0x1a2a5a },
+  { id: 'light-grey', name: 'Light grey', color: 0x7d8088 },
+];
+
+// Dice: `number` is the colour of the etched numerals, near-black on the light
+// dice and near-white on the dark ones. No red: it would vanish on satin.
+export const DICE_COLORS = [
+  { id: 'orange', name: 'Orange', body: 0xf2a33d, edge: 0xd68522, number: 0x2b1b10 },
+  { id: 'purple', name: 'Purple', body: 0x7c5cff, edge: 0x4c3b8c, number: 0xf5f1ff },
+  { id: 'ivory', name: 'Ivory', body: 0xfbf5e6, edge: 0xb3a787, number: 0x2b1b10 },
+  { id: 'charcoal', name: 'Charcoal', body: 0x3a3842, edge: 0x15141a, number: 0xf5f1ff },
+];
 
 export const SCENE_BACKGROUND = 0x12111a;
-export const OPPONENT_FLOOR_COLOR = 0x241c38;
-export const PLAYER_FLOOR_COLOR = 0x2a1c11;
 export const WALL_COLOR = 0xe8d9b5;
 export const PIT_COLOR = 0x08070c; // inside a pothole's pit
 

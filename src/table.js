@@ -8,7 +8,7 @@
 // for show, until the next throw.
 
 import * as THREE from 'three';
-import { THEMES, DIVIDER_T } from './config.js';
+import { DICE_COLORS, DIVIDER_T } from './config.js';
 import { createDie } from './dice.js';
 import { SHAPES } from './die-shapes.js';
 import { handLayout } from './handful.js';
@@ -54,9 +54,11 @@ export function createTable(arena) {
   let scale = 1;
   // Dice popped out of exploded ones this round (popOut).
   const pops = [];
+  // Each side's dice colour (a DICE_COLORS entry), as its player picked.
+  let colors = { player: DICE_COLORS[0], opponent: DICE_COLORS[1] };
 
   function addDie(side, type, i) {
-    const die = createDie({ type, theme: THEMES[side], scale, scene: arena.scene });
+    const die = createDie({ type, theme: colors[side], scale, scene: arena.scene });
     const id = `${side}-${i}`;
     byId.set(id, die.mesh);
     return { ...die, id };
@@ -74,13 +76,17 @@ export function createTable(arena) {
    * `opponent` there's no opponent's dice and no divider (Zen). A Spice may
    * take the divider away anyway (No Man's Land), put `holes` in the floor
    * (Pothole) or a `rope` down the middle (Tug of War); no die is put down
-   * over a hole or on the rope.
+   * over a hole or on the rope. `dice` is each side's dice colour, and
+   * `trays` its half of the tray's (R6.9), as its player picked; Zen's
+   * whole tray is the player's.
    */
-  function setup({ types, scale: dieScale, tray, opponent, divider = opponent, holes = [], rope = false }) {
+  function setup({ types, scale: dieScale, tray, opponent, divider = opponent, holes = [], rope = false, dice = colors, trays }) {
     tidy();
     for (const die of [...sides.player, ...sides.opponent]) die.remove();
     byId.clear();
     scale = dieScale;
+    colors = { ...dice };
+    if (trays) arena.setTrayColors(trays.player, trays.opponent);
     arena.setTray(tray);
     arena.setHoles(holes);
     arena.setRope(rope);
@@ -219,7 +225,7 @@ export function createTable(arena) {
    * die-shapes.js). Shown, never thrown: tidy() takes it away.
    */
   function popOut(side, source) {
-    const face = createDie({ type: source.type, theme: THEMES[side], scale: source.scale, scene: arena.scene });
+    const face = createDie({ type: source.type, theme: colors[side], scale: source.scale, scene: arena.scene });
     // Aglow, so it's told apart from the dice thrown.
     face.mesh.material.emissive.set(POP_GLOW);
     face.mesh.material.emissiveIntensity = 0.45;

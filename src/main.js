@@ -9,6 +9,7 @@ import { createHud } from './hud.js';
 import { createEffects } from './effects.js';
 import { createGame } from './game.js';
 import { createThrowControls } from './input.js';
+import { createProfileStore } from './profile.js';
 
 const canvas = document.getElementById('scene');
 const arena = createArena(canvas);
@@ -16,7 +17,8 @@ const table = createTable(arena);
 const roller = createRoller(table.meshFor);
 const hud = createHud();
 const effects = createEffects(arena);
-const game = createGame({ hud, roller, arena, table, effects });
+const profiles = createProfileStore();
+const game = createGame({ hud, roller, arena, table, effects, profiles });
 // Something to look at behind the menu while the physics engine loads.
 table.setup({ types: ['d20'], scale: 1, tray: arena.tray, opponent: true });
 
@@ -57,6 +59,7 @@ window.superRollies = {
   table,
   game,
   roller,
+  profiles,
 };
 
 let lastTime = performance.now();
@@ -68,6 +71,7 @@ function animate(now) {
   roller.frame(dt);
   controls.frame(dt);
   effects.frame(dt, roller.busy);
+  game.frame(dt);
   if (!roller.busy) table.keepOnScreen();
   arena.renderer.render(arena.scene, arena.camera);
 }

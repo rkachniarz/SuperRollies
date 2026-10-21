@@ -46,14 +46,107 @@
     pointer-events:none;
     z-index:2;
   }
-  .hud.top{ top:0; padding-top: calc(16px + env(safe-area-inset-top,0px)); }
+  /* Level with the corner controls, to leave the most room above the tray. */
+  .hud.top{ top:0; padding-top: calc(12px + env(safe-area-inset-top,0px)); }
   .hud.bottom{ bottom:0; padding-bottom: calc(16px + env(safe-area-inset-bottom,0px)); }
-  .hud .label{
-    font-size:13px;
-    font-weight:700;
-    letter-spacing:0.14em;
-    text-transform:uppercase;
-    color:var(--ink-dim);
+
+  /* ---------- Player cards (DEV_PLAN.md R6.4) ---------- */
+  /* A side's card: its name across the top; its advantage, if it holds one,
+     bottom left; its match state bottom right. In a match it sits between
+     the back button and the match label, so it's no wider than the gap
+     between them (~130px on a 390px phone, where it goes compact, below). */
+  .player-card{
+    --card:#efe2ae;
+    --card-ink:#1b1712;
+    position:relative;
+    display:flex;
+    flex-direction:column;
+    gap:2px;
+    padding:6px 12px 8px;
+    background:var(--card);
+    color:var(--card-ink);
+    border:2.5px solid var(--card-ink);
+    border-radius:12px;
+    box-shadow:0 4px 0 rgba(0,0,0,0.35);
+    text-align:left;
+  }
+  .hud .player-card{ width:min(320px, calc(100vw - 260px)); }
+  /* Shrunk to fit by fitName (hud.js), then cut short. */
+  .pc-name{
+    font-family:'Bungee', system-ui, sans-serif;
+    font-size:24px;
+    line-height:1.15;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .pc-foot{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    min-height:26px;
+  }
+  .pc-state{
+    display:flex;
+    flex-direction:column;
+    align-items:flex-end;
+    gap:3px;
+    margin-left:auto;
+  }
+  /* Zen: a name, and nothing to keep score of. */
+  .hud.name-only .pc-foot{ display:none; }
+  .player-card .heart{ width:26px; height:26px; }
+  .player-card .hearts{ gap:6px; }
+  .player-card .meter{
+    width:150px;
+    background:rgba(27,23,18,0.12);
+    border-color:rgba(27,23,18,0.4);
+  }
+  .player-card .meter-text{ color:var(--card-ink); text-shadow:0 0 3px rgba(255,255,255,0.8); }
+  .player-card .mark{ border-color:rgba(27,23,18,0.4); }
+  /* The player's tray and dice colours, on the menu's card and the editor's. */
+  .pc-look{
+    display:inline-flex;
+    margin-left:auto;
+    padding:4px 12px;
+    border-radius:8px;
+    background:var(--tray);
+    box-shadow:inset 0 0 0 1.5px rgba(0,0,0,0.3);
+  }
+  .pc-look-die{
+    position:relative;
+    width:20px;
+    height:20px;
+    border-radius:5px;
+    background:var(--die);
+    box-shadow:inset 0 -2px 0 rgba(0,0,0,0.25);
+  }
+  .pc-look-die::after{
+    content:'';
+    position:absolute;
+    left:50%;
+    top:50%;
+    width:6px;
+    height:6px;
+    margin:-3px;
+    border-radius:50%;
+    background:var(--pip);
+  }
+  /* On a phone the cards are compact: the name smaller and centred, the
+     match state under it, and the advantage a sticker on the corner. */
+  @media (max-width:580px){
+    .hud .player-card{ padding:4px 8px 6px; border-width:2px; border-radius:10px; }
+    .hud .pc-name{ font-size:18px; text-align:center; }
+    .hud .pc-foot{ justify-content:center; min-height:0; }
+    .hud .pc-state{ margin:0; align-items:center; width:100%; }
+    .hud .player-card .meter{ width:100%; }
+    .hud .player-card .heart{ width:20px; height:20px; }
+    .hud .player-card .hearts{ gap:5px; }
+    /* Burnout's eight a side fit across. */
+    .hud .marks{ gap:2px; }
+    .hud .mark{ width:12px; height:12px; border-width:1px; font-size:8px; line-height:10px; }
+    .hud .edge{ position:absolute; top:-9px; left:-6px; font-size:10px; padding:1px 6px; }
   }
   .hearts{
     display:flex;
@@ -181,11 +274,127 @@
     margin:0 0 8px;
     color:var(--ink);
   }
-  .menu-subtitle{
-    margin:0 0 28px;
-    color:var(--ink-dim);
-    font-size:14px;
+  /* The player's card, with the way to the editor beside it (R6.7). The
+     card alone is centred, on the same line as the buttons below it; the
+     edit button hangs off its right edge. */
+  .menu-player{
+    position:relative;
+    width:fit-content;
+    /* As far below the title as the mode descriptions that used to sit
+       between them took up (the margins collapse into this one). */
+    margin:70px auto 28px;
   }
+  .editor .player-card{ width:min(300px, calc(100vw - 100px)); }
+  /* Room either side for the edit button (48px and its 12px gap) and the
+     screen's 16px margin, so the card stays centred on a phone too. */
+  .menu-player .player-card{ width:min(300px, calc(100vw - 152px)); }
+  .edit-btn{
+    position:absolute;
+    left:calc(100% + 12px);
+    top:calc(50% - 24px);
+    width:48px;
+    height:48px;
+    display:grid;
+    place-items:center;
+    padding:0;
+    color:var(--bg);
+    background:var(--player-accent);
+    border:none;
+    border-radius:50%;
+    box-shadow:0 4px 0 var(--player-edge);
+    cursor:pointer;
+    transition:transform 120ms ease, box-shadow 120ms ease;
+  }
+  .edit-btn svg{
+    width:24px;
+    height:24px;
+    fill:none;
+    stroke:currentColor;
+    stroke-width:2.2;
+    stroke-linejoin:round;
+    stroke-linecap:round;
+  }
+  .edit-btn:active{ transform:translateY(3px); box-shadow:0 1px 0 var(--player-edge); }
+
+  /* ---------- The player editor (R6.8) ---------- */
+  /* The table shows through: the editor sits at the bottom on a phone, under
+     the far half where the dice turn, and to the left on a wider screen. */
+  .menu-overlay.editing{ background:transparent; }
+  .menu-card.editor{
+    width:min(380px, calc(100vw - 24px));
+    margin:auto auto 12px;
+    padding:18px 16px 16px;
+    text-align:left;
+    background:rgba(18,17,26,0.9);
+    backdrop-filter:blur(6px);
+    border:1px solid var(--card-border);
+    border-radius:18px;
+  }
+  @media (min-width:760px){
+    .menu-card.editor{ margin:auto auto auto 24px; }
+  }
+  .editor .picker-title{ margin:0 0 12px; text-align:center; }
+  .editor .player-card{ margin:0 auto 14px; }
+  .editor-label{
+    font-size:12px;
+    font-weight:700;
+    letter-spacing:0.14em;
+    text-transform:uppercase;
+    color:var(--ink-dim);
+  }
+  .editor-name, .editor-row{
+    display:grid;
+    grid-template-columns:54px 1fr auto;
+    align-items:center;
+    gap:10px;
+    margin-bottom:10px;
+  }
+  .editor-row{ grid-template-columns:54px 1fr; }
+  /* 16px, so a phone doesn't zoom in on it. */
+  #editorName{
+    min-width:0;
+    font:inherit;
+    font-size:16px;
+    color:var(--ink);
+    background:rgba(255,255,255,0.08);
+    border:1px solid var(--card-border);
+    border-radius:10px;
+    padding:8px 10px;
+  }
+  #editorName:focus{ outline:2px solid var(--player-accent); outline-offset:1px; }
+  .editor-count{ font-size:12px; color:var(--ink-dim); font-variant-numeric:tabular-nums; }
+  .swatches{ display:flex; gap:10px; }
+  .swatch{
+    position:relative;
+    width:40px;
+    height:40px;
+    padding:0;
+    background:var(--swatch);
+    border:2px solid rgba(255,255,255,0.2);
+    border-radius:10px;
+    cursor:pointer;
+  }
+  .swatch[aria-checked="true"]{ border-color:var(--ink); box-shadow:0 0 0 3px var(--player-accent); }
+  .swatch-card{ border-radius:50%; }
+  .swatch-dice{ background:var(--die); border-color:var(--die-edge); }
+  .swatch-pip{
+    position:absolute;
+    left:50%;
+    top:50%;
+    width:9px;
+    height:9px;
+    margin:-4.5px;
+    border-radius:50%;
+    background:var(--pip);
+  }
+  .editor-buttons{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-top:16px;
+  }
+  .editor-buttons .picker-back{ margin:0; }
+  .editor .menu-btn{ padding:12px 30px; }
   .menu-btn{
     font-family:'Bungee', system-ui, sans-serif;
     font-size:18px;
@@ -478,13 +687,13 @@
   .announce[hidden]{ display:none; }
 
   /* A side's state-based advantage, by its name (R3.5). */
-  .hud .label{ display:flex; align-items:center; gap:8px; }
   .edge{
-    font-size:11px;
-    letter-spacing:0.04em;
-    text-transform:none;
-    color:var(--bg);
-    background:#7ee0a1;
+    font-size:12px;
+    font-weight:700;
+    letter-spacing:0.02em;
+    white-space:nowrap;
+    color:#fff;
+    background:#2f9e5b;
     border-radius:999px;
     padding:2px 8px;
   }
@@ -493,7 +702,9 @@
   .hearts.many .heart{ width:22px; height:22px; }
   /* On a phone, six in a row would reach the corners: two rows of three. */
   @media (max-width:520px){
-    .hearts.many{ display:grid; grid-template-columns:repeat(3, 22px); gap:2px 5px; }
+    /* Not when hidden: this would win over .hearts[hidden], and a bar after
+       a Marathon match would sit under an empty block of hearts. */
+    .hearts.many:not([hidden]){ display:grid; grid-template-columns:repeat(3, 22px); gap:2px 5px; }
   }
 
   /* ---------- The rules popup ---------- */

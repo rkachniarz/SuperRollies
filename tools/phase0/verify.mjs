@@ -11,7 +11,7 @@
 // Needs the dev server running (npm run dev). Each check gets a fresh match, so
 // one that happens to end early can't leave the next on the game-over card.
 
-import { TRAY_DEPTH, TRAY_HALF_WIDTH, DIE_RADIUS } from '../../src/config.js';
+import { TRAY_DEPTH, TRAY_HALF_WIDTH, DIE_RADIUS, TRAY_COLORS, DICE_COLORS } from '../../src/config.js';
 import { DICE_SETS } from '../../src/rules/dice-sets.js';
 import { SPICE } from '../../src/rules/spice.js';
 import { isEligible, matchConfig, resolveRules, startMatch, beginRound, afterSettle } from '../../src/rules/engine.js';
@@ -355,11 +355,18 @@ for (const [set, count, dropped] of [['fireball', 8, 0], ['heroic-stats', 4, 1]]
 // Zen: one die, the whole tray, no score, and a way back to the menu.
 for (const [name, viewport] of [['desktop', DESKTOP], ['390x844', PHONE]]) {
   await withMatch(viewport, `Zen (${name})`, async (page) => {
-    const layout = await page.evaluate(() => ({
-      opponentShown: window.superRollies.dice.opponent.length > 0,
-      hearts: !document.getElementById('youHud').hidden || !document.getElementById('opponentHud').hidden,
-    }));
-    report(`Zen (${name}): no opponent die, no hearts`, !layout.opponentShown && !layout.hearts);
+    // The player's card shows their name and nothing to keep score of.
+    const layout = await page.evaluate(() => {
+      const shown = (id) => document.getElementById(id).offsetParent !== null;
+      return {
+        opponentShown: window.superRollies.dice.opponent.length > 0,
+        opponentCard: !document.getElementById('opponentHud').hidden,
+        name: shown('youName') ? document.getElementById('youName').textContent : null,
+        state: ['youHearts', 'youMeter', 'youMarks', 'youEdge'].some(shown),
+      };
+    });
+    report(`Zen (${name}): no opponent die, the player's card by name only, no hearts`,
+      !layout.opponentShown && !layout.opponentCard && layout.name === 'Player' && !layout.state, JSON.stringify(layout));
 
     // Several throws, hard and away from you: with no divider the die should
     // reach the far half, and the card must name the face the game read.
@@ -1164,6 +1171,168 @@ await withMatch(DESKTOP, 'wild magic', async (page) => {
     seen.outcome.note?.startsWith('🌀') && notes.includes(seen.outcome.note),
     `${seen.outcome.scores.player} vs ${seen.outcome.scores.opponent}: "${seen.outcome.note}"`);
 }, '#quickGameBtn', { pick: 'percentile', spice: 'wild-magic' });
+
+// Player cards and the editor (6b, R6): each side's card shows its name and
+// match state, clear of the corners and of every resting spot, on desktop and
+// 390x844, a 16-character or emoji name inside it; the editor's picks show on
+// its card, the tray and the dice as they're made, Back drops them, Save keeps
+// them past a reload; in a match they're the player's half and dice, the
+// opponent's dice never in the player's colour, the same seed the same look;
+// Zen's tray is all the player's.
+const colorOf = (list, id) => list.find((c) => c.id === id);
+const SAVED = { name: 'Sir Rolls-a-Lot!', card: 'sky', tray: 'satin', dice: 'charcoal' };
+
+/** What's drawn: each half of the floor, and each side's first die (by its edges' colour). */
+const drawn = (page) => page.evaluate(() => {
+  const { arena, dice } = window.superRollies;
+  const edge = (d) => d?.mesh.children.find((c) => c.isLineSegments).material.color.getHex();
+  return { floors: arena.floorColors, player: edge(dice.player[0]), opponent: edge(dice.opponent[0]) };
+});
+
+/**
+ * How far each card is from the nearest corner control and from the nearest
+ * die resting against the wall on its side, in px (negative: overlapping),
+ * and whether its name stays inside it. Each of the side's dice is tried
+ * against that wall, at its middle and both ends, turned twelve ways about
+ * the vertical, as it lies now: its real corners, not a sphere round it,
+ * which overstates how high a die reaches on screen by 30 px and more.
+ */
+const cardLayout = (page) => page.evaluate(() => {
+  const { arena, dice } = window.superRollies;
+  const r = arena.renderer.domElement.getBoundingClientRect();
+  const apart = (a, b) => Math.max(a.left - b.right, b.left - a.right, a.top - b.bottom, b.top - a.bottom);
+  const corners = ['backBtn', 'matchInfo'].map((id) => document.getElementById(id))
+    .filter((el) => !el.hidden).map((el) => el.getBoundingClientRect());
+  // The highest (far wall) or lowest (near wall) a die of `side` reaches on screen.
+  function reachOnScreen(side, toward) {
+    let most = toward < 0 ? Infinity : -Infinity;
+    for (const die of dice[side]) {
+      const { mesh } = die;
+      const saved = mesh.quaternion.clone();
+      const pos = mesh.geometry.attributes.position;
+      const V = mesh.position.constructor;
+      for (let turn = 0; turn < 12; turn++) {
+        mesh.rotateY(Math.PI / 6);
+        mesh.updateMatrixWorld(true);
+        const pts = [];
+        let reach = 0;
+        let low = Infinity;
+        for (let i = 0; i < pos.count; i++) {
+          const w = new V().fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld).sub(mesh.position);
+          pts.push(w);
+          reach = Math.max(reach, toward * w.z);
+          low = Math.min(low, w.y);
+        }
+        const xMax = arena.xLimit(die.radius);
+        for (const x of [-xMax, 0, xMax]) {
+          const c = new V(x, -low, toward * (arena.tray.depth - reach));
+          for (const w of pts) {
+            const y = (1 - c.clone().add(w).project(arena.camera).y) / 2 * r.height;
+            most = toward < 0 ? Math.min(most, y) : Math.max(most, y);
+          }
+        }
+      }
+      mesh.quaternion.copy(saved);
+      mesh.updateMatrixWorld(true);
+    }
+    return most;
+  }
+  const out = {};
+  for (const [side, toward] of [['opponent', -1], ['player', 1]]) {
+    const card = document.getElementById(side === 'player' ? 'youCard' : 'opponentCard');
+    const box = card.getBoundingClientRect();
+    const name = document.getElementById(side === 'player' ? 'youName' : 'opponentName').getBoundingClientRect();
+    const reach = reachOnScreen(side, toward);
+    const dice = toward < 0 ? reach - box.bottom : box.top - reach;
+    out[side] = {
+      dice: Math.round(dice),
+      corners: Math.round(Math.min(Infinity, ...corners.map((c) => apart(box, c)))),
+      nameInside: name.left >= box.left && name.right <= box.right && name.bottom <= box.bottom,
+      text: card.querySelector('.pc-name').textContent,
+    };
+  }
+  return out;
+});
+
+for (const [name, viewport] of [['desktop', DESKTOP], ['390x844', PHONE]]) {
+  if (ONLY && !`profile (${name})`.includes(ONLY)) continue;
+  const { browser, page, errors } = await openGame(engine, viewport);
+  try {
+    await page.waitForSelector('#quickGameBtn:not([disabled])', { timeout: 30000 });
+
+    // The editor: picks show on its card, the tray and the dice straight away.
+    await page.click('#editBtn');
+    await page.fill('#editorName', SAVED.name + ' and more');
+    for (const [row, key] of [['#editorCards', 'card'], ['#editorTrays', 'tray'], ['#editorDice', 'dice']]) {
+      await page.click(`${row} [data-choice="${SAVED[key]}"]`);
+    }
+    const preview = { ...await drawn(page), name: await page.textContent('#editorCardName'), typed: await page.inputValue('#editorName') };
+    const tray = colorOf(TRAY_COLORS, SAVED.tray).color;
+    const dice = colorOf(DICE_COLORS, SAVED.dice).edge;
+    report(`Profile (${name}): the editor shows its picks on its card, the tray and the dice; a name stops at 16`,
+      preview.floors.player === tray && preview.floors.opponent === tray && preview.player === dice &&
+        preview.name === SAVED.name && preview.typed === SAVED.name, JSON.stringify(preview));
+
+    // Back drops them; Save keeps them, past a reload.
+    await page.click('#editorBack');
+    const dropped = await page.evaluate(() => window.superRollies.profiles.get().name);
+    await page.click('#editBtn');
+    await page.fill('#editorName', SAVED.name);
+    for (const [row, key] of [['#editorCards', 'card'], ['#editorTrays', 'tray'], ['#editorDice', 'dice']]) {
+      await page.click(`${row} [data-choice="${SAVED[key]}"]`);
+    }
+    await page.click('#editorSave');
+    await page.reload();
+    await page.waitForSelector('#quickGameBtn:not([disabled])', { timeout: 30000 });
+    const kept = await page.evaluate(() => ({ profile: window.superRollies.profiles.get(), menu: document.getElementById('menuName').textContent }));
+    report(`Profile (${name}): Back drops the changes, Save keeps them past a reload, on the menu's card`,
+      dropped === 'Player' && JSON.stringify(kept.profile) === JSON.stringify(SAVED) && kept.menu === SAVED.name,
+      JSON.stringify(kept));
+
+    // In a match: the cards, clear of the corners and the dice, for small and
+    // big trays and six hearts.
+    for (const [set, spice] of [['classic', 'vanilla'], ['the-whole-bag', 'marathon'], ['fireball', 'hit-points']]) {
+      await page.evaluate(([diceSet, spice]) => window.superRollies.game.start('quick', { diceSet, spice }), [set, spice]);
+      await waitForDiceAtRest(page);
+      const cards = await cardLayout(page);
+      const ok = Object.values(cards).every((c) => c.dice > 0 && c.corners > 0 && c.nameInside) &&
+        cards.player.text === SAVED.name && cards.opponent.text === 'Opponent';
+      report(`Profile (${name}): ${set} with ${spice}: both cards named, clear of the corners and the dice`, ok,
+        Object.entries(cards).map(([s, c]) => `${s} ${c.dice}px from dice, ${c.corners}px from corners${c.nameInside ? '' : ', NAME OUTSIDE'}`).join('; '));
+    }
+
+    // The player's colours on their side; the opponent's never their dice
+    // colour, and the same seed the same look.
+    const looks = [];
+    for (let seed = 1; seed <= 12; seed++) {
+      await page.evaluate((seed) => window.superRollies.game.start('quick', { diceSet: 'classic', spice: 'vanilla', seed }), seed);
+      looks.push({ ...await drawn(page), opponentProfile: await page.evaluate(() => window.superRollies.game.players.opponent) });
+    }
+    await page.evaluate(() => window.superRollies.game.start('quick', { diceSet: 'classic', spice: 'vanilla', seed: 1 }));
+    const again = await page.evaluate(() => window.superRollies.game.players.opponent);
+    report(`Profile (${name}): the player's half and dice in their colours; the opponent's dice never, and the same seed looks the same`,
+      looks.every((l) => l.floors.player === tray && l.player === dice && l.opponent !== dice) &&
+        new Set(looks.map((l) => l.opponent)).size > 1 && JSON.stringify(again) === JSON.stringify(looks[0].opponentProfile),
+      `opponent dice edges: ${[...new Set(looks.map((l) => l.opponent.toString(16)))].join(', ')}`);
+
+    // An emoji name, as long as it gets, stays inside the card.
+    await page.evaluate(() => window.superRollies.profiles.save({ ...window.superRollies.profiles.get(), name: '👨‍👩‍👧🎲🎲🎲🎲🎲🎲🎲🎲🎲🎲🎲🎲🎲🎲' }));
+    await page.evaluate(() => window.superRollies.game.start('quick', { diceSet: 'classic', spice: 'vanilla' }));
+    const emoji = await cardLayout(page);
+    report(`Profile (${name}): a 16-emoji name stays inside its card`, emoji.player.nameInside && emoji.player.text.startsWith('👨‍👩‍👧'));
+
+    // Zen: the whole tray the player's colour.
+    await page.click('#backBtn');
+    await page.click('#zenBtn');
+    await page.click('#pickerOptions [data-pick="classic"]');
+    const zen = await drawn(page);
+    report(`Profile (${name}): Zen's whole tray is the player's colour`, zen.floors.player === tray && zen.floors.opponent === tray);
+  } catch (e) {
+    report(`Profile (${name})`, false, e.message.split('\n')[0]);
+  }
+  if (errors.length) report(`Profile (${name}): no page errors`, false, errors.join(' | '));
+  await browser.close();
+}
 
 console.log(failures ? `\n${failures} check(s) failed (${engine})` : `\nAll checks passed (${engine})`);
 process.exit(failures ? 1 : 0);

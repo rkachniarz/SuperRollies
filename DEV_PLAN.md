@@ -25,6 +25,8 @@ No Man's Land), re-throws (Second Wind, Mercy), three more ways to win (Hit
 Points, Race to N, Tug of War), Doubles Again and Death Saves: 28 Spice.
 Since Phase 6 (2026-10-19): Dice Poker scored as poker hands, and Draw Poker's
 redraw of chosen dice; Count the Sixes, Burnout, Crown and Wild Magic: 33 Spice.
+Since Phase 6b (2026-10-21): a player profile (name, card, tray and dice
+colours, saved on the device), each side shown as a card, and the editor.
 
 ---
 
@@ -106,6 +108,7 @@ Some Spice works with any dice; some only makes sense with particular dice
 | D44 | 2026-10-19 | **Burnout is Hearts plus dice left**, a win condition like Death Saves (D36), so what a side throws still depends on the match state only (CLAUDE.md, `handOf`). Each die showing a 1 still counts that round, tagged `burnt` (`1🔥` on the card), then it's lost; 0 dice loses the match, both at once a draw. On the table the very dice that showed 1 burn up where they lie, a beat after landing, and the rest are numbered afresh (`removeDice`), so ids stay `player-0` onwards. Dice burnt are marks by the hearts (🔥, eight to a side: they fit on a phone). |
 | D45 | 2026-10-19 | **Wild Magic's surge is drawn before every throw and set off by matching digits** (11 to 99, and `00 + 0` = 100: 10% a side). One surge per side is drawn from the rules stream every round, set off or not, so every hook reads the same one and the stream moves on the same way. Six surges: the totals swap (the lower wins), the round costs double, the surger regains a heart (capped at the start: Hearts now never go above it), it backfires and the surger loses one, it fizzles and nobody wins, or the surger wins outright. Both can surge, applied player first (D27): two swaps swap back. "The totals swap" only ever decides who wins, so it's the same as Lowball for a round; with hearts, swapping the numbers themselves would change nothing more. |
 | D46 | 2026-10-19 | **A die thrown onto dice held where they lie settles near one pose** (`HELD_ROCK_MOVE`). Measured with `check-table.mjs`: 1 redraw in 36 waited out the timeout, a die propped between a held die and a wall jittering there or creeping down it a few cm a second (ordinary 5d6 throws: none in 400). The rope's rocking rule (D41) at 2 cm and 3 degrees made no difference, nor did more friction on held dice (worse), nor counting a second of being slow; within 5 cm and 6 degrees of one pose for half a second took it to 3 in 500. Only for records with a die held fixed (redraws, and an explosion's pops, which are only for show), so every recorded throw replays unchanged. |
+| D47 | 2026-10-21 | **Player customisation comes before multiplayer** (Phase 6b, R6). The player has a profile (name, card background, tray colour, dice colour), saved on the device; each side is shown as a card in place of today's HUD block, after the owner's sketch: the name large across the top, the advantage badge bottom left, the match state bottom right. Four choices each, ids in registries so unlockable ones (a later progression system) slot in. **Dice:** orange, purple, ivory, charcoal, each with its own edge and numeral colours, readable on all four trays; no red, which would vanish on the satin red tray. **Tray:** billiard green, satin red, deep blue, light grey. **Card:** four light colours. The AI is "Opponent" for now (names later), its colours drawn at random from the same choices, **never the player's dice colour**, from a stream of its own so nothing else shifts. **The editor previews on the real scene:** a die in the chosen colours on the chosen tray, behind the editor. **No first-run prompt:** a new player is "Player" with the defaults, and the menu card's edit button invites a change. **On a phone both cards are compact** (name shrinks, then an ellipsis; hearts below it), as the opponent's has only ~130 px between the top corners. **Zen shows the player's card, name only,** and the whole tray takes the player's colour. Colours are cosmetic and never reach the rules engine or a throw record. |
 
 ---
 
@@ -228,6 +231,54 @@ Some Spice works with any dice; some only makes sense with particular dice
   (`node:test`), runnable with `npm test`. *(D13)*
 - **R5.6** The verification checklist (§8) is a Playwright script, runnable with
   one npm command. *(D13)*
+
+### R6 — Player profile and customisation *(D47)*
+
+- **R6.1** The player has a **profile**: name, card background, tray colour
+  and dice colour. It is saved on the device in `localStorage`, every read and
+  write wrapped so that where storage is missing or throws (a private window,
+  the claude.ai artifact) the game plays on with the defaults for that session.
+- **R6.2** **Name:** 1 to 16 characters; letters, numbers, symbols and emoji
+  all allowed. Characters are counted as seen (grapheme clusters, so 👨‍👩‍👧 is
+  one). Leading and trailing spaces are trimmed; an empty name falls back to
+  the default, **"Player"**. The name is only ever shown as text, never as
+  HTML.
+- **R6.3** **Four choices each**, held in registries by id (the profile stores
+  ids, not colours), so choices unlocked later join by being added there. A
+  stored id that no longer exists falls back to the default.
+  - **Card background** (light): parchment, mint, sky, blush.
+  - **Tray:** billiard green, satin red, deep blue, light grey.
+  - **Dice:** orange (default), purple, ivory, charcoal. Each is a body, edge
+    and numeral colour together, and every one is readable on every tray.
+- **R6.4** In a match **each side is a card** in place of today's HUD block,
+  the opponent's at the top and the player's at the bottom, in its card
+  background: the **name** large across the top, the **advantage badge**
+  (R3.5) bottom left, the **match state** bottom right: hearts, a bar, marks,
+  whatever the win condition's `view` draws (R3.4).
+- **R6.5** The cards keep **clear of the top corners and of every resting
+  spot** (4.6a), on desktop and on 390×844, and take no pointer events. On a
+  phone both are **compact**: the name smaller, cut with an ellipsis if it
+  still doesn't fit, the match state below it.
+- **R6.6** The **opponent** is "Opponent" (AI names come later). Its card
+  background, tray colour and dice colour are drawn at random from the same
+  choices, never the player's dice colour, from a stream of its own derived
+  from the match seed (`deriveSeed`), so a replayed match looks the same and
+  no other stream moves.
+- **R6.7** The **main menu** shows the player's card with a clear **edit**
+  button beside it.
+- **R6.8** The edit button opens the **player editor**: a name field and a row
+  of swatches each for card, tray and dice. A copy of the card updates as
+  things are picked, and the **real scene behind the editor** shows the
+  player's tray and a die in the chosen colours. Save keeps the changes; Back
+  drops them.
+- **R6.9** **On the table** each half of the tray is its side's tray colour and
+  each side's dice are its dice colour. In **Zen** the whole tray is the
+  player's colour, and the player's card is shown with the name only.
+- **R6.10** Colours are **cosmetic only**: they never reach the rules engine or
+  a throw record, so every recorded throw replays unchanged.
+- **R6.11** *(Phase 7)* In multiplayer each side sends its profile when the
+  match is set up, and each client shows the other's card and colours on its
+  half. A received profile is checked as a stored one is (R6.2, R6.3).
 
 ---
 
@@ -779,6 +830,41 @@ Behaviour is unchanged: 1d20 vs. AI plays exactly as it does today.
   all pass. Republished as version 27.*
 - [x] **6.7** Docs refresh.
 
+### Phase 6b — Player customisation *(D47, R6)*
+
+- [x] **6b.1** Profile module: the defaults, the three registries, load and save
+  (wrapped), name check by grapheme count, unknown ids falling back (R6.1–6.3).
+  Unit-tested. *`src/profile.js`; the colours are in `config.js`
+  (`CARD_COLORS`, `TRAY_COLORS`, `DICE_COLORS`); `test/profile.test.js` (12).*
+- [x] **6b.2** Themes from the profile: `THEMES` and the floor colours become
+  per side and per match, set from each side's choices (dice body, edge,
+  numerals; tray half). Zen's whole tray in the player's colour (R6.9).
+  *`table.setup` takes `dice` and `trays`; `arena.setTrayColors`.*
+- [x] **6b.3** The opponent's choices, drawn from their own seeded stream, never
+  the player's dice colour (R6.6). *`opponentProfile`, from
+  `deriveSeed(seed, 'looks')`.*
+- [x] **6b.4** The player card: replaces the HUD block for both sides; name,
+  badge, match state; compact on a phone; Zen's name-only card (R6.4, R6.5).
+  *The top card sits level with the corners. Measured against real dice at
+  the far wall (not spheres round them, which overstate their reach by 30 px
+  and more): ~9 px clear for The Classic on desktop, 5-30 px on a phone.
+  Found on the way: after a Marathon match on a phone, the hidden two-row
+  grid of hearts still took room (`display:grid` beat `[hidden]`), and a bar
+  card grew 50 px.*
+- [x] **6b.5** Menu card with the edit button (R6.7).
+- [x] **6b.6** The player editor, with the live card and the scene preview
+  (R6.8). *A d20 and a d6 turning slowly in the far half; the editor at the
+  bottom on a phone, on the left on a wider screen.*
+- [x] **6b.7** Readability: every dice colour's numerals on every tray, and
+  every card background with its text, checked by eye in a real browser.
+  *All 16 pairings readable; ivory brightened (it read grey under the
+  lights). Ivory on light grey is the weakest, and still clear.*
+- [x] **6b.8** Verification checklist passes (with §8 item 8); `npm run phase0`
+  unchanged (R6.10); artifact republished. *`npm test` (247), `npm run
+  verify` (104, with 16 new profile checks), `npm run phase0` all pass;
+  determinism 51 of 51. Republished as version 28.*
+- [x] **6b.9** Docs refresh.
+
 ### Phase 7 — Multiplayer
 
 Blocked on **Q1** for the protocol; 7.1–7.3 can start before Q1 is settled.
@@ -788,7 +874,8 @@ Blocked on **Q1** for the protocol; 7.1–7.3 can start before Q1 is settled.
 - [ ] **7.1a** TURN server configured (provider per Q4); verified by connecting
   a phone on mobile data to a desktop on home broadband (R4.7).
 - [ ] **7.2** Host catalogue selection; guest sees the choice and rules (R4.2).
-- [ ] **7.3** Shared seed and config handshake.
+- [ ] **7.3** Shared seed and config handshake, with each side's profile
+  (R6.11).
 - [ ] **7.4** Throw protocol (simultaneous or turn-based, per Q1).
 - [ ] **7.5** Send the release record; the other client simulates the throw
   with the Phase 0 harness (`replayThrow`); both sides check the face values
@@ -836,3 +923,8 @@ added to the script as the feature it checks lands. Run `npm test` alongside.
 6. The face values read by the game match what is visible on screen, for every
    die type.
 7. The same seed produces the same offers and the same Spice events.
+8. Each side's card shows its name, badge and match state, clear of the top
+   corners and every resting spot on desktop and 390×844; a 16-character and
+   an emoji name fit. The editor's changes show on the card, the tray and the
+   dice, and survive a reload; the opponent's dice never take the player's
+   colour; Zen's tray is all the player's colour.

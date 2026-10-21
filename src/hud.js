@@ -1,12 +1,36 @@
-// Everything on top of the 3D view: the match-state display, the message card,
-// the match's Dice/Spice label and its rules, the menu, the Quick Game draft and
-// Zen's catalogue.
+// Everything on top of the 3D view: each side's card with its match state, the
+// message card, the match's Dice/Spice label and its rules, the menu, the
+// player editor, the Quick Game draft and Zen's catalogue.
 //
 // The match state is drawn from whatever the win condition asks for (its
 // `view`, see rules/types.js), never from a count kept here: hearts are the
 // default, not an assumption (DEV_PLAN.md R3.4).
 
 import { renderCard } from './cards.js';
+import { CARD_COLORS, TRAY_COLORS, DICE_COLORS } from './config.js';
+import { NAME_MAX, nameLength, limitName, cleanName, looksOf } from './profile.js';
+
+/** A colour as config.js gives it (a number or a CSS string), for CSS. */
+const css = (color) => (typeof color === 'number' ? '#' + color.toString(16).padStart(6, '0') : color);
+
+// How small a long name may shrink before it's cut short instead.
+const NAME_MIN_PX = 12;
+
+/**
+ * Shrinks a card's name until it fits its card, down to NAME_MIN_PX; past
+ * that, it's cut short with an ellipsis (styles.css). Starts from the size
+ * the stylesheet gives it, so it grows back when there's room again.
+ * @param {HTMLElement} el
+ */
+function fitName(el) {
+  el.style.fontSize = '';
+  if (!el.clientWidth) return;
+  let size = parseFloat(getComputedStyle(el).fontSize);
+  while (el.scrollWidth > el.clientWidth && size > NAME_MIN_PX) {
+    size -= 1;
+    el.style.fontSize = `${size}px`;
+  }
+}
 
 const HEART_PATH =
   'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z';
@@ -18,7 +42,7 @@ function buildHeartsRow(container, count) {
     const wrap = document.createElement('span');
     wrap.className = 'heart';
     wrap.innerHTML =
-      `<svg class="heart-empty" viewBox="0 0 24 24"><path d="${HEART_PATH}" fill="none" stroke="rgba(245,241,255,0.35)" stroke-width="1.6"/></svg>` +
+      `<svg class="heart-empty" viewBox="0 0 24 24"><path d="${HEART_PATH}" fill="none" stroke="rgba(27,23,18,0.4)" stroke-width="1.6"/></svg>` +
       `<svg class="heart-full" viewBox="0 0 24 24"><path d="${HEART_PATH}" fill="#ff5470"/></svg>`;
     container.appendChild(wrap);
     fulls.push(wrap.querySelector('.heart-full'));
@@ -39,6 +63,8 @@ export function createHud() {
   const draftChosenEl = document.getElementById('draftChosen');
   const draftCardsEl = document.getElementById('draftCards');
   const draftBackBtn = document.getElementById('draftBack');
+  const editorEl = document.getElementById('editor');
+  const editBtn = document.getElementById('editBtn');
   const quickGameBtn = document.getElementById('quickGameBtn');
   const zenBtn = document.getElementById('zenBtn');
   const testBenchBtn = document.getElementById('testBenchBtn');
@@ -59,6 +85,37 @@ export function createHud() {
   const menuStatusEl = document.getElementById('menuStatus');
 
   const rethrowBtn = document.getElementById('rethrowBtn');
+
+  // Each side's card in a match (R6.4), the player's on the menu, and the
+  // editor's copy of it.
+  const cards = {
+    player: { card: document.getElementById('youCard'), name: document.getElementById('youName') },
+    opponent: { card: document.getElementById('opponentCard'), name: document.getElementById('opponentName') },
+    menu: { card: document.getElementById('menuCard'), name: document.getElementById('menuName'), look: document.getElementById('menuLook') },
+    editor: { card: document.getElementById('editorCard'), name: document.getElementById('editorCardName'), look: document.getElementById('editorLook') },
+  };
+
+  /**
+   * Draws a card for `looks` (looksOf in profile.js): its background and
+   * name, and where it has one, a chip of its tray and dice colours.
+   */
+  function paintCard({ card, name, look }, looks) {
+    card.style.setProperty('--card', looks.card);
+    name.textContent = looks.name;
+    if (look) {
+      look.style.setProperty('--tray', css(looks.tray));
+      look.style.setProperty('--die', css(looks.dice.body));
+      look.style.setProperty('--pip', css(looks.dice.number));
+    }
+    fitName(name);
+  }
+
+  function fitNames() {
+    for (const { name } of Object.values(cards)) fitName(name);
+  }
+  window.addEventListener('resize', fitNames);
+  // The names' font arrives after the page: fit them again once it has.
+  document.fonts?.ready.then(fitNames);
 
   // Each side's row of hearts, and how many of them are currently drawn full.
   const heartRows = {
@@ -326,11 +383,14 @@ export function createHud() {
     rulesPopupEl.hidden = true;
   }
 
-  // Zen has no opponent and no score, so no hearts either.
+  // Zen has no opponent and no score, so no hearts either: the player's card
+  // shows only their name.
   function showBoard(mode) {
     menuEl.hidden = true;
     opponentHudEl.hidden = mode === 'zen';
-    youHudEl.hidden = mode === 'zen';
+    youHudEl.hidden = false;
+    youHudEl.classList.toggle('name-only', mode === 'zen');
+    fitNames();
     backBtn.hidden = false;
     hideRules();
     showAnnounce(undefined);
@@ -364,10 +424,109 @@ export function createHud() {
    */
   function showMenuCard(el, onBack = showMenu) {
     menuBack = onBack;
-    for (const card of [menuMainEl, draftEl, pickerEl]) card.hidden = card !== el;
+    for (const card of [menuMainEl, draftEl, pickerEl, editorEl]) card.hidden = card !== el;
+    // The editor lets the table show through, to show off the colours picked.
+    menuEl.classList.toggle('editing', el === editorEl);
     menuEl.hidden = false;
     menuEl.scrollTop = 0;
+    fitNames();
   }
+
+  /**
+   * Draws each side's card for the match about to start: `player` and
+   * `opponent` are their looks (looksOf in profile.js); Zen has no opponent.
+   */
+  function showPlayers({ player, opponent }) {
+    paintCard(cards.player, player);
+    if (opponent) paintCard(cards.opponent, opponent);
+  }
+
+  /** Draws the player's card on the menu. */
+  function showMenuPlayer(looks) {
+    paintCard(cards.menu, looks);
+  }
+
+  // ---------- The player editor (R6.8) ----------
+  const editorNameEl = /** @type {HTMLInputElement} */ (document.getElementById('editorName'));
+  const editorCountEl = document.getElementById('editorCount');
+  const swatchRows = {
+    card: { el: document.getElementById('editorCards'), list: CARD_COLORS },
+    tray: { el: document.getElementById('editorTrays'), list: TRAY_COLORS },
+    dice: { el: document.getElementById('editorDice'), list: DICE_COLORS },
+  };
+  // The profile being edited, and where its changes go; null when closed.
+  let editing = null;
+
+  // One row of swatches, one per choice: the card's colour, a patch of the
+  // tray, or a die face with a pip in its numerals' colour.
+  for (const [key, { el, list }] of Object.entries(swatchRows)) {
+    el.replaceChildren(...list.map((choice) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = `swatch swatch-${key}`;
+      btn.dataset.choice = choice.id;
+      btn.setAttribute('role', 'radio');
+      btn.setAttribute('aria-label', choice.name);
+      btn.title = choice.name;
+      if (key === 'dice') {
+        btn.style.setProperty('--die', css(choice.body));
+        btn.style.setProperty('--die-edge', css(choice.edge));
+        btn.style.setProperty('--pip', css(choice.number));
+        btn.append(Object.assign(document.createElement('span'), { className: 'swatch-pip' }));
+      } else {
+        btn.style.setProperty('--swatch', css(choice.color));
+      }
+      btn.addEventListener('click', () => {
+        if (!editing) return;
+        editing.profile[key] = choice.id;
+        showEdits();
+      });
+      return btn;
+    }));
+  }
+
+  editorNameEl.addEventListener('input', () => {
+    if (!editing) return;
+    const limited = limitName(editorNameEl.value);
+    if (limited !== editorNameEl.value) editorNameEl.value = limited;
+    editing.profile.name = limited;
+    showEdits();
+  });
+  editorNameEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') editorNameEl.blur(); });
+
+  // Brings the editor in line with the profile being edited, and passes it
+  // on, for the table to show it off.
+  function showEdits() {
+    const { profile, onChange } = editing;
+    editorCountEl.textContent = `${nameLength(profile.name)}/${NAME_MAX}`;
+    paintCard(cards.editor, looksOf({ ...profile, name: cleanName(profile.name) }));
+    for (const [key, { el }] of Object.entries(swatchRows)) {
+      for (const btn of el.children) btn.setAttribute('aria-checked', String(btn.dataset.choice === profile[key]));
+    }
+    onChange({ ...profile });
+  }
+
+  /**
+   * Opens the player editor on `profile`. Every change is passed to
+   * `onChange` (to show it on the table); Save hands the profile to `onSave`,
+   * Back drops it.
+   * @param {import('./profile.js').Profile} profile
+   * @param {{ onChange: (p: import('./profile.js').Profile) => void,
+   *   onSave: (p: import('./profile.js').Profile) => void, onBack: () => void }} handlers
+   */
+  function showEditor(profile, { onChange, onSave, onBack }) {
+    editing = { profile: { ...profile }, onChange, onSave };
+    editorNameEl.value = profile.name;
+    showMenuCard(editorEl, () => { editing = null; onBack(); });
+    showEdits();
+  }
+  document.getElementById('editorBack').addEventListener('click', () => menuBack());
+  document.getElementById('editorSave').addEventListener('click', () => {
+    if (!editing) return;
+    const { profile, onSave } = editing;
+    editing = null;
+    onSave(profile);
+  });
 
   function showMenu() {
     hideResult();
@@ -426,7 +585,8 @@ export function createHud() {
   return {
     showMatch,
     showResult, showRound, hideResult, showBoard, showMenu, showPicker, showDraft, setLoaded, setLoadFailed,
-    showMatchInfo, showAnnounce, showEdge, showRethrow,
+    showMatchInfo, showAnnounce, showEdge, showRethrow, showPlayers, showMenuPlayer, showEditor,
+    onEditPlayer(handler) { editBtn.addEventListener('click', handler); },
     onRethrow(handler) { rethrowBtn.addEventListener('click', handler); },
     onQuickGame(handler) { quickGameBtn.addEventListener('click', handler); },
     onZen(handler) { zenBtn.addEventListener('click', handler); },

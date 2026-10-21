@@ -33,6 +33,7 @@ import { DICE_SETS, THE_CLASSIC, dieTypes, sum } from './rules/dice-sets.js';
 import { SPICE } from './rules/spice.js';
 import { dealDice, dealSpice, testBenchSpice } from './rules/draft.js';
 import { diceSetCard, dieCard, spiceCard } from './cards.js';
+import { checkProfile, looksOf, opponentProfile } from './profile.js';
 
 // Zen's catalogue: every dice set, then each die type a set doesn't already
 // throw on its own, so every die can be tried alone.
@@ -60,9 +61,16 @@ const BURN_BEAT_MS = 600;
 // Zen's table: nothing on it but the dice.
 const PLAIN_TABLE = { holes: [], wind: null, divider: false, rope: null };
 
+// The dice the player editor shows off its colours on: where in the far half
+// (a share of its depth), how far apart, and how fast they turn (radians/s).
+const PREVIEW_DICE = ['d20', 'd6'];
+const PREVIEW_DEPTH = 0.55;
+const PREVIEW_SPACING = 1.7;
+const PREVIEW_SPIN = 0.5;
+
 const pause = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 
-export function createGame({ hud, roller, arena, table, effects }) {
+export function createGame({ hud, roller, arena, table, effects, profiles }) {
   let state = 'menu'; // 'menu' | 'playing' | 'deciding' | 'ended'
   let mode = 'quick'; // 'quick' | 'zen'
   let rolling = false;
@@ -84,6 +92,9 @@ export function createGame({ hud, roller, arena, table, effects }) {
   // and the table it's thrown on (holes, a breeze, the divider).
   let announced;
   let tableNow = PLAIN_TABLE;
+  // Who's playing this match: each side's profile (profile.js). Zen has no
+  // opponent.
+  let players = null;
   // Separate random streams for the AI's throws and for the spin jitter on the
   // player's, so neither can shift the other or the rules' own stream.
   let opponentRng;
@@ -191,6 +202,11 @@ export function createGame({ hud, roller, arena, table, effects }) {
     const types = alone ? [dieType] : dieTypes(rules.diceSet);
     zenScorer = alone ? sum : rules.diceSet.scorer;
     tableNow = zen ? PLAIN_TABLE : tableOf(rules, match);
+    // The AI's looks come from a stream of their own, so a replayed match
+    // looks the same and no other stream moves (R6.6).
+    const you = profiles.get();
+    players = { player: you, opponent: zen ? null : opponentProfile(createRng(deriveSeed(seed, 'looks')), you) };
+    const looks = { player: looksOf(you), opponent: looksOf(players.opponent ?? you) };
     table.setup({
       types,
       scale: alone ? 1 : rules.diceSet.dieScale,
@@ -199,9 +215,12 @@ export function createGame({ hud, roller, arena, table, effects }) {
       divider: !zen && tableNow.divider,
       holes: tableNow.holes,
       rope: Boolean(tableNow.rope),
+      dice: { player: looks.player.dice, opponent: looks.opponent.dice },
+      trays: { player: looks.player.tray, opponent: looks.opponent.tray },
     });
     showTable();
     hud.showBoard(mode);
+    hud.showPlayers({ player: looks.player, opponent: zen ? null : looks.opponent });
     hud.showMatchInfo(diceSetCard(rules.diceSet), zen ? null : spiceCard(rules.spice));
     if (mode === 'quick') {
       hud.showMatch(rules.winCondition.view(match.win));
@@ -313,6 +332,60 @@ export function createGame({ hud, roller, arena, table, effects }) {
     leaveRound();
     state = 'menu';
     hud.showMenu();
+  }
+
+  // ---------- The player editor (R6.8) ----------
+  // The table shows through behind it: a few dice in the colours picked, on
+  // the tray picked, turning slowly in the far half (clear of the editor on a
+  // phone, where it sits at the bottom).
+  let editing = false;
+  let previewLook = null;
+  let previewTurn = 0;
+
+  function openEditor() {
+    leaveRound();
+    state = 'menu';
+    editing = true;
+    previewLook = null;
+    hud.showEditor(profiles.get(), {
+      onChange: showLook,
+      onSave(profile) {
+        profiles.save(profile);
+        closeEditor();
+      },
+      onBack: closeEditor,
+    });
+  }
+
+  function closeEditor() {
+    editing = false;
+    hud.showMenuPlayer(looksOf(profiles.get()));
+    hud.showMenu();
+  }
+
+  // Lays the preview out for `profile`'s colours; only when they change, not
+  // for every letter of a name typed.
+  function showLook(profile) {
+    const looks = looksOf(checkProfile(profile));
+    const key = `${looks.tray}|${looks.dice.id}`;
+    if (key === previewLook) return;
+    previewLook = key;
+    const { tray } = THE_CLASSIC;
+    table.setup({
+      types: PREVIEW_DICE, scale: 1, tray, opponent: false,
+      dice: { player: looks.dice, opponent: looks.dice },
+      trays: { player: looks.tray, opponent: looks.tray },
+    });
+    table.sides.player.forEach((die, i) => {
+      die.placeAt((i - (PREVIEW_DICE.length - 1) / 2) * PREVIEW_SPACING, -tray.depth * PREVIEW_DEPTH, previewTurn + i * 2);
+    });
+  }
+
+  /** Turns the editor's dice a little: called every frame. */
+  function frame(dt) {
+    if (!editing) return;
+    previewTurn += dt * PREVIEW_SPIN;
+    table.sides.player.forEach((die, i) => die.placeAt(die.mesh.position.x, die.mesh.position.z, previewTurn + i * 2));
   }
 
   async function runZenThrow(playerReleases) {
@@ -719,7 +792,9 @@ export function createGame({ hud, roller, arena, table, effects }) {
   hud.onZen(() => hud.showPicker('Zen: choose your dice', ZEN_CARDS,
     (id) => start('zen', id.startsWith('die:') ? { dieType: id.slice(4) } : { diceSet: id })));
   hud.onTestBench(openTestBench);
+  hud.onEditPlayer(openEditor);
   hud.onBack(returnToMenu);
+  hud.showMenuPlayer(looksOf(profiles.get()));
   // The button under the card: keep all your dice while picking (Draw
   // Poker), or a re-throw (Second Wind).
   hud.onRethrow(() => {
@@ -740,6 +815,8 @@ export function createGame({ hud, roller, arena, table, effects }) {
     get config() { return config; },
     get match() { return match; },
     get rules() { return rules; },
+    /** This match's players: each side's profile; no opponent in Zen. */
+    get players() { return players; },
     /** The seed the draft on screen deals from. */
     get draftSeed() { return draftSeed; },
     /**
@@ -752,6 +829,8 @@ export function createGame({ hud, roller, arena, table, effects }) {
     rounds,
     start,
     openDraft,
+    openEditor,
+    frame,
     useRethrow,
     /** Spin jitter for the player's throws, from the match's seed. */
     random: () => throwRng.next(),

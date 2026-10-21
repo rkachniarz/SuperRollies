@@ -9,7 +9,7 @@
 import * as THREE from 'three';
 import { HOLE_CORNERS, ropeRadius } from './physics.js';
 import {
-  SCENE_BACKGROUND, OPPONENT_FLOOR_COLOR, PLAYER_FLOOR_COLOR, WALL_COLOR, PIT_COLOR,
+  SCENE_BACKGROUND, TRAY_COLORS, WALL_COLOR, PIT_COLOR,
   TRAY_HALF_WIDTH, TRAY_DEPTH, WALL_T, DIVIDER_T, WALL_HALF_HEIGHT, WALL_VISIBLE_HALF_HEIGHT,
   DIE_RADIUS, CAMERA_FOV, CAMERA_POSITION, CAMERA_LOOK_AT, CAMERA_DEPTH_MARGIN,
 } from './config.js';
@@ -75,6 +75,9 @@ export function createArena(canvas) {
   let tray = { halfWidth: TRAY_HALF_WIDTH, depth: TRAY_DEPTH };
   let trayGroup = null;
   let opponentFloor = null;
+  let playerFloor = null;
+  // Each side's half of the tray, in the colour its player picked (R6.9).
+  const floorColors = { player: TRAY_COLORS[0].color, opponent: TRAY_COLORS[1].color };
   let dividerMesh = null;
   let divider = true;
   // Whether the tray is two sides' halves, each throwing from its own: a
@@ -103,7 +106,7 @@ export function createArena(canvas) {
     scene.add(trayGroup);
     const { halfWidth, depth } = tray;
 
-    // Two tinted halves matching each side's colour identity, split by the
+    // Two halves in each side's tray colour, split by the
     // divider wall added below, with any holes in them cut out: the same
     // 32-sided outline as the floor's collider (physics.js), so a die drops
     // in exactly where the hole is drawn. Drawn in the floor's plane, x
@@ -126,8 +129,9 @@ export function createArena(canvas) {
       trayGroup.add(floor);
       return floor;
     }
-    opponentFloor = addFloor(OPPONENT_FLOOR_COLOR, -depth, 0);
-    addFloor(PLAYER_FLOOR_COLOR, 0, depth);
+    opponentFloor = addFloor(floorColors.opponent, -depth, 0);
+    playerFloor = addFloor(floorColors.player, 0, depth);
+    paintFloors();
 
     // Each hole's pit: a dark well, open at the top, the dice that fall in
     // lying at its bottom.
@@ -194,7 +198,22 @@ export function createArena(canvas) {
     divider = on;
     split = halves;
     dividerMesh.visible = on;
-    opponentFloor.material.color.set(split ? OPPONENT_FLOOR_COLOR : PLAYER_FLOOR_COLOR);
+    paintFloors();
+  }
+
+  function paintFloors() {
+    playerFloor.material.color.set(floorColors.player);
+    opponentFloor.material.color.set(split ? floorColors.opponent : floorColors.player);
+  }
+
+  /**
+   * Paints each side's half of the tray its player's colour (`player`,
+   * `opponent`: colours). Without a split (Zen) it's all the player's.
+   */
+  function setTrayColors(player, opponent = player) {
+    floorColors.player = player;
+    floorColors.opponent = opponent;
+    paintFloors();
   }
 
   /** Cuts `next` holes (Pothole) in the floor, or fills them in again. */
@@ -352,12 +371,16 @@ export function createArena(canvas) {
 
   return {
     renderer, scene, camera,
-    clampToTray, opponentZone, resize, setDivider, setTray, setHoles, setRope,
+    clampToTray, opponentZone, resize, setDivider, setTray, setHoles, setRope, setTrayColors,
     get divider() { return divider; },
     /** Whether the tray is two halves, each side throwing from its own. */
     get split() { return split; },
     get tray() { return tray; },
     get holes() { return holes; },
+    /** The colours each half of the floor is drawn in, for the checks. */
+    get floorColors() {
+      return { player: playerFloor.material.color.getHex(), opponent: opponentFloor.material.color.getHex() };
+    },
     /** The rope's radius, if there's one down the middle (Tug of War); else 0. */
     get rope() { return rope ? ropeRadius(tray) : 0; },
     get arenaHalfWidth() { return arenaHalfWidth; },
