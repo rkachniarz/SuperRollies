@@ -339,83 +339,19 @@ lighting, z-fighting and camera precision were all blamed before the actual caus
 Chromium via Playwright works well: drive a real throw, then read the scene graph
 or sample pixels instead of trusting a screenshot.
 
-Worth re-checking after any change to dice, camera, input or physics. All of
-these are scripted in `npm run verify` (`tools/phase0/verify.mjs`):
-
-1. Every die shows its full set of numerals (20 on a d20, 6 pip faces on a
-   d6, 12 on a d4: three per face), at rest at least one squarely faces the
-   camera, and the face the game read is the one on top (on a d4, the number
-   round its top corner). Checked for every die type, via The Whole Bag and
-   Percentile.
-2. A micro-nudge is refused ("Make a proper throw!"); a genuine drag throws.
-3. The die is grabbable on the first tap even when the result card overlaps it.
-4. On a 390×844 viewport every die is still reachable at its sideways limit,
-   for one die, for 8, and for The Whole Bag (the biggest dice). Dice at rest stay exactly where they landed (against
-   the side walls too), and narrowing the window slides them back on screen.
-5. A full match runs its win condition to the end (Hearts: a side drained
-   to 0), announces the result, and returns to the menu.
-6. A fresh match's die is grabbable at once; a fumbled die can be caught
-   mid-fall.
-7. Zen: no opponent, the die reaches the far half, the back button is clear of
-   every spot a die can rest, and Quick Game afterwards restores the table.
-   Zen offers every dice set and every die type alone, and throws what's
-   picked: each die type alone, or a handful totalled with its set's scorer.
-8. The same match seed throws the opponent's dice the same way.
-9. Handfuls (2 to 8 dice, mixed types too): one grab picks them all up,
-   they're thrown together, and the result card adds each side up, greying out
-   dice that don't count (Advantage, Heroic Stats), and writing percentile as
-   `40 + 7`, `00 + 0` = 100.
-10. The Quick Game draft deals two dice cards, then two Spice cards eligible
-    for the set picked, and starts that match; the same seed deals the same
-    cards (§8, 7).
-11. The match label names the dice and Spice, opens their full rules, and is
-    clear of every resting spot, on desktop and 390×844; Marathon's six hearts
-    clear both corners.
-12. Underdog puts an extra die on the table for the side behind, which is
-    thrown and scored, and badges that side; Cursed Number's number is
-    announced before every round, a die showing it counts 0 and shows a red
-    0 until the next throw. Exploding Dice pops each extra roll out of its
-    die as a die showing it, moving none of the dice read, gone at the next
-    throw.
-13. Pothole: a die that falls in lies in the pit, counts 0 and is written
-    "hole"; none waits over a hole; on 390×844 both holes are on screen.
-14. Cat Paw knocks the dice the rules name, from where they lay, and their
-    new faces count. Gusty Table's announced breeze is the one in the throw's
-    record.
-15. No Man's Land: no divider, a die of yours across the middle or under
-    the result card is still picked up, and the opponent throws at your dice.
-16. Second Wind: losing a round offers the re-throw button, under the result
-    card (or in its corner), clear of every die (desktop and 390×844); taking
-    it puts the round back, the new throw replaces the old, and it's spent.
-17. Hit Points, Race to N and Tug of War each draw a bar per side, as the win
-    condition says, clear of the corners on a phone; a Hit Points match runs
-    to 0 HP and back to the menu, its card saying who lost how many HP.
-    Doubles Again asks the player to throw
-    again and adds it on the card; Death Saves' fails are marked by the
-    hearts. Tug of War's rope lies down the middle, in the throw's record,
-    its flag as far along as the marker.
-18. The test bench is hidden without `?dev`; with it, it lists every dice
-    set, then exactly the Spice that set allows (set-specific first), its
-    back button returns to the dice, and picking one starts that match. A
-    match over there starts another on the same dice and Spice.
-19. Draw Poker (desktop and 390×844): after the throw a tap picks a die out
-    (and again puts it back), the opponent's dice to throw glow, the keep
-    button is clear of every die; a drag throws only the dice picked out,
-    the rest unmoved and still counted; keeping them all throws none.
-    Dice Poker's card names both hands.
-20. Count the Sixes counts 6s on the card, the rest greyed; Burnout takes
-    the dice that showed 1 off the table and marks them by the hearts, clear
-    of the corners on a phone; Crown counts one die a side, `+ 5 👑` for
-    each on its maximum; Wild Magic's matching digits set off a surge, said
-    on the card.
-21. Player cards (desktop and 390×844): the editor shows its picks on its
-    card, the tray and the dice as they're made, stops a name at 16
-    characters, drops them on Back and keeps them past a reload on Save.
-    Each side's card is named, clear of the corners and of any die resting
-    against its wall, on small and big trays and with six hearts; a
-    16-emoji name stays inside it. The player's half and dice are in their
-    colours, the opponent's dice never, and the same seed gives the
-    opponent the same look; Zen's tray is all the player's colour.
+`npm run verify` (`tools/phase0/verify.mjs`) is that habit scripted. It plays
+the game in headless Chromium, on desktop and 390×844, and reports each check
+by label; `node tools/phase0/verify.mjs chromium "<label>"` runs only those
+whose label contains it. Run it after any change to dice, camera, input,
+physics or match flow. Broadly, it checks that every die type shows its
+numerals and the game reads the face that's on top; that throws, grabs and
+fumbles behave (a micro-nudge refused, a first tap grabbing even under the
+result card, a falling die caught); that every die stays reachable on a
+phone and stays put at rest; that nothing tappable sits over a resting die;
+that matches run to the end under each win condition and the same seed
+replays the same; and that each Spice, the draft, Zen, the test bench and
+the player cards do what their rules and requirements say. A new feature
+lands with its own check there, and the script, not this file, is the list.
 
 Run `npm test` alongside; it needs no server.
 
