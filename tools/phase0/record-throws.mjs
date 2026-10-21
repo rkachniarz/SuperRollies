@@ -1,11 +1,11 @@
-// Records real throws from the game for Check D (DEV_PLAN 0.7): plays matches
+// Records real throws from the game for Check D (docs/history.md 0.7): plays matches
 // in Chromium with a spread of different drags, and saves each round's release
 // record alongside the exact result the game itself reached.
 //
 //   node tools/phase0/record-throws.mjs [count=20]           ->   tools/phase0/throws.json
 //   node tools/phase0/record-throws.mjs [count=30] --table   ->   tools/phase0/table-throws.json
 //
-// --table records throws onto the tables Spice change instead (DEV_PLAN.md
+// --table records throws onto the tables Spice change instead (docs/history.md
 // Phase 5): holes in the floor, a breeze, no divider, a cat's paw knocking
 // dice at rest, and a rope down the middle, a fifth of the count each. Their records carry what the
 // table was like, so they replay the same anywhere too.

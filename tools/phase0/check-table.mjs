@@ -1,4 +1,4 @@
-// The Spice that change the table (DEV_PLAN.md 5.1-5.3, 5.6): throws onto a
+// The Spice that change the table (docs/history.md 5.1-5.3, 5.6): throws onto a
 // floor with holes in it (Pothole), in a breeze (Gusty Table), with no
 // divider (No Man's Land, the opponent throwing at the player's dice), the
 // knock a cat's paw gives dice at rest (Cat Paw), and over a rope down the

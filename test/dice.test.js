@@ -155,7 +155,7 @@ describe('d10 and d%', () => {
     assert.deepEqual(top, [0, 0, 0, 0, 0]);
   });
 
-  test('share the collider Phase 0 checked (DEV_PLAN.md 0.5)', () => {
+  test('share the collider Phase 0 checked (docs/history.md 0.5)', () => {
     assert.deepEqual(SHAPES.d10.hull, SHAPES['d%'].hull);
   });
 });

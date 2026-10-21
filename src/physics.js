@@ -189,7 +189,7 @@ function addTray(world, divider, sideFace, tray, holes = [], rope = false) {
 // cos(k pi / 16) for k = 0..8: a hole is a 32-sided polygon. Written out
 // rather than computed, because Math.cos's last bit may differ between
 // JavaScript engines, and a hole's corners must be bit-identical everywhere
-// for a throw to replay the same (DEV_PLAN.md D10).
+// for a throw to replay the same (docs/decisions.md D10).
 const COS_16THS = [
   1, 0.9807852804032304, 0.9238795325112867, 0.8314696123025452, 0.7071067811865476,
   0.5555702330196023, 0.38268343236508984, 0.19509032201612833, 0,

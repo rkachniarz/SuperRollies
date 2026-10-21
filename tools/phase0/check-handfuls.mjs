@@ -1,4 +1,4 @@
-// Handfuls (DEV_PLAN 2.3, 2.4): many dice a side, thrown together, all come to
+// Handfuls (docs/history.md 2.3, 2.4): many dice a side, thrown together, all come to
 // rest inside their own half, flat on a face or cocked against a wall or
 // another die - never sunk into the floor, never through a wall, and in time.
 //
@@ -39,7 +39,7 @@ const rand = mulberry32(0x8D6);
 
 // Every set of two or more dice, and every handful a Spice makes one die
 // bigger than its set, in the set's own tray: Underdog's extra die,
-// Inspiration's advantage (DEV_PLAN.md 4.9).
+// Inspiration's advantage (docs/history.md 4.9).
 // `node check-handfuls.mjs 400 divine` runs only the cases whose id has "divine" in it.
 const ONLY = process.argv[3];
 const CASES = Object.values(DICE_SETS).map((set) => ({ set, id: set.id, notation: set.notation, types: dieTypes(set) }));

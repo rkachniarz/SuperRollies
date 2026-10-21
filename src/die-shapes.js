@@ -90,7 +90,7 @@ export function defineShape(spec) {
     /**
      * The number a die at orientation `q` ([x, y, z, w]) shows: its most
      * upward face, or for a d4 its most downward. A die cocked against a wall
-     * is read the same way, as it lies (DEV_PLAN.md D24).
+     * is read the same way, as it lies (docs/decisions.md D24).
      */
     faceUp(q) {
       const quaternion = new THREE.Quaternion(q[0], q[1], q[2], q[3]);

@@ -35,13 +35,13 @@
 
 <!-- The match's dice and Spice; tapping it shows their full rules. Top-right,
      mirroring the back button, for the same reason: no die can rest under it
-     (DEV_PLAN.md 4.6a). -->
+     (docs/history.md 4.6a). -->
 <button class="match-info" id="matchInfo" hidden aria-label="This match's rules">
   <span class="match-info-dice" id="matchInfoDice"></span>
   <span class="match-info-spice" id="matchInfoSpice"></span>
 </button>
 
-<!-- Each side's card (DEV_PLAN.md R6.4): its name, any state-based advantage
+<!-- Each side's card (docs/spec.md R6.4): its name, any state-based advantage
      it holds, and its match state as the win condition draws it: hearts
      (with any marks, such as failed death saves), or a bar (Hit Points, a
      race's score, the ground left in a tug of war). Takes no pointer events. -->
@@ -80,7 +80,7 @@
 <!-- A chance to throw again once the round's result is shown (Second Wind,
      Mercy), or to keep all your dice rather than throw some again (Draw
      Poker). Right under the result card, kept clear of the dice lying there
-     (DEV_PLAN.md 4.6a); bottom-right if there's no clear spot by the card. -->
+     (docs/history.md 4.6a); bottom-right if there's no clear spot by the card. -->
 <button class="rethrow-btn" id="rethrowBtn" hidden></button>
 
 <div id="result">
@@ -103,7 +103,7 @@
     <div class="menu-buttons">
       <button class="menu-btn" id="quickGameBtn" disabled>Loading…</button>
       <button class="menu-btn secondary" id="zenBtn" disabled>Zen</button>
-      <!-- Development only, behind ?dev (DEV_PLAN.md D39): any dice set,
+      <!-- Development only, behind ?dev (docs/decisions.md D39): any dice set,
            then any Spice it allows, without the draft. -->
       <button class="menu-btn secondary" id="testBenchBtn" disabled hidden>Test bench</button>
     </div>

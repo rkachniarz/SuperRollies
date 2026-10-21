@@ -289,7 +289,7 @@ export function createTable(arena) {
 
   /**
    * Where each die on the table is on screen (popped ones too): a circle
-   * round it, in CSS pixels, for keeping controls clear of them (DEV_PLAN.md
+   * round it, in CSS pixels, for keeping controls clear of them (docs/history.md
    * 4.6a).
    * @returns {{ x: number, y: number, r: number }[]}
    */

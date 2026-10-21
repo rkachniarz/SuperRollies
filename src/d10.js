@@ -5,7 +5,7 @@
 //
 // A pentagonal trapezohedron: ten kite-shaped faces, five round each of two
 // points. Its collider passed the Phase 0 check that it settles flat on a
-// face, never on an edge or point (DEV_PLAN.md 0.5): this is the same shape,
+// face, never on an edge or point (docs/history.md 0.5): this is the same shape,
 // to the bit.
 
 import { DIE_RADIUS } from './config.js';

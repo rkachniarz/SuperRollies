@@ -1,5 +1,5 @@
 // @ts-check
-// The dice sets a match can be played with (DEV_PLAN.md §5), and the scorers
+// The dice sets a match can be played with (docs/spec.md §5), and the scorers
 // that total them.
 
 import { TRAY_HALF_WIDTH, TRAY_DEPTH } from '../config.js';
@@ -82,7 +82,7 @@ export function countOf(face, one, many) {
 /**
  * The Classic's tray scaled up by `k`. Bigger handfuls need a bigger table:
  * room for the handful in each half with some left to move it about, and on a
- * phone held upright too (DEV_PLAN.md 2.6). The camera pulls back by the same
+ * phone held upright too (docs/history.md 2.6). The camera pulls back by the same
  * factor (fitCamera in arena.js), so the tray fills the screen as before.
  * @param {number} k
  */
@@ -159,7 +159,7 @@ export const DICE_SETS = Object.fromEntries([
 
 /**
  * The highest face of each die type, as it counts: a d10's "0" is 10, a
- * percentile die's "00" is 100 (DEV_PLAN.md D25). What Exploding Dice and
+ * percentile die's "00" is 100 (docs/decisions.md D25). What Exploding Dice and
  * Cursed Number need to know about a die without its shape.
  * @type {Record<string, number>}
  */

@@ -2,7 +2,7 @@
 //
 //   node tools/phase0/verify.mjs
 //
-// Chromium only for now (DEV_PLAN.md, D14). An engine name as the argument
+// Chromium only for now (docs/decisions.md, D14). An engine name as the argument
 // (firefox, webkit) runs it elsewhere, for the post-MVP compatibility work.
 // A second argument runs only the checks whose label contains it:
 //
@@ -100,7 +100,7 @@ for (const [set, button] of CHECK_1) {
         // against the view direction.
         const facing = decals.map((p) => -p.getWorldDirection(view.clone()).dot(view));
         let top;
-        // Cocked against a wall or another die (DEV_PLAN.md D24): nothing need
+        // Cocked against a wall or another die (docs/decisions.md D24): nothing need
         // face the camera squarely, but it must still be read as it lies.
         let cocked = false;
         if (type === 'd4') {

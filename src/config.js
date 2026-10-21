@@ -3,7 +3,7 @@
 
 // ---------- Colours ----------
 // What a player can pick for their card, their half of the tray and their
-// dice (profile.js, DEV_PLAN.md R6.3), in the order they're offered. The
+// dice (profile.js, docs/spec.md R6.3), in the order they're offered. The
 // first of each is the default. A choice is known by its id, which is what a
 // saved profile stores, so one can be added (or unlocked, later) without
 // touching anything else.

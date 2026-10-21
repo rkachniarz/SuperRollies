@@ -1,10 +1,10 @@
 // @ts-check
-// Spice: what is special about a match (DEV_PLAN.md §6). One per match (D9).
+// Spice: what is special about a match (docs/spec.md §6). One per match (D9).
 //
 // Most Spice change only the rules: what the dice count for, who wins a round,
 // what it costs, and what each side throws. Some change the table (a hole, a
 // breeze, no divider, a cat's paw) or let a side throw again; even those only
-// say what happens, as plain data, and the game carries it out (DEV_PLAN.md
+// say what happens, as plain data, and the game carries it out (docs/spec.md
 // R4.4). Anything random - an exploding die's extra roll, a cursed number,
 // where the hole is - is drawn from the hook context's rng, the match's shared
 // rules stream (R5.2). Extra rolls are drawn, not thrown; extra throws
@@ -44,10 +44,10 @@ function multiplyLoser({ winner }, damage, k) {
 const MAX_EXPLOSIONS = 10;
 
 // The two d20 sets: a "natural 20" is the d20 that counts, so under Advantage
-// it's the higher of the two (DEV_PLAN.md D26).
+// it's the higher of the two (docs/decisions.md D26).
 const D20_SETS = ['classic', 'advantage'];
 
-// A poker hand's score is its rank, not a total (DEV_PLAN.md D42), so Spice
+// A poker hand's score is its rank, not a total (docs/decisions.md D42), so Spice
 // that count totals up, or make a die count for more than its face, sit Dice
 // Poker out.
 const NOT_POKER = ['dice-poker'];
@@ -431,7 +431,7 @@ const SECOND_WIND = {
     .map((side) => ({ side, label: 'Second Wind ready' })),
 };
 
-/** How many hearts behind a side must be for Mercy (DEV_PLAN.md D30). */
+/** How many hearts behind a side must be for Mercy (docs/decisions.md D30). */
 const MERCY_BEHIND = 2;
 
 /**
@@ -534,7 +534,7 @@ const CAT_PAW = {
 // The breeze's directions, as the player sees the table: x to the right, z
 // towards them. Written out rather than from Math.cos, whose last bit may
 // differ between JavaScript engines, and the wind is part of a throw's
-// record (determinism, DEV_PLAN.md D10).
+// record (determinism, docs/decisions.md D10).
 const D = 0.7071067811865476;
 /** @type {[number, number, string][]} */
 const WINDS = [

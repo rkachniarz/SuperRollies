@@ -1,5 +1,5 @@
 // @ts-check
-// The Quick Game draft (DEV_PLAN.md R1.1-R1.3, R1.6): two dice-set cards, then
+// The Quick Game draft (docs/spec.md R1.1-R1.3, R1.6): two dice-set cards, then
 // two Spice cards eligible for the set picked. What's offered follows from the
 // match seed alone, so the same seed deals the same cards on any client.
 
@@ -34,7 +34,7 @@ export function eligibleSpice(diceSet) {
 }
 
 /**
- * Every Spice the test bench offers with this dice set (DEV_PLAN.md D39):
+ * Every Spice the test bench offers with this dice set (docs/decisions.md D39):
  * all it allows, those made for particular dice sets first, each group in
  * catalogue order.
  * @param {string} diceSet  An id.

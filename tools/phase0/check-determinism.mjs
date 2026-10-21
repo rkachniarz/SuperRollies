@@ -1,4 +1,4 @@
-// Check D (DEV_PLAN 0.7): recorded throws replay bit-identically everywhere.
+// Check D (docs/history.md 0.7): recorded throws replay bit-identically everywhere.
 //
 //   node tools/phase0/check-determinism.mjs
 //
@@ -9,7 +9,7 @@
 //
 // Real devices are checked by opening the same page on them:
 //   http://<this machine's address>:8000/tools/phase0/determinism.html
-// Per DEV_PLAN D14, that means Android Chrome for now; Firefox, Safari and iOS
+// Per docs/decisions.md D14, that means Android Chrome for now; Firefox, Safari and iOS
 // are post-MVP.
 
 import { readFile } from 'node:fs/promises';

@@ -1,7 +1,7 @@
 // Cards: how a dice set, a Spice or a single die is shown when it's offered -
 // in the Quick Game draft, Zen's catalogue, and the in-match rules popup. Each
 // has a name, its dice notation (or what kind of Spice it is), a one-line
-// summary and an icon (DEV_PLAN.md R1.4).
+// summary and an icon (docs/spec.md R1.4).
 
 import { SPICE_KINDS } from './rules/spice.js';
 

@@ -4,7 +4,7 @@
 //
 // The match state is drawn from whatever the win condition asks for (its
 // `view`, see rules/types.js), never from a count kept here: hearts are the
-// default, not an assumption (DEV_PLAN.md R3.4).
+// default, not an assumption (docs/spec.md R3.4).
 
 import { renderCard } from './cards.js';
 import { CARD_COLORS, TRAY_COLORS, DICE_COLORS } from './config.js';
@@ -320,7 +320,7 @@ export function createHud() {
   /**
    * Puts the re-throw button right under the result card, where the eye
    * already is - unless a die lies there: a die under a button can't be
-   * picked up, and the tap meant for it would spend the re-throw (DEV_PLAN.md
+   * picked up, and the tap meant for it would spend the re-throw (docs/history.md
    * 4.6a). Then the next spot along that's clear: under the card's left or
    * right edge, a row lower, or above it. If none is, its own corner,
    * bottom-right, below the tray on every screen shape.
@@ -557,7 +557,7 @@ export function createHud() {
   }
 
   /**
-   * The catalogue (DEV_PLAN.md 4.3): every card on offer, as a list, one to
+   * The catalogue (docs/history.md 4.3): every card on offer, as a list, one to
    * pick. Zen's picker and the test bench now; the multiplayer host's later
    * (R4.2). Back goes to `onBack`, the menu by default.
    * @param {string} title

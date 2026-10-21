@@ -1,5 +1,5 @@
 // Every die type's collider settles flat on a face, never on an edge or a
-// point. Began as Check B (DEV_PLAN 0.5), for the d10 alone; since Phase 3 it
+// point. Began as Check B (docs/history.md 0.5), for the d10 alone; since Phase 3 it
 // throws every die type there is.
 //
 //   node tools/phase0/check-dice.mjs [throws=2000] [type ...]
@@ -25,7 +25,7 @@ const TYPES = process.argv.length > 3 ? process.argv.slice(3) : DIE_TYPES;
 // clampToArena is off: it holds a die in place by moving it, which makes it an
 // invisible, frictionless wall a die can come to rest leaning against. That is
 // a property of the clamp, not of any collider, so it is kept out of this
-// check (see the notes on DEV_PLAN 0.5).
+// check (see the notes on docs/history.md 0.5).
 //
 // A die can also come to rest leaning against a real wall - a "cocked" die,
 // just as with real dice in a real tray. Those are counted separately: they

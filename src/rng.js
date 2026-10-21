@@ -1,5 +1,5 @@
 // @ts-check
-// The game's only source of randomness that can affect an outcome (DEV_PLAN.md,
+// The game's only source of randomness that can affect an outcome (docs/spec.md,
 // R5.2). Everything is drawn from a seed, so the same seed replays the same
 // match: the same opponent throws now, and later the same offers and the same
 // Spice events on both players' screens.

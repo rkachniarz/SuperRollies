@@ -7,10 +7,26 @@ file-by-file map.
 
 ## Development plan
 
-**Read `DEV_PLAN.md` before starting work.** It holds the Dice & Spice expansion
-(dice sets, rule modifiers, 1v1 multiplayer): requirements, a decision log, open
-questions, and phased tasks with tickboxes. Tick tasks off as they land, and
-record new decisions in its log rather than silently changing requirements.
+**Read `DEV_PLAN.md` before starting work.** It holds what's left of the Dice &
+Spice expansion: open questions and the remaining phases, with tickboxes. Tick
+tasks off as they land. The rest is in `docs/`, read when a citation calls for
+it, since code comments cite all of these by number:
+
+- `docs/decisions.md`: the decision log, `D1` onwards. Record new decisions
+  there rather than silently changing requirements.
+- `docs/spec.md`: the vision, requirements (`R1.1`–`R6.11`) and the catalogue
+  of dice sets (`§5`) and Spice (`§6`).
+- `docs/history.md`: finished phases task by task (`0.5`, `4.6a`, `5.1`...),
+  with what was measured on the way.
+
+A few rules every change keeps: at most 8 dice a side (D6); one Spice a match
+(D9); a rule may favour whoever is in a given state (behind, just lost) but
+never a player by identity, such as the host (D8).
+
+A phase ends with `npm test`, `npm run verify` and `npm run phase0` passing,
+then `npm run build` and a republish (below), then a docs refresh: this file,
+`README.md`, `package.json` and the copy in `index.html` (menu subtitle, meta
+description) brought in line with what the game now does.
 
 ## Commands
 
@@ -25,7 +41,7 @@ node tools/phase0/verify.mjs chromium "second wind"   # only the checks whose la
 npm run phase0  # physics checks: every die settles flat, tunnelling, handfuls, tables Spice change, determinism (needs npm run dev)
 ```
 
-Browser checks run in Chromium only until after the MVP (DEV_PLAN.md, D14).
+Browser checks run in Chromium only until after the MVP (docs/decisions.md, D14).
 
 ## The published artifact
 
@@ -166,7 +182,7 @@ someone (or something) tidying with good intentions.
   1–2 cm up, and waited out the 4 s timeout (1 throw in 700). Don't fix that
   by raising the floor's 1 cm `TOUCHING` to 3 cm: measured, that froze d20s
   that were still slowly toppling flat off a wall (`check-dice.mjs`'s cocked
-  count rose). A cocked die is read as it lies (DEV_PLAN.md D24).
+  count rose). A cocked die is read as it lies (docs/decisions.md D24).
 - **`src/rules/engine.js` — a side's hand for the round (`handOf`) depends on
   the match state only.** Underdog and Inspiration give a side an extra die
   for a round. The game asks `handOf` before the round, to put that die on the
@@ -176,11 +192,11 @@ someone (or something) tidying with good intentions.
 - **`src/rules/` — a Spice's random draws for each side go player first**
   (Exploding Dice, Brutal Critical). So in multiplayer both clients must
   evaluate the engine from the same seat, the host as `player`, and the guest
-  mirror the result for display (DEV_PLAN.md D27), not each from its own side.
+  mirror the result for display (docs/decisions.md D27), not each from its own side.
 - **`src/rules/` — the rules engine stays pure.** No DOM, physics, clock or
   `Math.random()`: a round's outcome is a function of the match config, the
   match state and both sides' faces, and nothing else. Multiplayer depends on
-  both clients computing it themselves and agreeing (DEV_PLAN.md R4.4).
+  both clients computing it themselves and agreeing (docs/spec.md R4.4).
   Randomness comes from the seeded rules stream in the hook context.
 - **`src/rng.js` — one stream per consumer, derived from the match seed.** The
   opponent's throws, the player's spin jitter and the rules each have their
@@ -194,7 +210,7 @@ someone (or something) tidying with good intentions.
 - **`src/game.js` — Zen is the testbed, and its picker offers everything:**
   every dice set (`DICE_SETS`) and every die type alone (`DIE_TYPES`). Both
   lists are built from the registries, so a new set or die joins it by being
-  added there; `npm run verify` checks nothing is missing (DEV_PLAN.md, D18).
+  added there; `npm run verify` checks nothing is missing (docs/decisions.md, D18).
 - **`src/physics.js` — a floor with holes (Pothole) is a triangle mesh,
   without `FIX_INTERNAL_EDGES`, and only when there are holes.** With that
   flag a die spinning where triangles meet took 3 s or more to stop, and
@@ -273,7 +289,7 @@ someone (or something) tidying with good intentions.
   on a level edge and, the simulation being deterministic, stays balanced
   there; the opening settle then waited out the 4 s timeout, and the die
   couldn't be picked up in that time.
-- **Nothing tappable may sit where a die can come to rest** (DEV_PLAN.md
+- **Nothing tappable may sit where a die can come to rest** (docs/history.md
   4.6a). A control over a resting die steals the tap meant to pick it up. So
   the back button and the match's Dice/Spice label sit in the top corners,
   outside the tray as drawn on every screen shape, and `npm run verify`
@@ -296,7 +312,7 @@ someone (or something) tidying with good intentions.
   middle); if it took pointer events, the tap that should pick up the die
   would dismiss the card instead. Board taps dismiss it (see `input.js`).
 - **`src/profile.js`, `src/game.js` — a player's colours never reach the
-  rules or a throw record** (DEV_PLAN.md R6.10). The opponent's are drawn
+  rules or a throw record** (docs/spec.md R6.10). The opponent's are drawn
   from a stream of their own (`deriveSeed(seed, 'looks')`), so adding them
   moved no other stream and every recorded throw replays unchanged.
 - **`styles.css` — the cards are measured against real dice, not spheres.**

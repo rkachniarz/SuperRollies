@@ -17,7 +17,7 @@
 //
 // Zen: no opponent, no divider, no score - the whole tray, for throwing for
 // the sake of it. It's also the testbed: its catalogue offers every dice set
-// Quick Game does, and every die type on its own (DEV_PLAN.md D18).
+// Quick Game does, and every die type on its own (docs/decisions.md D18).
 
 import { GAME_OVER_LINGER_MS } from './config.js';
 import { randomHandful, aimHandful, handLayout, liftClear } from './handful.js';
@@ -285,7 +285,7 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
   }
 
   /**
-   * The test bench, for development only (behind ?dev, DEV_PLAN.md D39): a
+   * The test bench, for development only (behind ?dev, docs/decisions.md D39): a
    * Quick Game without the draft's luck. Every dice set, then every Spice that
    * set allows, those made for it first (testBenchSpice in rules/draft.js).
    * The match's seed is logged, and `?seed=` in the address replays it.

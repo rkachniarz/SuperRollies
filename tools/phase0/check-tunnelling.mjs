@@ -1,4 +1,4 @@
-// Check C (DEV_PLAN 0.6): with clampToArena switched off, throws at maximum
+// Check C (docs/history.md 0.6): with clampToArena switched off, throws at maximum
 // speed never leave the tray or cross the divider - the colliders and Rapier's
 // continuous collision detection hold every die on their own.
 //

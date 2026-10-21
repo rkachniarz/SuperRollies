@@ -266,7 +266,7 @@ describe('Second Wind', () => {
   });
 });
 
-describe('Mercy (DEV_PLAN.md D30)', () => {
+describe('Mercy (docs/decisions.md D30)', () => {
   test('only two hearts behind, and only once', () => {
     const rules = rulesFor('classic', 'mercy');
     const { state: oneBehind } = playRounds(rules, [[[2], [9]]]);

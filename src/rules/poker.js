@@ -1,5 +1,5 @@
 // @ts-check
-// Poker hands from dice (DEV_PLAN.md 6.1, D42): the Dice Poker set's scorer,
+// Poker hands from dice (docs/decisions.md D42): the Dice Poker set's scorer,
 // and which dice are worth keeping when some can be thrown again (Draw Poker).
 //
 // The hands, best first: five of a kind, four of a kind, a full house, a

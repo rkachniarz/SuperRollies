@@ -1,14 +1,14 @@
 // @ts-check
 // Shared JSDoc types for the rules: the match config, dice sets, win conditions
 // and Spice. Types only - nothing here runs. Editors pick them up through
-// `// @ts-check`; there is no build step (DEV_PLAN.md, D13).
+// `// @ts-check`; there is no build step (docs/decisions.md, D13).
 
 /**
  * The two sides of the table. Rules never favour a side by identity (R1.7),
  * but a Spice that draws random numbers for each side (Exploding Dice, Brutal
  * Critical) draws the player's first, so in multiplayer both clients must
  * evaluate the round from the same seat - the host's as 'player' - and the
- * guest mirror the outcome for display (DEV_PLAN.md D27).
+ * guest mirror the outcome for display (docs/decisions.md D27).
  * @typedef {'player' | 'opponent'} Side
  */
 

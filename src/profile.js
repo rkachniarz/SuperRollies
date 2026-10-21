@@ -1,5 +1,5 @@
 // @ts-check
-// Who's playing, and how they look (DEV_PLAN.md R6): a name, and a pick of
+// Who's playing, and how they look (docs/spec.md R6): a name, and a pick of
 // card background, tray colour and dice colour from the choices in config.js.
 // Saved on the device. Cosmetic only: none of it reaches the rules engine or a
 // throw record (R6.10).

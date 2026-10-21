@@ -1,5 +1,5 @@
 // @ts-check
-// How a match is won (DEV_PLAN.md D7). Hearts is the default; Sudden Death and
+// How a match is won (docs/decisions.md D7). Hearts is the default; Sudden Death and
 // Marathon are Hearts with one and six. The rest count points, scaled to the
 // dice set (scoreStats in dice-sets.js) so a match lasts about as long with
 // eight d6s as with one d20: Hit Points, Race to N and Tug of War. Death Saves

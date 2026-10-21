@@ -2,7 +2,7 @@
 // The rules engine: what a round's dice mean for the match. Pure functions of
 // the match config, the match state and both sides' face values - no DOM, no
 // physics, no clock - so both players in a multiplayer match can each work out
-// every round themselves and reach the same outcome (DEV_PLAN.md R4.4), and the
+// every round themselves and reach the same outcome (docs/spec.md R4.4), and the
 // whole of it runs under `npm test`.
 //
 // A match: startMatch, then for each round beginRound before anyone throws and
