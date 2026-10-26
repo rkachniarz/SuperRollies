@@ -10,6 +10,9 @@ import { createEffects } from './effects.js';
 import { createGame } from './game.js';
 import { createThrowControls } from './input.js';
 import { createProfileStore } from './profile.js';
+// Multiplayer's menus; the artifact build swaps in a module without them
+// (tools/build-artifact.mjs, docs/spec.md R4.6).
+import { createLobby } from './net/lobby.js';
 
 const canvas = document.getElementById('scene');
 const arena = createArena(canvas);
@@ -21,6 +24,8 @@ const profiles = createProfileStore();
 const game = createGame({ hud, roller, arena, table, effects, profiles });
 // Something to look at behind the menu while the physics engine loads.
 table.setup({ types: ['d20'], scale: 1, tray: arena.tray, opponent: true });
+
+const lobby = createLobby?.({ hud, game, profiles }) ?? null;
 
 const controls = createThrowControls({
   canvas,
@@ -60,6 +65,7 @@ window.superRollies = {
   game,
   roller,
   profiles,
+  lobby,
 };
 
 let lastTime = performance.now();

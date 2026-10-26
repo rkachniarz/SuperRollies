@@ -76,6 +76,7 @@ export function createHud() {
   const rulesCardsEl = document.getElementById('rulesCards');
   const rulesCloseBtn = document.getElementById('rulesClose');
   const announceEl = document.getElementById('announce');
+  const statusEl = document.getElementById('netStatus');
   const opponentHudEl = document.getElementById('opponentHud');
   const youHudEl = document.getElementById('youHud');
   const edgeEls = { player: document.getElementById('youEdge'), opponent: document.getElementById('opponentEdge') };
@@ -218,6 +219,11 @@ export function createHud() {
 
   const SIDE_NAMES = { player: 'You', opponent: 'Opponent' };
 
+  /** What the opponent is called on the card: their name in multiplayer, or null for "Opponent". */
+  function setOpponentName(name) {
+    SIDE_NAMES.opponent = name ?? 'Opponent';
+  }
+
   /**
    * A round's result, with how each side's score was made up (R2.5): every
    * die, anything a Spice added or took off, then the total. Dice that didn't
@@ -281,6 +287,16 @@ export function createHud() {
   function showAnnounce(text) {
     announceEl.textContent = text ?? '';
     announceEl.hidden = !text;
+  }
+
+  /**
+   * A multiplayer match's clock (docs/decisions.md D48): this player's time
+   * left to throw, or who's being waited on. null takes it away.
+   * @param {string | null} text
+   */
+  function showStatus(text) {
+    statusEl.textContent = text ?? '';
+    statusEl.hidden = !text;
   }
 
   /**
@@ -387,6 +403,7 @@ export function createHud() {
   // shows only their name.
   function showBoard(mode) {
     menuEl.hidden = true;
+    showStatus(null);
     opponentHudEl.hidden = mode === 'zen';
     youHudEl.hidden = false;
     youHudEl.classList.toggle('name-only', mode === 'zen');
@@ -398,10 +415,16 @@ export function createHud() {
     showRethrow(null);
   }
 
+  // Waiting for the physics engine (onLoaded).
+  let loaded = false;
+  const whenLoaded = [];
+
   // The menu is up before the physics engine has finished loading (its
   // WebAssembly takes a moment, longest on a phone), so Quick Game starts
   // disabled and is switched on once it's ready.
   function setLoaded() {
+    loaded = true;
+    for (const fn of whenLoaded.splice(0)) fn();
     quickGameBtn.disabled = false;
     zenBtn.disabled = false;
     testBenchBtn.disabled = false;
@@ -424,7 +447,8 @@ export function createHud() {
    */
   function showMenuCard(el, onBack = showMenu) {
     menuBack = onBack;
-    for (const card of [menuMainEl, draftEl, pickerEl, editorEl]) card.hidden = card !== el;
+    // Every card of the menu, the multiplayer ones (net/lobby.js) too.
+    for (const card of menuEl.querySelectorAll(':scope > .menu-card')) card.hidden = card !== el;
     // The editor lets the table show through, to show off the colours picked.
     menuEl.classList.toggle('editing', el === editorEl);
     menuEl.hidden = false;
@@ -532,6 +556,7 @@ export function createHud() {
     hideResult();
     hideRules();
     showAnnounce(undefined);
+    showStatus(null);
     opponentHudEl.hidden = true;
     youHudEl.hidden = true;
     backBtn.hidden = true;
@@ -586,7 +611,10 @@ export function createHud() {
     showMatch,
     showResult, showRound, hideResult, showBoard, showMenu, showPicker, showDraft, setLoaded, setLoadFailed,
     showMatchInfo, showAnnounce, showEdge, showRethrow, showPlayers, showMenuPlayer, showEditor,
+    showStatus, setOpponentName, showMenuCard,
     onEditPlayer(handler) { editBtn.addEventListener('click', handler); },
+    /** Calls `fn` once the physics engine has loaded (now, if it has). */
+    onLoaded(fn) { if (loaded) fn(); else whenLoaded.push(fn); },
     onRethrow(handler) { rethrowBtn.addEventListener('click', handler); },
     onQuickGame(handler) { quickGameBtn.addEventListener('click', handler); },
     onZen(handler) { zenBtn.addEventListener('click', handler); },

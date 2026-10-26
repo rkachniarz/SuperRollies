@@ -686,6 +686,54 @@
   }
   .announce[hidden]{ display:none; }
 
+  /* A multiplayer match's clock: under the announcement's place, just as
+     untappable. */
+  .net-status{
+    position:fixed;
+    left:50%;
+    top:calc(124px + env(safe-area-inset-top,0px));
+    transform:translateX(-50%);
+    z-index:2;
+    pointer-events:none;
+    font-size:14px;
+    font-weight:700;
+    font-variant-numeric:tabular-nums;
+    color:var(--ink);
+    background:rgba(20,18,30,0.82);
+    border:1px solid var(--card-border);
+    border-radius:999px;
+    padding:6px 14px;
+    white-space:nowrap;
+  }
+  .net-status[hidden]{ display:none; }
+
+  /* Multiplayer's menu cards (net/lobby.js). */
+  .menu-card.net{ width:100%; max-width:640px; }
+  .net-join{ margin:28px auto 0; max-width:340px; display:grid; gap:8px; }
+  .net-row{ display:flex; gap:8px; justify-content:center; max-width:420px; margin:0 auto; }
+  .net-row .menu-btn{ padding:10px 16px; font-size:15px; white-space:nowrap; }
+  /* 16px, so a phone doesn't zoom in on it. */
+  .net-row input{
+    min-width:0;
+    flex:1;
+    font:inherit;
+    font-size:16px;
+    color:var(--ink);
+    background:rgba(255,255,255,0.08);
+    border:1px solid var(--card-border);
+    border-radius:10px;
+    padding:8px 10px;
+  }
+  #netCodeInput{ text-transform:uppercase; letter-spacing:0.2em; text-align:center; }
+  .net-row input:focus{ outline:2px solid var(--player-accent); outline-offset:1px; }
+  .net-code{
+    font-family:'Bungee', system-ui, sans-serif;
+    font-size:clamp(36px, 12vw, 56px);
+    letter-spacing:0.12em;
+    margin:0 0 14px;
+  }
+  .net-room-status{ min-height:1.4em; margin:18px 0; color:var(--ink-dim); font-size:15px; }
+
   /* A side's state-based advantage, by its name (R3.5). */
   .edge{
     font-size:12px;

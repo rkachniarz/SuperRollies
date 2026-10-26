@@ -25,16 +25,12 @@ shown as a card. Next is Phase 7, multiplayer.
 
 ## Open questions
 
-- [ ] **Q1 — Simultaneous or turn-based throws in multiplayer?**
-  - Simultaneous: faster, more chaotic, required for No Man's Land.
-  - Turn-based: tenser reveals, and rerolls are easier to reason about because
-    the opponent's result is known.
-  - **Blocks:** Second Wind, Mercy and Draw Poker's redraw timing, No Man's
-    Land in multiplayer, and the Phase 7 message protocol. Single-player
-    keeps today's behaviour (both sides throw together) until this is
-    settled.
-- [ ] **Q2 — Rejoin window after a multiplayer disconnect.** How long before the
-  remaining player is awarded the match?
+- [x] **Q1 — Simultaneous or turn-based throws in multiplayer?** Neither:
+  independent throws, each shown live on the other screen, the round played
+  out once both are in, and 30 s to follow the other's lead or lose by
+  walkover (D48). No Man's Land is single-player only.
+- [x] **Q2 — Rejoin window after a multiplayer disconnect.** 30 s, even
+  across a reload: the match is rebuilt from the logged inputs (D49).
 - [ ] **Q4 — Which TURN provider?** Needs a free or cheap tier and credentials
   that are safe to ship in a static site (short-lived credentials are better if
   the provider supports them).
@@ -48,31 +44,39 @@ shown as a card. Next is Phase 7, multiplayer.
 Requirements: R4 and R6.11 in [docs/spec.md](docs/spec.md). Decisions already
 made for it: D2 (GitHub Pages only, PeerJS), D3 (host picks from the
 catalogue), D10 (send release records, not trajectories), D12 (TURN), D27
-(both clients evaluate the engine from the host's seat).
+(both clients evaluate the engine from the host's seat), D48 (independent
+throws, 30 s or walkover), D49 (rejoin from the input log).
 
-Blocked on **Q1** for the protocol; 7.1–7.3 can start before Q1 is settled.
-
-- [ ] **7.1** PeerJS connection: host creates a room, code and `?join=` link,
-  guest joins (R4.1).
+- [x] **7.1** PeerJS connection: host creates a room, code and `?join=` link,
+  guest joins (R4.1). `src/net/transport.js`; `?net=local` links two tabs
+  of one browser instead, for tests.
 - [ ] **7.1a** TURN server configured (provider per Q4); verified by connecting
   a phone on mobile data to a desktop on home broadband (R4.7).
-- [ ] **7.2** Host catalogue selection; guest sees the choice and rules (R4.2).
-- [ ] **7.3** Shared seed and config handshake, with each side's profile
+- [x] **7.2** Host catalogue selection; guest sees the choice and rules (R4.2).
+- [x] **7.3** Shared seed and config handshake, with each side's profile
   (R6.11).
-- [ ] **7.4** Throw protocol (simultaneous or turn-based, per Q1).
-- [ ] **7.5** Send the release record; the other client simulates the throw
-  with the Phase 0 harness (`replayThrow`); both sides check the face values
-  match (R4.3).
-- [ ] **7.6** Both clients evaluate the rules engine; mismatch detection (R4.4).
-- [ ] **7.7** Disconnect handling and rejoin window (R4.5, Q2).
-- [ ] **7.8** Interactive Spice in multiplayer: Second Wind, Mercy, Draw
-  Poker's redraw, No Man's Land.
-- [ ] **7.9** Host/Join hidden in the artifact build (R4.6).
-- [ ] **7.9a** Keep multiplayer code out of the artifact bundle.
-  `tools/build-artifact.mjs` treats every import-map entry as a CDN external,
-  so adding PeerJS to the import map would make the artifact load it too. Add
-  a build flag or a separate entry point that excludes the multiplayer modules.
-- [ ] **7.10** Tested with two real browsers across two machines.
+- [x] **7.4** Throw protocol: independent throws, shown live, 30 s to
+  follow or lose by walkover (D48).
+- [x] **7.5** Send the release record; the other client plays the same record
+  turned round, and both check where it landed (a digest of every die's
+  final pose, R4.3).
+- [x] **7.6** Both clients evaluate the rules engine (the guest through
+  `guestSeat`), and compare a digest of the match state after every round
+  (R4.4). Out of sync ends the match with no winner.
+- [x] **7.7** Disconnect handling and a 30 s rejoin window, across a reload
+  (R4.5, D49).
+- [x] **7.8** Interactive Spice in multiplayer: Second Wind, Mercy, Draw
+  Poker's redraw, Doubles Again (D48). No Man's Land left out of the host's
+  catalogue.
+- [x] **7.9** Host/Join hidden in the artifact build (R4.6).
+- [x] **7.9a** Keep multiplayer code out of the artifact bundle: the build
+  swaps `src/net/lobby.js` for a module that offers none, so nothing imports
+  PeerJS there.
+- [ ] **7.10** Tested with two real browsers across two machines. Two
+  headless pages on one machine over the real PeerJS server: done.
+- [ ] **7.10a** Two players with the same dice colour can't tell their dice
+  apart by colour (only by half). Decide whether the guest's are shown in
+  another colour on both screens.
 - [ ] **7.11** Docs refresh. `README.md` "Publishing" notes the runtime
   dependency on PeerJS's public signalling server, a third party that can be
   unavailable.

@@ -1,8 +1,8 @@
 # Super Rollies — notes for Claude
 
 A dice roll-off game (one die up to 8 a side, d4 to d20 and percentile, and a Spice that bends the
-rules or the table each match): three.js for rendering, Rapier (deterministic build) for physics, no framework, no
-build step to run it. See README.md for the
+rules or the table each match), against the AI or a friend over the network: three.js for rendering,
+Rapier (deterministic build) for physics, PeerJS for multiplayer, no framework, no build step to run it. See README.md for the
 file-by-file map.
 
 ## Development plan
@@ -39,6 +39,8 @@ npm run verify  # the browser checks below, in headless Chromium (needs npm run 
 node tools/phase0/verify.mjs chromium "second wind"   # only the checks whose label contains that
 # http://localhost:8000/?dev adds a Test bench to the menu: any dice set, then any Spice it allows (D39); ?dev&seed=N replays a match it logged
 npm run phase0  # physics checks: every die settles flat, tunnelling, handfuls, tables Spice change, determinism (needs npm run dev)
+node tools/phase0/check-multiplayer.mjs [label]   # only the multiplayer checks (also run by verify)
+# http://localhost:8000/?net=local plays a friend between two tabs of one browser, no PeerJS server needed
 ```
 
 Browser checks run in Chromium only until after the MVP (docs/decisions.md, D14).
@@ -326,6 +328,31 @@ someone (or something) tidying with good intentions.
   hearts on a phone are a grid, and `display:grid` beat `.hearts[hidden]`,
   so a bar in the next match sat under an empty block of hearts and the card
   grew 50 px, over the dice at the far wall.
+- **`src/seat.js` — the guest sees the match through `guestSeat`, which
+  swaps every `{ player, opponent }` pair and every 'player'/'opponent'
+  string in and out of the engine.** So a Spice's state must keep anything
+  per side under such a pair, never in an array or under other names, or
+  the guest's screen gets the two sides crossed. `test/seat.test.js` plays
+  every Spice with every dice set it allows from both seats and catches it.
+- **`src/game.js` — a multiplayer throw record goes through JSON
+  (`sealed`) before the thrower simulates it.** Turning a pose round makes
+  -0s, which JSON sends as 0: simulated unsealed, the thrower would run
+  different bits from the other client.
+- **`src/game.js` — each seat's spin jitter has its own stream
+  (`throw-host`, `throw-guest`).** From the match's one `throw` stream,
+  two players making the same drag threw exactly the same throw (the
+  multiplayer check tied every round until this).
+- **`src/game.js` — in multiplayer only the late player's own client
+  calls their time up (`stepClock`)** and logs it as their input, so a
+  throw sent at the last moment is never both made and too late. The waiting
+  side only decides when the link itself is lost (D49).
+- **`src/net/session.js` (`attach`) — a new link is made current before the
+  old one is closed.** The other way round, the old link's close handler
+  still took itself for the current one and marked the session lost the
+  moment a reloaded player came back.
+- **`src/net/lobby.js` — No Man's Land isn't offered in multiplayer**
+  (D48): it needs both handfuls in one simulation, and throws there are
+  independent.
 - **`index.html` must keep its doctype and viewport meta.** Without them a phone
   lays the page out at ~980px and scales it to ~40%. The artifact copy is a
   *fragment* without them on purpose — claude.ai supplies its own wrapper.
@@ -350,7 +377,11 @@ result card, a falling die caught); that every die stays reachable on a
 phone and stays put at rest; that nothing tappable sits over a resting die;
 that matches run to the end under each win condition and the same seed
 replays the same; and that each Spice, the draft, Zen, the test bench and
-the player cards do what their rules and requirements say. A new feature
+the player cards do what their rules and requirements say. And two players:
+two pages linked by the local transport play whole matches with every
+interactive Spice, and the two screens must agree on every round; a stalled
+throw, leaving, a dropped player and a reload mid-match each end, or carry
+on, as D48 and D49 say. A new feature
 lands with its own check there, and the script, not this file, is the list.
 
 Run `npm test` alongside; it needs no server.

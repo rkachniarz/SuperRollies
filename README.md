@@ -9,9 +9,12 @@ swiping at the dice once they've settled, no wall down the middle. Or how
 you score and win: poker hands with a redraw, only the sixes counting, dice
 that burn out on a 1, hit points, a race to a target, a tug of war. Pick them up, throw
 them, roll higher than your opponent. Lose a round and you lose a heart; lose
-them all and the match is over. Or pick **Zen** and just throw: any of the
-dice, the whole tray, no score. Make it yours on the menu: your name, your
-card, the colour of your half of the tray and of your dice.
+them all and the match is over. Or **play a friend**: host a room, send
+them its link, pick the dice and Spice, and each of you throws when you
+like, your friend's dice landing on your screen as they throw them. Or pick
+**Zen** and just throw: any of the dice, the whole tray, no score. Make it
+yours on the menu: your name, your card, the colour of your half of the
+tray and of your dice.
 
 Real rigid-body physics (Rapier, in its deterministic build, so a throw replays
 identically on any machine), proper dice - every polyhedral from the d4 to the
@@ -39,13 +42,21 @@ Server extension, etc.).
 
 The repository root *is* the deployable site. For GitHub Pages: push, then in
 Settings → Pages pick your branch and the `/` root folder. `index.html`,
-`styles.css` and `src/` are all that's served; three.js and Rapier come from a
-CDN at runtime.
+`styles.css` and `src/` are all that's served; three.js, Rapier and PeerJS
+come from a CDN at runtime.
+
+Playing a friend also depends, at runtime, on **PeerJS's public signalling
+server** (`0.peerjs.com`), a third party: it introduces the two browsers,
+which then talk directly. If it's down, rooms can't be opened or joined;
+everything else still works. Networks that won't let two browsers connect
+directly need a TURN server as well, not yet configured (`ICE_SERVERS` in
+`src/config.js`, DEV_PLAN.md Q4). Add `?net=local` to the address to play
+between two tabs of one browser instead, with no server at all.
 
 ## Layout
 
 ```
-index.html    the page: markup, and the import map pinning three.js / Rapier
+index.html    the page: markup, and the import map pinning three.js / Rapier / PeerJS
 styles.css    all styling - player cards, hearts, menu, editor, draft and cards, result card
 src/
   config.js   every tunable number and colour, in one place, and the colours
@@ -71,7 +82,10 @@ src/
               DOM, so it runs in Node too
   effects.js  drawn but never simulated: the breeze's streaks, the cat's paw,
               an explosion's burst, the flag on Tug of War's rope
-  roll.js     plays a throw on screen: fixed-step physics, smooth drawing
+  roll.js     plays a throw on screen: fixed-step physics, smooth drawing;
+              one per side at once, the other player's drawn turned round
+  seat.js     a multiplayer match from the other chair: the rules engine
+              from the host's seat, a throw turned 180° onto the far half
   replay.js   replays a recorded throw to rest; reads the faces
   input.js    grab / drag / release, telling a throw from a fumble, and a
               tap that picks a die out from a drag that throws
@@ -84,7 +98,14 @@ src/
   game.js     match flow: the draft, starting a match, a round's throws (and
               a paw's knock, dice picked out and thrown again, doubles
               thrown again, a re-throw), handing them to the rules, Zen, and
-              the editor's dice on the table
+              the editor's dice on the table; a multiplayer match's steps,
+              each player in their own time, with its 30 s clocks
+  net/        multiplayer, left out of the single-file build:
+    transport.js      a room and a link into it: PeerJS, or ?net=local
+    session.js        the room's players, invites, every input of a match
+                      logged by step, pings, reconnecting, picking a match
+                      back up after a reload
+    lobby.js          hosting, joining, and between matches
   rng.js      the seeded random number generator every outcome draws from
   rules/      the rules, as pure functions with no DOM or physics:
     engine.js         match config, and what a round's dice mean for the match
@@ -103,7 +124,7 @@ src/
     types.js          the JSDoc types they share
   main.js     wires it together and runs the frame loop
 test/         unit tests for the RNG, the rules and every Spice, handfuls, die
-              shapes and the player profile (npm test)
+              shapes, the player profile, and the guest's seat (npm test)
 tools/
   build-artifact.mjs   bundles everything into one file (see below)
   phase0/              browser checks and physics checks (see below)
@@ -116,7 +137,9 @@ created.
 
 `npm run build` writes `dist/artifact.html`, the whole game inlined into one
 page. That exists only for publishing to claude.ai as an artifact, which takes a
-single file. Nothing about running or deploying the site needs it.
+single file. Nothing about running or deploying the site needs it. It has no
+multiplayer: `src/net/lobby.js` is swapped for a module that offers none, so
+neither it nor PeerJS is in it.
 
 ## Checks
 
@@ -127,7 +150,8 @@ npm test         # unit tests: RNG, rules engine, scorers, handfuls, die shapes 
 With `npm run dev` running:
 
 ```bash
-npm run verify   # plays the game in headless Chromium and checks it behaves
+npm run verify   # plays the game in headless Chromium and checks it behaves, two players at once too
+node tools/phase0/check-multiplayer.mjs   # only the multiplayer checks
 npm run phase0   # physics: every die settles flat, tunnelling, handfuls, the tables Spice change, bit-identical replays
 ```
 
@@ -174,6 +198,12 @@ at the point it matters:
   the match label live in the top corners for that reason, and the re-throw
   button below the tray's near edge; a control over a resting die would steal
   the tap meant to pick it up.
+- **In multiplayer each throw is simulated in its thrower's frame**, their
+  dice in the near half, and the other screen replays the same record and
+  draws it turned round. Both evaluate the rules from the host's seat
+  (`seat.js`). Every input of a match is logged by step, which is what lets
+  a reloaded page catch up, and lets the two clients notice if they ever
+  disagree.
 - **A pothole is a real hole.** With holes in it the floor is a triangle
   mesh with pits under it, so a die drops in and lies there. Rapier needed
   two things done differently for it (see `addHoledFloor` and `restsOnFace`

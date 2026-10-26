@@ -7,7 +7,7 @@
        padding in the HUD styles actually resolve on notched screens. -->
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#12111a">
-  <meta name="description" content="Draft your dice, from a d20 to a Fireball's 8d6, add a pinch of Spice that bends the rules or the table, and roll higher than your opponent. Or just roll, in Zen.">
+  <meta name="description" content="Draft your dice, from a d20 to a Fireball's 8d6, add a pinch of Spice that bends the rules or the table, and roll higher than your opponent, or a friend. Or just roll, in Zen.">
   <title>Super Rollies</title>
 
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Karla:wght@400;600;700&display=swap">
@@ -19,7 +19,8 @@
   {
     "imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-      "@dimforge/rapier3d-deterministic-compat": "https://cdn.jsdelivr.net/npm/@dimforge/rapier3d-deterministic-compat@0.21.0/dist/rapier.mjs"
+      "@dimforge/rapier3d-deterministic-compat": "https://cdn.jsdelivr.net/npm/@dimforge/rapier3d-deterministic-compat@0.21.0/dist/rapier.mjs",
+      "peerjs": "https://cdn.jsdelivr.net/npm/peerjs@1.5.5/+esm"
     }
   }
   </script>
@@ -63,6 +64,10 @@
      Not tappable, so it may sit over the tray. -->
 <div class="announce" id="announce" hidden></div>
 
+<!-- A multiplayer match's clock (docs/decisions.md D48): your time left to
+     throw, or who's being waited on. Not tappable either. -->
+<div class="net-status" id="netStatus" hidden></div>
+
 <div class="hud bottom" id="youHud" hidden>
   <div class="player-card" id="youCard">
     <div class="pc-name" id="youName"></div>
@@ -103,6 +108,9 @@
     <div class="menu-buttons">
       <button class="menu-btn" id="quickGameBtn" disabled>Loading…</button>
       <button class="menu-btn secondary" id="zenBtn" disabled>Zen</button>
+      <!-- Multiplayer (Phase 7): shown by net/lobby.js, which the artifact
+           build leaves out (docs/spec.md R4.6). -->
+      <button class="menu-btn secondary" id="netBtn" disabled hidden>Play a friend</button>
       <!-- Development only, behind ?dev (docs/decisions.md D39): any dice set,
            then any Spice it allows, without the draft. -->
       <button class="menu-btn secondary" id="testBenchBtn" disabled hidden>Test bench</button>
@@ -138,6 +146,47 @@
     <div class="editor-buttons">
       <button class="picker-back" id="editorBack">&larr; Back</button>
       <button class="menu-btn" id="editorSave">Save</button>
+    </div>
+  </div>
+  <!-- Multiplayer: host a room or join one (net/lobby.js). -->
+  <div class="menu-card net" id="netMenu" hidden>
+    <h2 class="picker-title">Play a friend</h2>
+    <button class="menu-btn" id="netHostBtn">Host a game</button>
+    <form class="net-join" id="netJoinForm">
+      <label class="editor-label" for="netCodeInput">Or join with a code</label>
+      <div class="net-row">
+        <input id="netCodeInput" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false"
+          maxlength="7" placeholder="ABCDE" enterkeyhint="go">
+        <button class="menu-btn secondary" id="netJoinBtn" type="submit">Join</button>
+      </div>
+    </form>
+    <p class="menu-status" id="netMenuStatus" hidden></p>
+    <button class="picker-back" id="netMenuBack">&larr; Back</button>
+  </div>
+  <!-- The host's room: its code and link, and the dice and Spice chosen. -->
+  <div class="menu-card net" id="netRoom" hidden>
+    <p class="draft-step">Your room</p>
+    <h2 class="net-code" id="netRoomCode"></h2>
+    <div class="net-row">
+      <input id="netRoomLink" type="text" readonly aria-label="Link to your room">
+      <button class="menu-btn secondary" id="netCopyBtn" type="button">Copy link</button>
+    </div>
+    <p class="net-room-status" id="netRoomStatus" aria-live="polite"></p>
+    <div class="rules-cards" id="netRoomCards"></div>
+    <div class="editor-buttons">
+      <button class="picker-back" id="netRoomBack">&larr; Close the room</button>
+      <button class="menu-btn secondary" id="netChangeBtn" type="button">Change</button>
+    </div>
+  </div>
+  <!-- The guest's side: the host's choice, in full, to accept (R4.2). -->
+  <div class="menu-card net" id="netInvite" hidden>
+    <p class="draft-step" id="netInviteStep"></p>
+    <h2 class="picker-title" id="netInviteTitle"></h2>
+    <div class="rules-cards" id="netInviteCards"></div>
+    <p class="net-room-status" id="netInviteStatus" aria-live="polite"></p>
+    <div class="editor-buttons">
+      <button class="picker-back" id="netInviteBack">&larr; Leave</button>
+      <button class="menu-btn" id="netAcceptBtn" type="button" hidden>Let's play</button>
     </div>
   </div>
   <div class="menu-card wide" id="picker" hidden>

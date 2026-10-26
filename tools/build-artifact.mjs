@@ -36,13 +36,24 @@ const cdnExternals = {
   },
 };
 
+// Multiplayer stays out of the artifact (docs/spec.md R4.6, DEV_PLAN.md 7.9a):
+// its menus are swapped for a module that offers none, so neither they nor
+// PeerJS, which only they import, end up in the bundle or load at runtime.
+const noMultiplayer = {
+  name: 'no-multiplayer',
+  setup(b) {
+    b.onResolve({ filter: /[\\/]net[\\/]lobby\.js$/ }, () => ({ path: 'lobby', namespace: 'no-multiplayer' }));
+    b.onLoad({ filter: /.*/, namespace: 'no-multiplayer' }, () => ({ contents: 'export const createLobby = null;', loader: 'js' }));
+  },
+};
+
 const bundled = await build({
   entryPoints: [join(root, 'src/main.js')],
   bundle: true,
   format: 'esm',
   target: 'es2022',
   write: false,
-  plugins: [cdnExternals],
+  plugins: [noMultiplayer, cdnExternals],
   legalComments: 'none',
 });
 const js = bundled.outputFiles[0].text;

@@ -18,17 +18,23 @@
 // Zen: no opponent, no divider, no score - the whole tray, for throwing for
 // the sake of it. It's also the testbed: its catalogue offers every dice set
 // Quick Game does, and every die type on its own (docs/decisions.md D18).
+//
+// A multiplayer match ('net') is a Quick Game against another player's
+// browser, through a session (net/session.js). The round goes the same way,
+// but each step that waits on a player waits for each separately: each
+// throws when they like, their throw is shown on the other screen as it
+// arrives, and once one has, the other has 30 s (D48). Everything either
+// player does goes into the session's log, from which a reloaded page
+// catches up (D49).
 
-import { GAME_OVER_LINGER_MS } from './config.js';
+import { GAME_OVER_LINGER_MS, NET_FOLLOW_MS, NET_WAITING_DELAY_MS } from './config.js';
 import { randomHandful, aimHandful, handLayout, liftClear } from './handful.js';
 import { DIE_TYPES } from './die-shapes.js';
 import { createRng, deriveSeed, randomSeed } from './rng.js';
 import { replayThrow } from './replay.js';
 import { SHAPES } from './die-shapes.js';
-import {
-  matchConfig, resolveRules, startMatch, beginRound, playRound, handOf, edgeOf, scoreDice,
-  tableOf, afterSettle, throwsAgain, canRethrow, spendRethrow, redrawsOf,
-} from './rules/engine.js';
+import * as engine from './rules/engine.js';
+import { guestSeat, swapSides, swapId, turnDie, turnTable, digestOf } from './seat.js';
 import { DICE_SETS, THE_CLASSIC, dieTypes, sum } from './rules/dice-sets.js';
 import { SPICE } from './rules/spice.js';
 import { dealDice, dealSpice, testBenchSpice } from './rules/draft.js';
@@ -68,11 +74,32 @@ const PREVIEW_DEPTH = 0.55;
 const PREVIEW_SPACING = 1.7;
 const PREVIEW_SPIN = 0.5;
 
-const pause = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
+// A step's clock running out on this player (see stepClock).
+const EXPIRED = Symbol('expired');
+
+/**
+ * A record exactly as the other client will get it: through JSON, which
+ * turns a -0 into 0. Both then simulate the very same numbers.
+ */
+const sealed = (record) => JSON.parse(JSON.stringify(record));
 
 export function createGame({ hud, roller, arena, table, effects, profiles }) {
   let state = 'menu'; // 'menu' | 'playing' | 'deciding' | 'ended'
-  let mode = 'quick'; // 'quick' | 'zen'
+  let mode = 'quick'; // 'quick' | 'zen' | 'net'
+  // The rules engine, from this player's seat: as it is, or for a
+  // multiplayer guest, turned round (seat.js, docs/decisions.md D27).
+  let E = engine;
+  // A multiplayer match: its view of the session's log (`net`), the
+  // session, what to do once it's over, and the round being played, by
+  // number, for naming its steps. `restoring` while it's being caught up
+  // on from the log (D49): throws then run to rest at once, undrawn.
+  let net = null;
+  let session = null;
+  let onNetOver = null;
+  let roundNo = 0;
+  let restoring = false;
+  // A re-throw on offer in a multiplayer match: take it, or let it go.
+  let netOffer = null;
   let rolling = false;
   // This match's rounds, newest last: each one's throw records and results,
   // and its outcome. Kept so any throw can be replayed exactly (see
@@ -118,21 +145,27 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
   // they're in the hand.
   let holding = null;
 
+  // A beat for the eye; none while a match is being caught up on.
+  const pause = (ms) => (restoring ? Promise.resolve() : new Promise((resolve) => { setTimeout(resolve, ms); }));
+
   function newMatch(seed, diceSet, spice) {
-    config = matchConfig({ seed, diceSet, spice });
-    rules = resolveRules(config);
-    match = startMatch(rules);
+    config = engine.matchConfig({ seed, diceSet, spice });
+    rules = engine.resolveRules(config);
+    match = E.startMatch(rules);
     opponentRng = createRng(deriveSeed(seed, 'opponent'));
     throwRng = createRng(deriveSeed(seed, 'throw'));
   }
   newMatch(0);
 
-  /** A throw record of `dice` on the table as it is this round. */
-  function recordOf(dice) {
-    const { holes, wind, rope } = tableNow;
+  /**
+   * A throw record of `dice` on the table as it is this round, or on
+   * `on` (Cat Paw's swipe in multiplayer, simulated in the host's frame).
+   */
+  function recordOf(dice, { on = tableNow, arenaHalfWidth = arena.arenaHalfWidth } = {}) {
+    const { holes, wind, rope } = on;
     return {
       v: 1,
-      arenaHalfWidth: arena.arenaHalfWidth,
+      arenaHalfWidth,
       divider: arena.divider,
       tray: arena.tray,
       ...(holes.length ? { holes } : {}),
@@ -176,10 +209,14 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
   /** The middle of a handful's releases, [x, z]. */
   const centreOf = (releases) => [0, 2].map((k) => releases.reduce((s, r) => s + r.p[k], 0) / releases.length);
 
-  /** Resolves with the player's releases when they next throw, prompted by `headline`. */
+  /**
+   * Resolves with the player's releases when they next throw, prompted by
+   * `headline` if there is one (in multiplayer, the last round's result may
+   * be on the card instead).
+   */
   function playerThrow(headline, detail) {
     rolling = false;
-    hud.showResult(headline, detail);
+    if (headline) hud.showResult(headline, detail);
     return new Promise((resolve) => { awaiting = resolve; });
   }
 
@@ -189,23 +226,26 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
   /**
    * Starts a match. Both modes play `diceSet` (an id), Quick Game with
    * `spice`; Zen can instead throw one die of `dieType`. `seed` is for tests:
-   * the same seed plays the same match.
+   * the same seed plays the same match. A multiplayer match (startNet) is
+   * started here too, with both `players` given.
    */
-  function start(newMode, { seed = randomSeed(), diceSet = THE_CLASSIC.id, spice, dieType } = {}) {
+  function start(newMode, { seed = randomSeed(), diceSet = THE_CLASSIC.id, spice, dieType, players: given } = {}) {
     mode = newMode;
     bench = null;
     leaveRound();
+    if (mode !== 'net') net = null;
+    E = net?.seat === 'guest' ? guestSeat(engine) : engine;
     newMatch(seed, diceSet, spice);
     rounds.length = 0;
     const zen = mode === 'zen';
     const alone = zen && dieType;
     const types = alone ? [dieType] : dieTypes(rules.diceSet);
     zenScorer = alone ? sum : rules.diceSet.scorer;
-    tableNow = zen ? PLAIN_TABLE : tableOf(rules, match);
+    tableNow = zen ? PLAIN_TABLE : E.tableOf(rules, match);
     // The AI's looks come from a stream of their own, so a replayed match
     // looks the same and no other stream moves (R6.6).
     const you = profiles.get();
-    players = { player: you, opponent: zen ? null : opponentProfile(createRng(deriveSeed(seed, 'looks')), you) };
+    players = given ?? { player: you, opponent: zen ? null : opponentProfile(createRng(deriveSeed(seed, 'looks')), you) };
     const looks = { player: looksOf(you), opponent: looksOf(players.opponent ?? you) };
     table.setup({
       types,
@@ -221,8 +261,10 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
     showTable();
     hud.showBoard(mode);
     hud.showPlayers({ player: looks.player, opponent: zen ? null : looks.opponent });
+    hud.setOpponentName(mode === 'net' ? looks.opponent.name : null);
     hud.showMatchInfo(diceSetCard(rules.diceSet), zen ? null : spiceCard(rules.spice));
-    if (mode === 'quick') {
+    roundNo = 0;
+    if (mode !== 'zen') {
       hud.showMatch(rules.winCondition.view(match.win));
       prepareRound();
     }
@@ -235,12 +277,13 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
   // side's dice for it on the table (Underdog's extra die, Inspiration's
   // advantage), and marks who holds an edge in it.
   function prepareRound() {
+    roundNo++;
     let announce;
-    ({ state: match, announce } = beginRound(rules, match));
+    ({ state: match, announce } = E.beginRound(rules, match));
     announced = announce;
-    tableNow = tableOf(rules, match);
+    tableNow = E.tableOf(rules, match);
     showTable();
-    for (const side of SIDES) table.setHand(side, handOf(rules, match, side).types);
+    for (const side of SIDES) table.setHand(side, E.handOf(rules, match, side).types);
     hud.showAnnounce(announce);
     showEdges();
   }
@@ -255,7 +298,7 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
   // Marks who holds an edge this round (R3.5); while the player is offered a
   // re-throw, its button says so for them.
   function showEdges() {
-    const edges = [edgeOf(rules, match)].flat().filter((e) => e && !(offer && e.side === 'player'));
+    const edges = [E.edgeOf(rules, match)].flat().filter((e) => e && !(offer && e.side === 'player'));
     hud.showEdge(edges.length ? edges : null);
   }
 
@@ -321,17 +364,26 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
     rolling = false;
     awaiting = null;
     offer = null;
+    netOffer = null;
     replaying = false;
+    restoring = false;
     endPicking();
+    hud.showStatus(null);
     holding = null;
     for (const die of [...table.sides.player, ...table.sides.opponent]) die.highlight(false);
     hud.showRethrow(null);
   }
 
   function returnToMenu() {
+    const leaving = net;
     leaveRound();
     state = 'menu';
     hud.showMenu();
+    // Leaving a multiplayer match before it's over gives it away (D48).
+    if (leaving) {
+      net = null;
+      onNetOver?.({ left: !leaving.ended });
+    }
   }
 
   // ---------- The player editor (R6.8) ----------
@@ -393,7 +445,7 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
     const result = await roller.start(record);
     rounds.push({ record, result, throws: [{ record, result }] });
     const faces = facesOf(result, 'player');
-    const { dice, score, named } = scoreDice(zenScorer, faces);
+    const { dice, score, named } = E.scoreDice(zenScorer, faces);
     // The total up top (or what it's called: a poker hand); with several
     // dice, how it was made up below.
     if (faces.length === 1) hud.showResult(`You rolled ${score}`, '');
@@ -409,21 +461,31 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
    */
   async function catPaw(last, swipes) {
     const lying = Object.fromEntries(last.result.dice.map((d) => [d.id, d]));
-    const knocks = new Map();
-    const targets = swipes.map(({ side, index, power, turn }) => {
-      const die = table.sides[side][index];
-      const [x, y, z] = lying[die.id].p;
-      const from = x >= 0 ? 1 : -1;
-      const v = [-from * (2.5 + 3 * power), 1 + 1.5 * power, turn * (1 + power)];
-      knocks.set(die.id, { v, w: [v[2] * 3, turn * 4, -v[0] * 3] });
-      const length = Math.hypot(1, turn * (1 + power) / (2.5 + 3 * power));
-      return { x, y, z, from, dir: [-from / length, (turn * (1 + power) / (2.5 + 3 * power)) / length], reach: die.radius + 0.3 };
-    });
+    const { knocks, targets } = pawKnocks(lying, swipes, (side, index) => table.sides[side][index].radius);
     await effects.swipe(targets);
     const record = recordOf(last.record.dice.map(({ id, type, s }) => ({
       id, type, s, p: lying[id].p, q: lying[id].q, ...(knocks.get(id) ?? { v: [0, 0, 0], w: [0, 0, 0] }),
     })));
     return { record, result: await roller.start(record), swipes };
+  }
+
+  /**
+   * How the paw knocks each die `swipes` names, lying as `lying` says (by
+   * id): the knock, by id, and where the paw goes for each, for effects.swipe.
+   * `radiusOf(side, index)` is a die's circumradius.
+   */
+  function pawKnocks(lying, swipes, radiusOf) {
+    const knocks = new Map();
+    const targets = swipes.map(({ side, index, power, turn }) => {
+      const id = `${side}-${index}`;
+      const [x, y, z] = lying[id].p;
+      const from = x >= 0 ? 1 : -1;
+      const v = [-from * (2.5 + 3 * power), 1 + 1.5 * power, turn * (1 + power)];
+      knocks.set(id, { v, w: [v[2] * 3, turn * 4, -v[0] * 3] });
+      const length = Math.hypot(1, turn * (1 + power) / (2.5 + 3 * power));
+      return { x, y, z, from, dir: [-from / length, (turn * (1 + power) / (2.5 + 3 * power)) / length], reach: radiusOf(side, index) + 0.3 };
+    });
+    return { knocks, targets };
   }
 
   async function runRound(playerReleases) {
@@ -434,7 +496,7 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
     // Anything the Spice does to the dice where they've settled.
     let swipes;
     const counts = { player: table.sides.player.length, opponent: table.sides.opponent.length };
-    ({ state: match, swipes } = afterSettle(rules, match, counts));
+    ({ state: match, swipes } = E.afterSettle(rules, match, counts));
     if (swipes.length) {
       throws.push(await catPaw(throws.at(-1), swipes));
       if (id !== matchId) return;
@@ -450,13 +512,13 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
     };
 
     // Draw Poker: each side may throw some of its dice again.
-    for (let n = redrawsOf(rules); n > 0; n--) {
+    for (let n = E.redrawsOf(rules); n > 0; n--) {
       if (!await redraw(round, throws, id)) return;
     }
 
     // Doubles: whoever threw them throws again, both together if both did.
     for (;;) {
-      const sides = SIDES.filter((side) => throwsAgain(rules, match, side, [round.faces[side], ...round.again[side]]));
+      const sides = SIDES.filter((side) => E.throwsAgain(rules, match, side, [round.faces[side], ...round.again[side]]));
       if (!sides.length) break;
       const releases = {};
       if (sides.includes('opponent')) releases.opponent = opponentReleases();
@@ -489,8 +551,8 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
    */
   async function redraw(round, throws, id) {
     const scored = Object.fromEntries(SIDES.map((side) =>
-      [side, scoreDice(handOf(rules, match, side).scorer, round.faces[side])]));
-    const { scorer } = handOf(rules, match, 'opponent');
+      [side, E.scoreDice(E.handOf(rules, match, side).scorer, round.faces[side])]));
+    const { scorer } = E.handOf(rules, match, 'opponent');
     const keep = scorer.hold?.(round.faces.opponent) ?? scored.opponent.kept;
     const theirs = keep.flatMap((kept, i) => (kept ? [] : [i]));
     for (const i of theirs) table.sides.opponent[i].highlight(true);
@@ -545,13 +607,15 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
    * go as released, the rest held where they lie for them to bounce off
    * (Draw Poker's kept dice). A side's handful let go over a die lying there
    * is lifted clear of it, all together, so it never starts a throw inside
-   * one and its own dice stay as far apart as they were.
+   * one and its own dice stay as far apart as they were. In multiplayer each
+   * side throws on its own (D48), so its record has only its own `sides`;
+   * the divider keeps the other's out of reach anyway.
    */
-  function recordKeeping(thrown) {
-    const all = [...table.sides.player, ...table.sides.opponent];
+  function recordKeeping(thrown, sides = SIDES) {
+    const all = sides.flatMap((side) => table.sides[side]);
     const lying = all.filter((d) => !thrown.has(d.id)).map((d) => ({ p: d.mesh.position.toArray(), r: d.radius }));
     const released = new Map();
-    for (const side of SIDES) {
+    for (const side of sides) {
       const dice = table.sides[side].filter((d) => thrown.has(d.id));
       liftClear(dice.map((d) => thrown.get(d.id)), dice.map((d) => d.radius), lying)
         .forEach((release, i) => released.set(dice[i].id, release));
@@ -589,18 +653,18 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
    */
   async function playOut(before, round, throws, id) {
     for (;;) {
-      const { outcome, state: after } = playRound(rules, before, round.faces, round);
+      const { outcome, state: after } = E.playRound(rules, before, round.faces, round);
       await showOnTable(outcome, id);
       if (id !== matchId) return;
       const loser = outcome.winner && other(outcome.winner);
       // The opponent calls on it when this loss would cost it the match.
-      if (loser === 'opponent' && canRethrow(rules, before, loser) && outcome.matchWinner === 'player') {
+      if (loser === 'opponent' && E.canRethrow(rules, before, loser) && outcome.matchWinner === 'player') {
         hud.showMatch(rules.winCondition.view(after.win));
         hud.showRound(ROUND_HEADLINES.player, breakdownOf(outcome),
           { notes: [...notesOf(outcome), `Your opponent calls on its ${rules.spice.name}!`] });
         await pause(OPPONENT_BEAT_MS);
         if (id !== matchId) return;
-        before = spendRethrow(rules, before, 'opponent');
+        before = E.spendRethrow(rules, before, 'opponent');
         hud.showMatch(rules.winCondition.view(before.win));
         hud.hideResult();
         const next = await roll({ opponent: opponentReleases() });
@@ -676,7 +740,7 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
   function notesOf(outcome) {
     const { unit } = rules.winCondition;
     const cost = unit && SIDES.filter((side) => outcome.damage[side] > 0).map((side) =>
-      `${side === 'player' ? 'You lose' : 'Your opponent loses'} ${outcome.damage[side]} ${unit}.`).join(' ');
+      `${side === 'player' ? 'You lose' : `${theirName()} loses`} ${outcome.damage[side]} ${unit}.`).join(' ');
     // Two hands with the same name (a pair of 6s each) were decided by the
     // dice left over.
     const { named, winner } = outcome;
@@ -708,7 +772,7 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
     replaying = false;
     match = after;
     hud.showMatch(rules.winCondition.view(after.win));
-    const rethrow = outcome.winner === 'opponent' && canRethrow(rules, before, 'player');
+    const rethrow = outcome.winner === 'opponent' && E.canRethrow(rules, before, 'player');
     offer = rethrow ? { before, round, throws, outcome, announced } : null;
     const notes = notesOf(outcome);
     if (rethrow) notes.push(`Not happy? Use your ${rules.spice.name} to throw again.`);
@@ -743,15 +807,18 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
     hud.showEdge(null);
     const notes = notesOf(outcome);
     if (bench) notes.push('Test bench: the same again next.');
+    if (net) net.end({ winner: seatOf(outcome.matchWinner), reason: 'played' });
     hud.showRound(MATCH_HEADLINES[outcome.matchWinner], breakdownOf(outcome), { gameOver: true, notes });
     rolling = false;
     const id = matchId;
     setTimeout(() => { if (state === 'ended' && id === matchId) afterMatch(); }, GAME_OVER_LINGER_MS);
   }
 
-  // Once a match is over: back to the menu, or on the test bench, the same again.
+  // Once a match is over: back to the menu, or on the test bench, the same
+  // again, or in multiplayer, the room.
   function afterMatch() {
-    if (bench) benchMatch(bench.diceSet, bench.spice);
+    if (mode === 'net') finishNet();
+    else if (bench) benchMatch(bench.diceSet, bench.spice);
     else returnToMenu();
   }
 
@@ -763,7 +830,7 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
   async function useRethrow() {
     if (!offer || rolling || awaiting) return;
     const { round, throws, announced: then } = offer;
-    const before = spendRethrow(rules, offer.before, 'player');
+    const before = E.spendRethrow(rules, offer.before, 'player');
     const id = matchId;
     offer = null;
     replaying = true;
@@ -772,9 +839,9 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
     match = before;
     state = 'playing';
     announced = then;
-    tableNow = tableOf(rules, match);
+    tableNow = E.tableOf(rules, match);
     showTable();
-    for (const side of SIDES) table.setHand(side, handOf(rules, match, side).types);
+    for (const side of SIDES) table.setHand(side, E.handOf(rules, match, side).types);
     hud.showMatch(rules.winCondition.view(match.win));
     hud.showAnnounce(then);
     showEdges();
@@ -788,6 +855,541 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
     await playOut(before, round, throws, id);
   }
 
+  // ---------- Multiplayer (docs/decisions.md D48, D49) ----------
+
+  /** What the other player is called: their name in multiplayer. */
+  const theirName = () => (mode === 'net' ? players.opponent.name : 'Your opponent');
+
+  /** A side on this screen as a seat in the session ('host', 'guest'); a draw is null. */
+  const seatOf = (side) => (side === 'player' ? net.seat : side === 'opponent' ? (net.seat === 'host' ? 'guest' : 'host') : null);
+  /** A seat as a side on this screen. */
+  const sideOfSeat = (seat) => (seat ? (seat === net.seat ? 'player' : 'opponent') : null);
+
+  /** One side's faces, and which of its dice fell in a hole, from a throw's result. */
+  const sideOf = (result, side) => ({ faces: facesOf(result, side), fallen: diceOf(result, side).map((d) => d.fallen) });
+
+  /**
+   * Starts a multiplayer match on `view`, the session's view of its log
+   * (session.startMatch), with `link` the session itself. With `restore`
+   * the match is first caught up on from the log (a reloaded page, D49).
+   * `onOver` is called once it's over and its card has been seen, or the
+   * player has left it (`{ left: true }`).
+   */
+  function startNet(view, link, { restore = false, onOver } = {}) {
+    net = view;
+    session = link;
+    onNetOver = onOver;
+    watchSession(link);
+    start('net', { ...view.config, players: view.profiles });
+    // Each seat's spin jitter from a stream of its own: from the one
+    // stream, two players making the same drag would throw the same throw.
+    throwRng = createRng(deriveSeed(view.config.seed, `throw-${view.seat}`));
+    restoring = restore;
+    netLoop(matchId);
+  }
+
+  // The session's news, for the match under way: the link lost or back, the
+  // other player gone for good, the match ended over there, or the two
+  // clients come apart. Listened to once per session.
+  const watched = new WeakSet();
+  function watchSession(link) {
+    if (watched.has(link)) return;
+    watched.add(link);
+    const live = () => session === link && net && !net.ended;
+    link.on('status', (status) => { if (live()) connectionNow(status); });
+    link.on('left', () => { if (live()) walkover('player', 'left'); });
+    link.on('over', (result) => { if (session === link && net) showWalkover(sideOfSeat(result.winner), result.reason); });
+    link.on('desync', (why) => { if (live()) outOfSync(why); });
+  }
+
+  async function netLoop(id) {
+    while (id === matchId && state === 'playing') {
+      if (!await netRound(id)) return;
+    }
+  }
+
+  /**
+   * One round of a multiplayer match, the same steps as runRound: both
+   * throw; a paw may swipe; each may throw some dice again; doubles are
+   * thrown again; then it's played out. Resolves false once the match is
+   * over or left.
+   */
+  async function netRound(id) {
+    const r = roundNo;
+    const first = await netThrows(`${r}/throw`, SIDES, id);
+    if (!first) return false;
+    const throws = [first];
+    const round = {
+      faces: { player: first.player.faces, opponent: first.opponent.faces },
+      fallen: { player: first.player.fallen, opponent: first.opponent.fallen },
+      again: { player: [], opponent: [] },
+    };
+
+    let swipes;
+    const counts = { player: table.sides.player.length, opponent: table.sides.opponent.length };
+    ({ state: match, swipes } = E.afterSettle(rules, match, counts));
+    if (swipes.length) {
+      const paw = await netCatPaw(first, swipes, id);
+      if (!paw) return false;
+      throws.push(paw);
+      round.faces = { player: paw.sides.player.faces, opponent: paw.sides.opponent.faces };
+      round.fallen = { player: paw.sides.player.fallen, opponent: paw.sides.opponent.fallen };
+    }
+
+    for (let n = 1; n <= E.redrawsOf(rules); n++) {
+      if (!await netRedraw(`${r}/redraw${n}`, round, throws, id)) return false;
+    }
+
+    // Doubles: only whoever threw them owes a throw.
+    for (let k = 1; ; k++) {
+      const sides = SIDES.filter((side) => E.throwsAgain(rules, match, side, [round.faces[side], ...round.again[side]]));
+      if (!sides.length) break;
+      let prompt = null;
+      if (sides.includes('player')) {
+        prompt = { headline: 'Doubles! Throw again',
+          detail: sides.length > 1 ? `So did ${theirName()}. Both throws are added on.` : 'Your next throw is added to your total.' };
+      } else {
+        hud.showResult(`${theirName()} threw doubles`, 'They throw again, and add it on.');
+      }
+      const next = await netThrows(`${r}/again${k}`, sides, id, prompt);
+      if (!next) return false;
+      throws.push(next);
+      for (const side of sides) round.again[side].push(next[side].faces);
+    }
+
+    return netPlayOut(r, match, round, throws, id);
+  }
+
+  /**
+   * A step where `sides` each throw, each when they like (D48): this
+   * player's throw is made here, theirs arrives from the session, and each
+   * plays on its own half as soon as it's in. Resolves with each side's
+   * throw once all have settled, or null if the match ended meanwhile (a
+   * throw not made in time loses it).
+   */
+  async function netThrows(step, sides, id, prompt = null) {
+    const clock = stepClock(sides, id);
+    const got = {};
+    await Promise.all(sides.map(async (side) => {
+      got[side] = side === 'player' ? await myThrow(step, prompt, clock) : await theirThrow(step, clock);
+      clock.settled(side);
+    }));
+    clock.stop();
+    if (id !== matchId) return null;
+    const late = sides.find((side) => got[side].forfeit);
+    if (late) {
+      walkover(other(late), 'stalled');
+      return null;
+    }
+    return got;
+  }
+
+  /** This player's throw at `step`: made now, or from the log if it was made before a reload. */
+  async function myThrow(step, prompt, clock) {
+    let data = net.mine(step);
+    if (!data) {
+      restoring = false;
+      const releases = await Promise.race([playerThrow(prompt?.headline, prompt?.detail), clock.expired()]);
+      awaiting = null;
+      data = releases === EXPIRED ? { forfeit: true } : { record: sealed(recordFor({ player: releases })) };
+      net.put(step, data);
+    }
+    clock.made('player');
+    if (data.forfeit) return data;
+    return playMine(step, data.record);
+  }
+
+  /** The other player's throw at `step`, shown on their half as soon as it's in. */
+  async function theirThrow(step, clock) {
+    if (!net.has(step)) restoring = false;
+    const data = await net.take(step);
+    clock.made('opponent');
+    if (data.forfeit) return data;
+    return playTheirs(step, data.record);
+  }
+
+  /** Plays this player's `record`, and logs where it landed for the other client to check (R4.3). */
+  async function playMine(step, record) {
+    rolling = true;
+    table.tidy();
+    const view = net;
+    const result = await roller.start(record, { instant: restoring });
+    if (net !== view) return { record, result, ...sideOf(result, 'player') };
+    net.put(`${step}#`, { digest: result.digest });
+    return { record, result, ...sideOf(result, 'player') };
+  }
+
+  /**
+   * Plays the other player's `record`, made in their frame, turned round
+   * onto their half, and checks it landed where it did for them (R4.3).
+   * Their dice are `player-` in it, as they are to them.
+   */
+  async function playTheirs(step, record) {
+    const view = net;
+    const types = table.sides.opponent.map((d) => d.type).join();
+    if (record?.dice?.map((d) => d.type).join() !== types) {
+      outOfSync(`${step}: the other player threw different dice`);
+      return new Promise(() => {});
+    }
+    table.tidy();
+    const result = await roller.start(record, { track: 'opponent', turned: true, instant: restoring });
+    net?.take(`${step}#`).then(({ digest }) => {
+      if (net === view && digest !== result.digest) outOfSync(`${step}: the throw landed differently on the two screens`);
+    });
+    return { record, result, ...sideOf(result, 'player') };
+  }
+
+  /**
+   * The clock on a step waiting on `owes` (D48): once one side has done its
+   * part, the other has NET_FOLLOW_MS; a step only one side owes starts it
+   * at once. When this player's runs out, `expired()` resolves; the other
+   * player's own client calls theirs, so a throw sent at the last moment is
+   * never both made and too late. Meanwhile it says what's awaited: this
+   * player's time left on the status pill, and once their part is done and
+   * settled, "Waiting for…" (a throw, on the card; a choice, on the pill,
+   * leaving the round's result on the card to read).
+   */
+  function stepClock(owes, id, { choice = false } = {}) {
+    const deadline = {};
+    const made = new Set();
+    let expire;
+    const expired = new Promise((resolve) => { expire = resolve; });
+    const start = (side) => { if (deadline[side] === undefined && !made.has(side)) deadline[side] = Date.now() + NET_FOLLOW_MS; };
+    if (owes.length === 1) start(owes[0]);
+    // Since when this player has had nothing left to do here.
+    let idleSince = owes.includes('player') ? null : Date.now() + NET_WAITING_DELAY_MS;
+    let waiting = false;
+    const view = net;
+
+    function tick() {
+      if (id !== matchId || net !== view) {
+        stop();
+        return;
+      }
+      const now = Date.now();
+      const left = (side) => Math.max(0, Math.ceil((deadline[side] - now) / 1000));
+      const mine = owes.includes('player') && !made.has('player');
+      const theirs = owes.includes('opponent') && !made.has('opponent');
+      const idle = idleSince !== null && now - idleSince >= NET_WAITING_DELAY_MS;
+      if (mine && deadline.player !== undefined) {
+        if (now >= deadline.player) expire(EXPIRED);
+        hud.showStatus(`${choice ? 'Your call' : 'Your throw'} · ${left('player')} s`);
+      } else if (theirs && idle && choice) {
+        hud.showStatus(`Waiting for ${theirName()}${deadline.opponent !== undefined ? ` · ${left('opponent')} s` : '…'}`);
+      } else {
+        hud.showStatus(null);
+      }
+      if (theirs && idle && !choice && !lostShown) {
+        hud.showResult(`Waiting for ${theirName()}…`, deadline.opponent !== undefined ? `${left('opponent')} s left to throw.` : '');
+        waiting = true;
+      } else if (waiting && !theirs) {
+        hud.hideResult();
+        waiting = false;
+      }
+    }
+
+    const timer = setInterval(tick, 250);
+    function stop() {
+      clearInterval(timer);
+      if (id === matchId) hud.showStatus(null);
+      if (waiting && id === matchId) hud.hideResult();
+      waiting = false;
+    }
+    return {
+      expired: () => expired,
+      made(side) {
+        made.add(side);
+        for (const s of owes) if (s !== side) start(s);
+        tick();
+      },
+      settled(side) { if (side === 'player') idleSince = Date.now(); },
+      stop,
+    };
+  }
+
+  /**
+   * Cat Paw's swipe in multiplayer: the one simulation of both sides' dice
+   * together, so it runs in the host's frame on both clients (D48): each
+   * side's dice where its throw left them, the guest's turned round onto
+   * the host's far half, and on the guest's screen all of it drawn turned
+   * round again. Resolves with each side's faces after it, or null if the
+   * match ended meanwhile.
+   */
+  async function netCatPaw(first, swipes, id) {
+    const guest = net.seat === 'guest';
+    const hostSide = guest ? 'opponent' : 'player';
+    const inHostFrame = (side) => {
+      const { record, result } = first[side];
+      const at = Object.fromEntries(result.dice.map((d) => [d.id, d]));
+      const dice = record.dice.map(({ id: die, type, s }) => ({ id: die, type, s, p: at[die].p, q: at[die].q }));
+      return side === hostSide ? dice : dice.map(turnDie);
+    };
+    const dice = [...inHostFrame(hostSide), ...inHostFrame(other(hostSide))];
+    const lying = Object.fromEntries(dice.map((d) => [d.id, d]));
+    const { knocks, targets } = pawKnocks(lying, guest ? swapSides(swipes) : swipes,
+      (side, index) => table.sides[guest ? swapSides(side) : side][index].radius);
+    const turnTarget = (t) => ({ ...t, x: -t.x, z: -t.z, from: -t.from, dir: [-t.dir[0], -t.dir[1]] });
+    if (!restoring) await effects.swipe(guest ? targets.map(turnTarget) : targets);
+    if (id !== matchId) return null;
+    const record = sealed(recordOf(dice.map((d) => ({ ...d, ...(knocks.get(d.id) ?? { v: [0, 0, 0], w: [0, 0, 0] }) })), {
+      on: guest ? turnTable(tableNow) : tableNow,
+      arenaHalfWidth: Math.max(first.player.record.arenaHalfWidth, first.opponent.record.arenaHalfWidth),
+    }));
+    const result = await roller.start(record, { turned: guest, instant: restoring });
+    if (id !== matchId) return null;
+    return {
+      record, result,
+      sides: { player: sideOf(result, hostSide === 'player' ? 'player' : 'opponent'), opponent: sideOf(result, hostSide === 'player' ? 'opponent' : 'player') },
+    };
+  }
+
+  /**
+   * A redraw (Draw Poker) in multiplayer: each player picks the dice to
+   * throw again and throws them, or keeps them all, without waiting on the
+   * other; their dice held where they lie, in their own throw. Resolves
+   * false if the match ended meanwhile.
+   */
+  async function netRedraw(step, round, throws, id) {
+    const clock = stepClock(SIDES, id, { choice: true });
+    const got = {};
+    await Promise.all(SIDES.map(async (side) => {
+      got[side] = side === 'player' ? await myRedraw(step, round, clock) : await theirRedraw(step, clock);
+      clock.settled(side);
+    }));
+    clock.stop();
+    if (id !== matchId) return false;
+    for (const side of SIDES) {
+      const thrown = got[side];
+      if (!thrown) continue;
+      throws.push(thrown);
+      // Whoever threw, the dice in their record are `player-`: their own.
+      const fixed = new Set(thrown.record.dice.filter((d) => d.fixed).map((d) => d.id));
+      for (const d of thrown.result.dice) if (!fixed.has(d.id)) round.faces[side][Number(d.id.split('-')[1])] = d.face;
+    }
+    return true;
+  }
+
+  async function myRedraw(step, round, clock) {
+    let data = net.mine(step);
+    if (!data) {
+      restoring = false;
+      const scored = Object.fromEntries(SIDES.map((side) =>
+        [side, E.scoreDice(E.handOf(rules, match, side).scorer, round.faces[side])]));
+      const hand = (side) => ({ side, dice: scored[side].dice, score: scored[side].score, named: scored[side].named });
+      rolling = false;
+      hud.showRound('Throw any again?', [hand('player'), hand('opponent')],
+        { notes: ['Tap the dice you want to throw again, then throw them. Or keep them all.'] });
+      hud.showRethrow({ label: '✋ Keep them', title: 'Keep all your dice as they are' }, table.onScreen);
+      const mine = await Promise.race([new Promise((resolve) => {
+        picking = { chosen: new Set(), keep: () => resolve(null) };
+        awaiting = (releases, dice) => resolve({ releases, dice });
+      }), clock.expired()]);
+      endPicking();
+      if (mine && mine !== EXPIRED) {
+        const thrown = new Map();
+        mine.dice.forEach((die, i) => thrown.set(die.id, mine.releases[i]));
+        data = { record: sealed(recordKeeping(thrown, ['player'])) };
+      } else {
+        data = { keep: true };
+      }
+      net.put(step, data);
+    }
+    clock.made('player');
+    return data.record ? playMine(step, data.record) : null;
+  }
+
+  async function theirRedraw(step, clock) {
+    if (!net.has(step)) restoring = false;
+    const data = await net.take(step);
+    clock.made('opponent');
+    return data.record ? playTheirs(step, data.record) : null;
+  }
+
+  /**
+   * Plays the round out from `before`, as playOut does; if its loser may
+   * throw again (Second Wind, Mercy), the next round waits for their call,
+   * made on their screen. Resolves false once the match is over or left.
+   */
+  async function netPlayOut(r, before, round, throws, id) {
+    for (let k = 1; ; k++) {
+      const { outcome, state: after } = E.playRound(rules, before, round.faces, round);
+      await showOnTable(outcome, id);
+      if (id !== matchId) return false;
+      const loser = outcome.winner && other(outcome.winner);
+      if (loser && E.canRethrow(rules, before, loser)) {
+        const thrown = await rethrowCall(`${r}/rethrow${k}`, loser, outcome, after, id);
+        if (id !== matchId || !thrown) return false;
+        if (thrown.result) {
+          before = E.spendRethrow(rules, before, loser);
+          hud.showMatch(rules.winCondition.view(before.win));
+          throws.push(thrown);
+          round.faces[loser] = thrown.faces;
+          round.fallen[loser] = thrown.fallen;
+          continue;
+        }
+      }
+      netCommit(r, round, throws, outcome, after);
+      return state === 'playing';
+    }
+  }
+
+  /**
+   * The loser of a round may throw again (D48): on their screen, offered it
+   * until they tap the table to accept the result, or their time is up; on
+   * the other, waited for. Resolves with the re-throw, `{}` if it wasn't
+   * taken, or null if the match ended meanwhile.
+   */
+  async function rethrowCall(step, loser, outcome, after, id) {
+    const clock = stepClock([loser], id, { choice: true });
+    hud.showMatch(rules.winCondition.view(after.win));
+    const headline = outcome.matchWinner ? MATCH_HEADLINES[outcome.matchWinner] : ROUND_HEADLINES[outcome.winner];
+    const { name, icon } = rules.spice;
+    let data;
+    if (loser === 'player') {
+      data = net.mine(step);
+      if (!data) {
+        restoring = false;
+        hud.showRound(headline, breakdownOf(outcome),
+          { notes: [...notesOf(outcome), `Use your ${name} to throw again, or tap the table to accept it.`] });
+        hud.showRethrow({ label: `${icon} Throw again`, title: `${name}: throw your dice again` }, table.onScreen);
+        const releases = await Promise.race([new Promise((resolve) => {
+          netOffer = {
+            async use() {
+              netOffer = null;
+              hud.showRethrow(null);
+              resolve(await playerThrow(`${name}!`, 'Throw your dice again: this throw replaces the last.'));
+            },
+            decline() {
+              netOffer = null;
+              resolve(null);
+            },
+          };
+        }), clock.expired()]);
+        netOffer = null;
+        awaiting = null;
+        hud.showRethrow(null);
+        data = releases && releases !== EXPIRED ? { record: sealed(recordFor({ player: releases })) } : { decline: true };
+        net.put(step, data);
+      }
+    } else {
+      hud.showRound(headline, breakdownOf(outcome),
+        { notes: [...notesOf(outcome), `${theirName()} can use their ${name} to throw again.`] });
+      if (!net.has(step)) restoring = false;
+      data = await net.take(step);
+    }
+    clock.made(loser);
+    clock.stop();
+    if (id !== matchId) return null;
+    if (!data.record) return {};
+    if (loser === 'player') return playMine(step, data.record);
+    hud.showResult(`${theirName()} calls on their ${name}!`, 'Their throw replaces the last.');
+    return playTheirs(step, data.record);
+  }
+
+  /**
+   * The round's outcome stands: the match moves on, and the two clients
+   * check they agree on where it now stands (R4.4).
+   */
+  function netCommit(r, round, throws, outcome, after) {
+    rounds.push({ throws, outcome });
+    match = after;
+    hud.showMatch(rules.winCondition.view(after.win));
+    const view = net;
+    const digest = digestOf(net.seat === 'guest' ? swapSides(after) : after);
+    net.put(`${r}/state`, { digest });
+    net.take(`${r}/state`).then((theirs) => {
+      if (net === view && theirs.digest !== digest) outOfSync(`after round ${r} the match stands differently on the two screens`);
+    });
+    if (outcome.matchWinner) {
+      endMatch(outcome);
+      return;
+    }
+    prepareRound();
+    hud.showRound(ROUND_HEADLINES[outcome.winner ?? 'tie'], breakdownOf(outcome), { notes: [...notesOf(outcome), announced] });
+    rolling = false;
+  }
+
+  // The link lost: the other player has NET_FOLLOW_MS to come back (D49).
+  // Past that, whoever can still reach the server wins: the other side is
+  // the one that dropped.
+  let lostTimer = null;
+  let lostShown = false;
+  function connectionNow(status) {
+    clearInterval(lostTimer);
+    lostTimer = null;
+    if (status !== 'lost') {
+      if (lostShown && state === 'playing') hud.hideResult();
+      lostShown = false;
+      return;
+    }
+    const view = net;
+    const tick = () => {
+      if (net !== view || view.ended) {
+        clearInterval(lostTimer);
+        lostShown = false;
+        return;
+      }
+      const left = Math.max(0, Math.ceil((session.lostAt + NET_FOLLOW_MS - Date.now()) / 1000));
+      const online = session.online();
+      lostShown = true;
+      hud.showResult('Connection lost',
+        online ? `Waiting for ${theirName()} to come back · ${left} s` : `Trying to reconnect · ${left} s`);
+      if (left > 0) return;
+      clearInterval(lostTimer);
+      lostShown = false;
+      walkover(online ? 'player' : 'opponent', online ? 'gone' : 'dropped');
+    };
+    lostTimer = setInterval(tick, 250);
+    tick();
+  }
+
+  /** The match is over off the table: `winner` wins by walkover, for `reason`. */
+  function walkover(winner, reason) {
+    if (!net || net.ended) return;
+    net.end({ winner: seatOf(winner), reason });
+    showWalkover(winner, reason);
+  }
+
+  /** The two clients came apart (R4.4): the match can't go on. */
+  function outOfSync(why) {
+    if (!net || net.ended) return;
+    console.error(`Multiplayer: out of sync: ${why}`);
+    net.end({ winner: null, reason: 'desync' });
+    showWalkover(null, 'desync');
+  }
+
+  function showWalkover(winner, reason) {
+    if (state === 'ended' || !net) return;
+    clearInterval(lostTimer);
+    lostShown = false;
+    leaveRound();
+    state = 'ended';
+    hud.showAnnounce(undefined);
+    hud.showEdge(null);
+    const name = theirName();
+    const why = {
+      stalled: winner === 'player' ? `${name} didn't throw in time.` : "You didn't throw in time.",
+      left: winner === 'player' ? `${name} left the match.` : 'You left the match.',
+      gone: winner === 'player' ? `${name} lost the connection and didn't come back.` : 'You lost the connection.',
+      dropped: winner === 'player' ? `${name} lost the connection and didn't come back.` : 'You lost the connection.',
+      desync: 'The two games came out differently, so this match can\'t go on.',
+    }[reason] ?? '';
+    const headline = reason === 'desync' ? 'Out of sync'
+      : winner === 'player' ? 'You win by walkover' : winner === 'opponent' ? 'You lose by walkover' : 'Match abandoned';
+    hud.showResult(headline, why, { gameOver: true });
+    const id = matchId;
+    setTimeout(() => { if (state === 'ended' && id === matchId) afterMatch(); }, GAME_OVER_LINGER_MS * 2);
+  }
+
+  /** Done with a multiplayer match: back to the room it was played from. */
+  function finishNet() {
+    const done = net;
+    leaveRound();
+    state = 'menu';
+    net = null;
+    if (done) onNetOver?.({ left: false });
+  }
+
   hud.onQuickGame(() => openDraft());
   hud.onZen(() => hud.showPicker('Zen: choose your dice', ZEN_CARDS,
     (id) => start('zen', id.startsWith('die:') ? { dieType: id.slice(4) } : { diceSet: id })));
@@ -799,7 +1401,8 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
   // Poker), or a re-throw (Second Wind).
   hud.onRethrow(() => {
     if (picking && !rolling && !holding) picking.keep();
-    else if (!picking) useRethrow();
+    else if (netOffer && !awaiting) netOffer.use();
+    else if (!picking && mode !== 'net') useRethrow();
   });
 
   // The match-over card is the one that takes pointer events, so tapping it
@@ -825,17 +1428,21 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
      */
     get awaiting() { return picking ? 'pick' : awaiting ? 'throw' : null; },
     /** Whether a re-throw is on offer to the player. */
-    get offered() { return offer !== null; },
+    get offered() { return offer !== null || (netOffer !== null && !awaiting); },
     rounds,
     start,
     openDraft,
     openEditor,
+    startNet,
+    /** The multiplayer match under way: its seat, and whether it's still being caught up on. */
+    get net() { return net && { seat: net.seat, n: net.n, restoring, round: roundNo }; },
     frame,
     useRethrow,
     /** Spin jitter for the player's throws, from the match's seed. */
     random: () => throwRng.next(),
-    // The dice can only be picked up between rounds of a match in progress.
-    canGrab: () => state === 'playing' && !rolling,
+    // The dice can only be picked up between rounds of a match in progress;
+    // in multiplayer, only when a throw is due from them.
+    canGrab: () => state === 'playing' && !rolling && (mode !== 'net' || awaiting !== null),
     /** Whether the player is picking dice out to throw again (Draw Poker). */
     picking: () => picking !== null,
     onPick: pick,
@@ -847,8 +1454,9 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
     },
     onGrab(dice) {
       holding = { dice, from: dice.map((d) => ({ p: d.mesh.position.clone(), q: d.mesh.quaternion.clone() })) };
-      // Dice still dropping from a fumble are caught again mid-fall.
-      roller.cancel();
+      // Dice still dropping from a fumble are caught again mid-fall (the
+      // other player's throw plays on).
+      roller.cancel('player');
       table.tidy();
       // Picking the dice up for the next round lets the last one stand.
       if (offer && !awaiting) {
@@ -890,12 +1498,18 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
         awaiting = null;
         resolve(playerReleases, held?.dice);
       } else if (mode === 'zen') runZenThrow(playerReleases);
-      else runRound(playerReleases);
+      else if (mode === 'net') {
+        // A throw no longer wanted (the clock ran out on it while held): the
+        // dice go back where they lay.
+        rolling = false;
+        held?.dice.forEach((die, i) => { die.mesh.position.copy(held.from[i].p); die.mesh.quaternion.copy(held.from[i].q); });
+      } else runRound(playerReleases);
     },
     onBoardTap() {
-      // Tapping the table accepts a match-ending round the player could have
-      // thrown again.
-      if (state === 'deciding') endMatch(offer.outcome);
+      // Tapping the table accepts a round the player could have thrown
+      // again: in multiplayer, any; otherwise one that ends the match.
+      if (netOffer && !awaiting) netOffer.decline();
+      else if (state === 'deciding') endMatch(offer.outcome);
       // While picking dice out, the card says how: it stays.
       else if (state === 'playing' && !picking) hud.hideResult();
     },

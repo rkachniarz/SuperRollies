@@ -17,6 +17,7 @@ import { SPICE } from '../../src/rules/spice.js';
 import { isEligible, matchConfig, resolveRules, startMatch, beginRound, afterSettle } from '../../src/rules/engine.js';
 import { dealDice, dealSpice, testBenchSpice } from '../../src/rules/draft.js';
 import { openGame, startQuickGame, startMode, waitForDiceAtRest, dieScreenPos, drag, throwAndWait } from './driver.mjs';
+import { multiplayerChecks } from './check-multiplayer.mjs';
 
 const engine = process.argv[2] ?? 'chromium';
 const ONLY = process.argv[3];
@@ -1333,6 +1334,10 @@ for (const [name, viewport] of [['desktop', DESKTOP], ['390x844', PHONE]]) {
   if (errors.length) report(`Profile (${name}): no page errors`, false, errors.join(' | '));
   await browser.close();
 }
+
+// Multiplayer (Phase 7): two pages in one browser, on the local transport.
+// Chromium only, like the rest (D14). They live in check-multiplayer.mjs.
+if (engine === 'chromium') await multiplayerChecks(report, ONLY);
 
 console.log(failures ? `\n${failures} check(s) failed (${engine})` : `\nAll checks passed (${engine})`);
 process.exit(failures ? 1 : 0);

@@ -214,3 +214,22 @@ export const HELD_ROCK_MOVE = 0.05; // units
 export const HELD_ROCK_TURN_COS = 0.9986295347545738; // cos of half of 6 degrees, written out
 export const SETTLE_TIMEOUT_MS = 4000; // simulated time; give up waiting for a die to come to rest
 export const GAME_OVER_LINGER_MS = 2600; // how long the match-over card stays up
+
+// ---------- Multiplayer (Phase 7) ----------
+// How long a player has to follow the other's lead (throw, choose) once the
+// other has, and to come back after losing the connection (docs/decisions.md
+// D48, D49).
+export const NET_FOLLOW_MS = 30000;
+// How often each side says it's still there, and how long without a word
+// before the connection counts as lost.
+export const NET_PING_MS = 2000;
+export const NET_LOST_MS = 7000;
+// How long the waiting side's own dice stay in view before "Waiting for…"
+// covers them.
+export const NET_WAITING_DELAY_MS = 1200;
+// Where WebRTC looks for a way through: a public STUN server to find each
+// side's address. A TURN server, to relay where networks won't connect
+// directly, is still to come (DEV_PLAN.md Q4, 7.1a).
+export const ICE_SERVERS = [
+  { urls: 'stun:stun.l.google.com:19302' },
+];
