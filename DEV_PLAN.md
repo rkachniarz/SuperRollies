@@ -72,14 +72,14 @@ throws, 30 s or walkover), D49 (rejoin from the input log).
 - [x] **7.9a** Keep multiplayer code out of the artifact bundle: the build
   swaps `src/net/lobby.js` for a module that offers none, so nothing imports
   PeerJS there.
-- [ ] **7.10** Tested with two real browsers across two machines. Two
-  headless pages on one machine over the real PeerJS server: done.
-- [ ] **7.10a** Two players with the same dice colour can't tell their dice
-  apart by colour (only by half). Decide whether the guest's are shown in
-  another colour on both screens.
-- [ ] **7.11** Docs refresh. `README.md` "Publishing" notes the runtime
+- [x] **7.10** Tested with two real browsers across two machines: the first
+  real matches played on GitHub Pages, 2026-10-26.
+- [x] **7.10a** Two players with the same dice colour tell their dice apart
+  by half only. Not an issue (owner, 2026-10-26): each keeps the colour
+  they picked.
+- [x] **7.11** Docs refresh. `README.md` "Publishing" notes the runtime
   dependency on PeerJS's public signalling server, a third party that can be
-  unavailable.
+  unavailable, and `?net=local` for two tabs without it.
 
 ## Post-MVP — Browser compatibility *(D14)*
 
