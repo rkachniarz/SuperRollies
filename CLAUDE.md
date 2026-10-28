@@ -14,7 +14,7 @@ it, since code comments cite all of these by number:
 
 - `docs/decisions.md`: the decision log, `D1` onwards. Record new decisions
   there rather than silently changing requirements.
-- `docs/spec.md`: the vision, requirements (`R1.1`–`R6.11`) and the catalogue
+- `docs/spec.md`: the vision, requirements (`R1.1`–`R7.3`) and the catalogue
   of dice sets (`§5`) and Spice (`§6`).
 - `docs/history.md`: finished phases task by task (`0.5`, `4.6a`, `5.1`...),
   with what was measured on the way.
@@ -34,7 +34,7 @@ description) brought in line with what the game now does.
 npm install
 npm run dev     # http://localhost:8000 - must be served, ES modules don't load over file://
 npm run build   # -> dist/artifact.html, the single-file copy for claude.ai only
-npm test        # unit tests (node:test): RNG, rules engine, scorers, handfuls, die shapes, profile
+npm test        # unit tests (node:test): RNG, rules engine, scorers, handfuls, die shapes, profile, the multiplayer room
 npm run verify  # the browser checks below, in headless Chromium (needs npm run dev)
 node tools/phase0/verify.mjs chromium "second wind"   # only the checks whose label contains that
 # http://localhost:8000/?dev adds a Test bench to the menu: any dice set, then any Spice it allows (D39); ?dev&seed=N replays a match it logged

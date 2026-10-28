@@ -10,8 +10,9 @@ you score and win: poker hands with a redraw, only the sixes counting, dice
 that burn out on a 1, hit points, a race to a target, a tug of war. Pick them up, throw
 them, roll higher than your opponent. Lose a round and you lose a heart; lose
 them all and the match is over. Or **play a friend**: host a room, send
-them its link, pick the dice and Spice, and each of you throws when you
-like, your friend's dice landing on your screen as they throw them. Or pick
+them its link, pick the dice and Spice, and once you're both ready each of
+you throws when you like, your friend's dice landing on your screen as they
+throw them; the room keeps count of the games each of you has won. Or pick
 **Zen** and just throw: any of the dice, the whole tray, no score. Make it
 yours on the menu: your name, your card, the colour of your half of the
 tray and of your dice.
@@ -102,10 +103,12 @@ src/
               each player in their own time, with its 30 s clocks
   net/        multiplayer, left out of the single-file build:
     transport.js      a room and a link into it: PeerJS, or ?net=local
-    session.js        the room's players, invites, every input of a match
-                      logged by step, pings, reconnecting, picking a match
-                      back up after a reload
-    lobby.js          hosting, joining, and between matches
+    session.js        the room's players, the room passed to the guest,
+                      every input of a match logged by step, pings,
+                      reconnecting, picking a match back up after a reload
+    room.js           between matches: the choice, who's ready, games won
+    lobby.js          hosting, joining, and the room on screen: both cards,
+                      Ready, and the dice and Spice
   rng.js      the seeded random number generator every outcome draws from
   rules/      the rules, as pure functions with no DOM or physics:
     engine.js         match config, and what a round's dice mean for the match
@@ -124,7 +127,8 @@ src/
     types.js          the JSDoc types they share
   main.js     wires it together and runs the frame loop
 test/         unit tests for the RNG, the rules and every Spice, handfuls, die
-              shapes, the player profile, and the guest's seat (npm test)
+              shapes, the player profile, the guest's seat, and the multiplayer
+              room's Ready marks and games won (npm test)
 tools/
   build-artifact.mjs   bundles everything into one file (see below)
   phase0/              browser checks and physics checks (see below)

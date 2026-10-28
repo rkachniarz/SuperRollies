@@ -7,19 +7,21 @@ silently changing requirements.
 **Scope:** Quick Game (vs. AI) and host/join 1v1 multiplayer. The campaign is
 out of scope (D1).
 
-**Where things stand (2026-10-21):** Phases 0 to 6b are done: Rapier physics,
+**Where things stand (2026-10-28):** Phases 0 to 6b are done: Rapier physics,
 every die type from d4 to d20 plus percentile, 15 dice sets, 33 Spice, the
 two-card draft, Zen, the `?dev` test bench, and player profiles with each side
-shown as a card. Next is Phase 7, multiplayer.
+shown as a card. Phase 7, multiplayer, is played over PeerJS, bar a TURN
+server (7.1a). Phase 8 has given the room both players' cards, a ready check
+and games won; it's still to be tried by two real players.
 
 ## Where things are
 
 | Cited as | What | Where |
 |---|---|---|
-| `D1`–`D47` | Decisions and their reasons | [docs/decisions.md](docs/decisions.md) |
-| `R1.1`–`R6.11`, `§1`, `§4`–`§6` | Vision, requirements, catalogue of dice sets and Spice | [docs/spec.md](docs/spec.md) |
+| `D1`–`D50` | Decisions and their reasons | [docs/decisions.md](docs/decisions.md) |
+| `R1.1`–`R7.3`, `§1`, `§4`–`§6` | Vision, requirements, catalogue of dice sets and Spice | [docs/spec.md](docs/spec.md) |
 | `0.1`–`6b.9`, `§8` | Finished phases, task by task, with what was measured | [docs/history.md](docs/history.md) |
-| `Q1`–`Q4`, `7.x`, `P.x` | Open questions, work still to do | here |
+| `Q1`–`Q7`, `7.x`, `8.x`, `P.x` | Open questions, work still to do | here |
 
 ---
 
@@ -81,6 +83,35 @@ throws, 30 s or walkover), D49 (rejoin from the input log).
   dependency on PeerJS's public signalling server, a third party that can be
   unavailable, and `?net=local` for two tabs without it.
 
+## Phase 8 — Multiplayer polish
+
+Requirements: R7 in [docs/spec.md](docs/spec.md). More to come.
+
+Open questions:
+
+- [x] **Q5 — What un-readies a player?** Only the player: they can take
+  their Ready back until the match starts. The host changing the dice or
+  Spice leaves both marks as they are (D50).
+- [x] **Q6 — What counts as a game won?** A match won on the table, or by
+  walkover. A draw, or a match ended out of sync, counts for nobody (D50).
+- [x] **Q7 — How long does the count last?** As long as the room: a new room
+  starts from 0-0 (D50). Lifetime scores between players: see *Ideas*.
+
+- [x] **8.1** The lobby shows both players' cards at the top, `[Card] vs
+  [Card]`, colours and all; an empty slot until a guest joins (R7.1). One
+  room card for both seats now (`#netRoom`), this player's card first; the
+  guest's invite card and its "Let's play" are gone.
+- [x] **8.2** Ready check: a Ready button for each player, shown on their
+  card; a match starts once both are ready (R7.2, Q5). The host keeps the
+  room (`src/net/room.js`) and sends it to the guest (`room`), who only asks
+  (`ready`); the host starts the match (`start`, replacing `invite` and
+  `accept`; protocol 2).
+- [x] **8.3** Games won in this room, under each player's card (R7.3, Q6,
+  Q7), counted by the host as the match ends and kept with the saved
+  session, so a host who reloads mid-match keeps the count.
+- [x] **8.4** Checks in `check-multiplayer.mjs` for each of the above, and
+  the phase-end runs (`npm test`, `npm run verify`, `npm run phase0`).
+
 ## Post-MVP — Browser compatibility *(D14)*
 
 - [ ] **P.1** Run the verification checklist in Firefox and WebKit as well as
@@ -106,6 +137,9 @@ already be fixed.
 
 ## Ideas, not scheduled
 
+- **Lifetime scores between players**: games won carried over from room to
+  room for the same two players, rather than starting again at 0-0 (Q7,
+  D50).
 - **Difficult terrain** (spec §6.4): the board covered in bumps and strange
   geometry that influence the rolls.
 - **Stacking Spice** (D9): eligibility already has incompatibilities to allow

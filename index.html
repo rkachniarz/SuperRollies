@@ -163,30 +163,41 @@
     <p class="menu-status" id="netMenuStatus" hidden></p>
     <button class="picker-back" id="netMenuBack">&larr; Back</button>
   </div>
-  <!-- The host's room: its code and link, and the dice and Spice chosen. -->
+  <!-- The room, between matches, on both screens (docs/spec.md R7): both
+       players' cards, each with its Ready mark and games won; the host's
+       code and link; the dice and Spice chosen, in full (R4.2). -->
   <div class="menu-card net" id="netRoom" hidden>
-    <p class="draft-step">Your room</p>
-    <h2 class="net-code" id="netRoomCode"></h2>
-    <div class="net-row">
-      <input id="netRoomLink" type="text" readonly aria-label="Link to your room">
-      <button class="menu-btn secondary" id="netCopyBtn" type="button">Copy link</button>
+    <p class="draft-step" id="netRoomStep"></p>
+    <div class="net-versus" id="netVersus">
+      <div class="net-seat" id="netMe">
+        <div class="player-card" id="netMeCard">
+          <div class="pc-name" id="netMeName"></div>
+          <div class="pc-foot"><span class="net-ready" id="netMeReady"></span><span class="pc-look" id="netMeLook"><span class="pc-look-die"></span></span></div>
+        </div>
+        <p class="net-wins" id="netMeWins"></p>
+      </div>
+      <span class="net-vs" aria-hidden="true">vs</span>
+      <div class="net-seat" id="netThem">
+        <div class="player-card" id="netThemCard">
+          <div class="pc-name" id="netThemName"></div>
+          <div class="pc-foot"><span class="net-ready" id="netThemReady"></span><span class="pc-look" id="netThemLook"><span class="pc-look-die"></span></span></div>
+        </div>
+        <p class="net-wins" id="netThemWins"></p>
+      </div>
+    </div>
+    <div class="net-host" id="netHostOnly">
+      <h2 class="net-code" id="netRoomCode"></h2>
+      <div class="net-row">
+        <input id="netRoomLink" type="text" readonly aria-label="Link to your room">
+        <button class="menu-btn secondary" id="netCopyBtn" type="button">Copy link</button>
+      </div>
     </div>
     <p class="net-room-status" id="netRoomStatus" aria-live="polite"></p>
     <div class="rules-cards" id="netRoomCards"></div>
-    <div class="editor-buttons">
-      <button class="picker-back" id="netRoomBack">&larr; Close the room</button>
+    <div class="editor-buttons net-buttons">
+      <button class="picker-back" id="netRoomBack">&larr; Leave</button>
       <button class="menu-btn secondary" id="netChangeBtn" type="button">Change</button>
-    </div>
-  </div>
-  <!-- The guest's side: the host's choice, in full, to accept (R4.2). -->
-  <div class="menu-card net" id="netInvite" hidden>
-    <p class="draft-step" id="netInviteStep"></p>
-    <h2 class="picker-title" id="netInviteTitle"></h2>
-    <div class="rules-cards" id="netInviteCards"></div>
-    <p class="net-room-status" id="netInviteStatus" aria-live="polite"></p>
-    <div class="editor-buttons">
-      <button class="picker-back" id="netInviteBack">&larr; Leave</button>
-      <button class="menu-btn" id="netAcceptBtn" type="button" hidden>Let's play</button>
+      <button class="menu-btn" id="netReadyBtn" type="button" aria-pressed="false" disabled>Ready</button>
     </div>
   </div>
   <div class="menu-card wide" id="picker" hidden>

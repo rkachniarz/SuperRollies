@@ -733,6 +733,72 @@
     margin:0 0 14px;
   }
   .net-room-status{ min-height:1.4em; margin:18px 0; color:var(--ink-dim); font-size:15px; }
+  /* The room's two players, `[Card] vs [Card]` (docs/spec.md R7.1): this
+     player's first, each with its Ready mark and games won under it. */
+  .net-versus{
+    display:grid;
+    grid-template-columns:minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items:start;
+    gap:10px;
+    margin:4px 0 20px;
+  }
+  .net-seat{ min-width:0; }
+  .net-seat .player-card{ width:100%; min-height:72px; }
+  .net-vs{
+    align-self:center;
+    margin-top:-24px;
+    font-family:'Bungee', system-ui, sans-serif;
+    font-size:18px;
+    color:var(--ink-dim);
+  }
+  .net-ready{
+    font-size:12px;
+    font-weight:700;
+    white-space:nowrap;
+    border-radius:999px;
+    padding:2px 8px;
+    background:rgba(27,23,18,0.12);
+    color:rgba(27,23,18,0.7);
+  }
+  .net-ready.on{ background:#2f9e5b; color:#fff; }
+  .net-wins{
+    margin:8px 0 0;
+    font-size:14px;
+    font-weight:700;
+    font-variant-numeric:tabular-nums;
+    color:var(--ink-dim);
+  }
+  .net-wins[hidden]{ visibility:hidden; display:block; }
+  /* Nobody in the second place yet. */
+  .net-seat.empty .player-card{
+    justify-content:center;
+    background:none;
+    color:var(--ink-dim);
+    border:2px dashed var(--card-border);
+    box-shadow:none;
+    text-align:center;
+  }
+  .net-seat.empty .pc-name{
+    font-family:'Karla', system-ui, sans-serif;
+    font-size:15px;
+    font-weight:700;
+    white-space:normal;
+  }
+  .net-seat.empty .pc-foot{ display:none; }
+  .net-buttons{ gap:8px; flex-wrap:wrap; }
+  .net-buttons .menu-btn{ padding:10px 18px; font-size:16px; }
+  .net-buttons #netReadyBtn{ min-width:7.5em; }
+  @media (max-width:580px){
+    .net-versus{ gap:6px; }
+    .net-seat .player-card{ padding:4px 8px 6px; border-width:2px; border-radius:10px; min-height:62px; }
+    .net-seat .pc-name{ font-size:18px; }
+    .net-seat .pc-foot{ gap:6px; min-height:0; }
+    .net-seat .pc-look{ padding:3px 8px; }
+    .net-seat .pc-look-die{ width:16px; height:16px; }
+    .net-vs{ font-size:14px; }
+    .net-buttons .menu-btn{ padding:10px 12px; font-size:15px; }
+    .net-buttons #netReadyBtn{ min-width:6.5em; }
+  }
 
   /* A side's state-based advantage, by its name (R3.5). */
   .edge{

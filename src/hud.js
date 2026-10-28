@@ -94,6 +94,9 @@ export function createHud() {
     opponent: { card: document.getElementById('opponentCard'), name: document.getElementById('opponentName') },
     menu: { card: document.getElementById('menuCard'), name: document.getElementById('menuName'), look: document.getElementById('menuLook') },
     editor: { card: document.getElementById('editorCard'), name: document.getElementById('editorCardName'), look: document.getElementById('editorLook') },
+    // The multiplayer room's two (net/lobby.js): this player's, and the other's.
+    me: { card: document.getElementById('netMeCard'), name: document.getElementById('netMeName'), look: document.getElementById('netMeLook') },
+    them: { card: document.getElementById('netThemCard'), name: document.getElementById('netThemName'), look: document.getElementById('netThemLook') },
   };
 
   /**
@@ -465,6 +468,11 @@ export function createHud() {
     if (opponent) paintCard(cards.opponent, opponent);
   }
 
+  /** Draws one of the multiplayer room's cards, `'me'` or `'them'`, for `looks`. */
+  function showRoomPlayer(which, looks) {
+    paintCard(cards[which], looks);
+  }
+
   /** Draws the player's card on the menu. */
   function showMenuPlayer(looks) {
     paintCard(cards.menu, looks);
@@ -611,7 +619,7 @@ export function createHud() {
     showMatch,
     showResult, showRound, hideResult, showBoard, showMenu, showPicker, showDraft, setLoaded, setLoadFailed,
     showMatchInfo, showAnnounce, showEdge, showRethrow, showPlayers, showMenuPlayer, showEditor,
-    showStatus, setOpponentName, showMenuCard,
+    showStatus, setOpponentName, showMenuCard, showRoomPlayer,
     onEditPlayer(handler) { editBtn.addEventListener('click', handler); },
     /** Calls `fn` once the physics engine has loaded (now, if it has). */
     onLoaded(fn) { if (loaded) fn(); else whenLoaded.push(fn); },

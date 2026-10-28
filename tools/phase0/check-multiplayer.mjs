@@ -39,23 +39,55 @@ export async function openRoom({ viewport = DESKTOP, guestViewport = viewport, h
   return { browser, context, host, guest, errors };
 }
 
-/** The host opens a room for `diceSet` with `spice`; resolves with its code. */
-export async function hostRoom(host, diceSet = 'classic', spice = 'vanilla') {
+/**
+ * The host opens a room for `diceSet` with `spice`, and (unless `ready` is
+ * false) says it's ready; resolves with its code.
+ */
+export async function hostRoom(host, diceSet = 'classic', spice = 'vanilla', { ready = true } = {}) {
   await host.waitForSelector('#netBtn:not([disabled])', { timeout: 30000 });
   await host.click('#netBtn');
   await host.click('#netHostBtn');
   await host.click(`#pickerOptions [data-pick="${diceSet}"]`);
   await host.click(`#pickerOptions [data-pick="${spice}"]`);
   await host.waitForFunction(() => /^[A-Z0-9]{5}$/.test(document.getElementById('netRoomCode').textContent));
+  if (ready) await pressReady(host);
   return host.textContent('#netRoomCode');
 }
 
-/** The guest joins room `code` by its link and accepts what's offered. */
-export async function joinRoom(guest, code) {
+/**
+ * The guest joins room `code` by its link, and (unless `ready` is false)
+ * says it's ready, which starts the match if the host is.
+ */
+export async function joinRoom(guest, code, { ready = true } = {}) {
   await guest.goto(`${BASE_URL}?net=local&join=${code}`);
-  await guest.waitForSelector('#netAcceptBtn:not([hidden])', { timeout: 30000 });
-  await guest.click('#netAcceptBtn');
+  await guest.waitForSelector('#netRoom:not([hidden]) #netReadyBtn:not([disabled])', { timeout: 30000 });
+  if (ready) await pressReady(guest);
 }
+
+/** Presses Ready in the room on screen, once it can be pressed and isn't already. */
+export async function pressReady(page) {
+  await page.waitForSelector('#netRoom:not([hidden]) #netReadyBtn:not([disabled])[aria-pressed="false"]', { timeout: 20000 });
+  await page.click('#netReadyBtn');
+}
+
+/** Both back in the room after a match: both ready for match `n`, and it under way. */
+export async function playAgain(host, guest, n) {
+  await Promise.all([pressReady(host), pressReady(guest)]);
+  await host.waitForFunction((m) => window.superRollies.game.net?.n === m && window.superRollies.game.state === 'playing',
+    n, { timeout: 15000 });
+}
+
+/** What a page's room shows: each card's name, colour, Ready mark and games won, this player's first. */
+export const roomSeen = (page) => page.evaluate(() => Object.fromEntries(['Me', 'Them'].map((who) => {
+  const wins = document.getElementById(`net${who}Wins`);
+  return [who.toLowerCase(), {
+    empty: document.getElementById(`net${who}`).classList.contains('empty'),
+    name: document.getElementById(`net${who}Name`).textContent,
+    card: document.getElementById(`net${who}Card`).style.getPropertyValue('--card'),
+    ready: document.getElementById(`net${who}Ready`).classList.contains('on'),
+    wins: wins.hidden ? null : wins.textContent,
+  }];
+})));
 
 /** Waits for a page's match to be under way and its dice to be grabbable. */
 export async function waitToThrow(page, timeout = 15000) {
@@ -219,6 +251,15 @@ export async function multiplayerChecks(report, only) {
       /^Waiting for Guesty… \d+ s left to throw\.$/.test(waiting) && /You win by walkover.*Guesty didn't throw in time/.test(said.host)
         && /You lose by walkover.*You didn't throw in time/.test(said.guest),
       `waiting card "${waiting}"; host "${said.host}"; guest "${said.guest}"`);
+    // A walkover is a game won (R7.3, D50), on both screens' rooms.
+    await Promise.all([host, guest].map((p) => p.click('#result')));
+    await Promise.all([host, guest].map((p) => p.waitForSelector('#netRoom:not([hidden])', { timeout: 15000 })));
+    await guest.waitForFunction(() => window.superRollies.lobby.room.wins.host === 1, null, { timeout: 5000 }).catch(() => {});
+    const rooms = { host: await roomSeen(host), guest: await roomSeen(guest) };
+    report('Multiplayer: a match won by walkover counts as a game won, on both screens',
+      rooms.host.me.wins === '1 game won' && rooms.host.them.wins === '0 games won'
+        && rooms.guest.me.wins === '0 games won' && rooms.guest.them.wins === '1 game won',
+      JSON.stringify(rooms));
   });
 
   // Leaving mid-match gives it away at once.
@@ -275,18 +316,97 @@ export async function multiplayerChecks(report, only) {
       /You win by walkover.*didn't come back/.test(said), said);
   });
 
-  // After a match, the host's room offers the guest the same again.
+  // The room (R7.1): this player's card and the other's, `[Card] vs
+  // [Card]`, in their own colours on both screens; an empty slot until a
+  // guest joins. On a phone too, the guest's screen narrower.
+  await withRoom('multiplayer: lobby cards', only, report, async ({ host, guest }) => {
+    const code = await hostRoom(host, 'classic', 'vanilla', { ready: false });
+    const alone = await roomSeen(host);
+    // The guest in another card colour, so the two cards can't pass for each other.
+    await guest.evaluate(async () => {
+      const { CARD_COLORS } = await import('/src/config.js');
+      const { profiles } = window.superRollies;
+      profiles.save({ ...profiles.get(), card: CARD_COLORS.find((c) => c.id !== profiles.get().card).id });
+    });
+    await joinRoom(guest, code, { ready: false });
+    await host.waitForFunction(() => !document.getElementById('netThem').classList.contains('empty'));
+    await guest.waitForFunction(() => !document.getElementById('netThem').classList.contains('empty'));
+    const cardOf = (page) => page.evaluate(async () => {
+      const { looksOf } = await import('/src/profile.js');
+      return looksOf(window.superRollies.profiles.get()).card;
+    });
+    const hostLooks = { name: 'Hosty', card: await cardOf(host) };
+    const guestLooks = { name: 'Guesty', card: await cardOf(guest) };
+    const seen = { host: await roomSeen(host), guest: await roomSeen(guest) };
+    const shows = (s, me, them) => s.me.name === me.name && s.me.card === me.card && !s.them.empty
+      && s.them.name === them.name && s.them.card === them.card && !s.me.ready && !s.them.ready;
+    // Nothing on the room's card may spill off a phone's screen.
+    const overflow = await guest.evaluate(() => document.documentElement.scrollWidth > window.innerWidth
+      || [...document.querySelectorAll('#netRoom .player-card, #netRoom button:not([hidden])')].some((el) => {
+        const r = el.getBoundingClientRect();
+        return r.left < 0 || r.right > window.innerWidth;
+      }));
+    report('Multiplayer: the room shows both players\' cards in their colours, an empty slot until the guest joins',
+      alone.me.name === 'Hosty' && alone.them.empty && /Waiting for a friend/.test(alone.them.name)
+        && shows(seen.host, hostLooks, guestLooks) && shows(seen.guest, guestLooks, hostLooks) && !overflow,
+      JSON.stringify({ alone, ...seen, overflow }));
+  }, { guestViewport: PHONE });
+
+  // The ready check (R7.2, D50): a match starts once both are ready, and not
+  // before; a player takes their Ready back; the host changing the dice or
+  // Spice leaves both marks as they are, and the match is on the new choice.
+  await withRoom('multiplayer: ready check', only, report, async ({ host, guest }) => {
+    const code = await hostRoom(host, 'classic', 'vanilla', { ready: false });
+    await joinRoom(guest, code, { ready: false });
+    const themReady = (page, on) => page.waitForFunction((v) => document.getElementById('netThemReady').classList.contains('on') === v,
+      on, { timeout: 5000 }).then(() => true, () => false);
+    await pressReady(guest);
+    const shownOn = await themReady(host, true);
+    await host.waitForTimeout(1000);
+    const notYet = await host.evaluate(() => window.superRollies.game.state) !== 'playing';
+    await guest.click('#netReadyBtn');
+    const takenBack = await themReady(host, false);
+    await pressReady(guest);
+    await themReady(host, true);
+    await host.click('#netChangeBtn');
+    await host.click('#pickerOptions [data-pick="greatsword"]');
+    await host.click('#pickerOptions [data-pick="underdog"]');
+    await guest.waitForSelector('#netRoomCards [data-pick="greatsword"]', { timeout: 5000 });
+    const kept = { host: await roomSeen(host), guest: await roomSeen(guest) };
+    const stillReady = kept.host.them.ready && kept.guest.me.ready && !kept.host.me.ready && !kept.guest.them.ready;
+    await pressReady(host);
+    await Promise.all([host, guest].map((p) => p.waitForFunction(() => window.superRollies.game.state === 'playing'
+      && window.superRollies.game.net?.n === 1, null, { timeout: 15000 })));
+    const config = await Promise.all([host, guest].map((p) => p.evaluate(() => {
+      const { diceSet, spice } = window.superRollies.game.config;
+      return `${diceSet}/${spice}`;
+    })));
+    report('Multiplayer: a match starts once both are ready, a Ready can be taken back, and changing the Spice keeps both',
+      shownOn && notYet && takenBack && stillReady && config.every((c) => c === 'greatsword/underdog'),
+      JSON.stringify({ shownOn, notYet, takenBack, stillReady, config }));
+  });
+
+  // After a match both are back in the room, unready, the winner's game
+  // counted on both screens (R7.3); both ready again start the next.
   await withRoom('multiplayer: rematch', only, report, async ({ host, guest }) => {
     await joinRoom(guest, await hostRoom(host));
     await Promise.all([bot(host, { dx: -40 }), bot(guest, { dx: 50 })]);
-    await guest.waitForSelector('#netAcceptBtn:not([hidden])', { timeout: 20000 });
-    const title = await guest.textContent('#netInviteTitle');
-    await guest.click('#netAcceptBtn');
-    await host.waitForFunction(() => window.superRollies.game.net?.n === 2 && window.superRollies.game.state === 'playing', null, { timeout: 15000 });
+    const first = await host.evaluate(() => window.superRollies.rounds.at(-1).outcome.matchWinner);
+    await Promise.all([host, guest].map((p) => p.waitForSelector('#netRoom:not([hidden])', { timeout: 20000 })));
+    const hostWins = first === 'player' ? 1 : 0;
+    const guestWins = first === 'opponent' ? 1 : 0;
+    await guest.waitForFunction((w) => window.superRollies.lobby.room.wins.host === w, hostWins, { timeout: 5000 }).catch(() => {});
+    const rooms = { host: await roomSeen(host), guest: await roomSeen(guest) };
+    const unready = !rooms.host.me.ready && !rooms.host.them.ready && !rooms.guest.me.ready && !rooms.guest.them.ready;
+    const won = (w) => `${w} ${w === 1 ? 'game' : 'games'} won`;
+    const counted = rooms.host.me.wins === won(hostWins) && rooms.host.them.wins === won(guestWins)
+      && rooms.guest.me.wins === won(guestWins) && rooms.guest.them.wins === won(hostWins);
+    report('Multiplayer: after a match both are back in the room, unready, the game won counted on both screens',
+      unready && counted, `first match: host's ${first}; ${JSON.stringify(rooms)}`);
+    await playAgain(host, guest, 2);
     await Promise.all([bot(host, { dx: -40 }), bot(guest, { dx: 50 })]);
     const problem = agree(await roundsSeen(host, guest));
-    report('Multiplayer: after a match the guest is offered another, and it plays out agreeing too',
-      title === 'Hosty wants another game' && !problem, problem ?? `invite said "${title}"`);
+    report('Multiplayer: both ready again, the next match plays out agreeing too', !problem, problem ?? 'match 2 agreed');
   });
 
   // Every Spice that waits on a player, or simulates or draws on the table
@@ -320,11 +440,8 @@ export async function multiplayerChecks(report, only) {
             ok && (!fires || extra > 0), detail);
           return;
         }
-        // The same again: the host's room offers it once the card's gone.
-        await guest.waitForSelector('#netAcceptBtn:not([hidden])', { timeout: 20000 });
-        await guest.click('#netAcceptBtn');
-        await host.waitForFunction((m) => window.superRollies.game.net?.n === m && window.superRollies.game.state === 'playing',
-          n + 1, { timeout: 15000 });
+        // The same again: both ready, once back in the room.
+        await playAgain(host, guest, n + 1);
       }
     });
   }

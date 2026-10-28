@@ -3,8 +3,10 @@
 //
 // Messages, all JSON, in order:
 //   hello  {v, token, profile, match}  each side, on every new link
-//   invite {n, config}                 host: match n, on these dice and Spice
-//   accept {n}                         guest: let's play it
+//   room   {room}                      host: the lobby (room.js): the dice and
+//                                      Spice, who's ready, games won
+//   ready  {on}                        guest: ready, or not any more
+//   start  {n, config}                 host: both ready, match n begins
 //   in     {n, key, data}              one input of match n (see below)
 //   sync   {n, log}                    every input of match n so far, after a reconnect
 //   end    {n, result}                 match n is over off the table (a walkover)
@@ -25,7 +27,7 @@ import { checkProfile } from '../profile.js';
 import { digestOf } from '../seat.js';
 import { newCode, NetError } from './transport.js';
 
-const PROTOCOL = 1;
+const PROTOCOL = 2;
 const STORE_KEY = 'superRollies.net';
 // A saved session older than this isn't picked up again: the other player
 // will have been given the match by now.
@@ -75,6 +77,9 @@ export function createSession(transport, profile, storage = globalThis.sessionSt
    * inputs, and how it ended, once it has.
    */
   let match = null;
+  // The host's lobby (room.js), kept with the match so a reload keeps the
+  // games won.
+  let lobby = null;
   // Waiting for an input of the other player's, by log key.
   const takers = new Map();
   const listeners = {};
@@ -85,7 +90,7 @@ export function createSession(transport, profile, storage = globalThis.sessionSt
     if (!match) return;
     try {
       storage?.setItem(STORE_KEY, JSON.stringify({
-        seat, code, token: myToken, them, at: Date.now(),
+        seat, code, token: myToken, them, at: Date.now(), lobby,
         match: { n: match.n, config: match.config, log: [...match.log], ended: match.ended },
       }));
     } catch { /* storage full or blocked: only a reload can't be recovered from */ }
@@ -154,11 +159,14 @@ export function createSession(transport, profile, storage = globalThis.sessionSt
         emit('back');
         break;
       }
-      case 'invite':
-        if (seat === 'guest') emit('invite', { n: msg.n, config: msg.config });
+      case 'room':
+        if (seat === 'guest') emit('room', msg.room);
         break;
-      case 'accept':
-        if (seat === 'host') emit('accept', { n: msg.n });
+      case 'ready':
+        if (seat === 'host') emit('ready', msg.on === true);
+        break;
+      case 'start':
+        if (seat === 'guest') emit('start', { n: msg.n, config: msg.config });
         break;
       case 'in':
         if (match && msg.n === match.n) merge([[msg.key, msg.data]]);
@@ -171,8 +179,7 @@ export function createSession(transport, profile, storage = globalThis.sessionSt
         break;
       case 'end':
         if (match && msg.n === match.n && !match.ended) {
-          match.ended = msg.result;
-          save();
+          finish(msg.result);
           emit('over', msg.result);
         }
         break;
@@ -186,6 +193,13 @@ export function createSession(transport, profile, storage = globalThis.sessionSt
       default:
         break;
     }
+  }
+
+  // Match over, here or over there: `result` as matchView's end says.
+  function finish(result) {
+    match.ended = result;
+    save();
+    emit('ended', { n: match.n, result });
   }
 
   /**
@@ -293,9 +307,8 @@ export function createSession(transport, profile, storage = globalThis.sessionSt
        * have seen it happen.
        */
       end(result) {
-        if (m.ended) return;
-        m.ended = result;
-        save();
+        if (m.ended || m !== match) return;
+        finish(result);
         if (result.reason !== 'played') send({ type: 'end', n: m.n, result });
       },
       get ended() { return m.ended; },
@@ -348,6 +361,7 @@ export function createSession(transport, profile, storage = globalThis.sessionSt
       code = saved.code;
       myToken = saved.token;
       them = saved.them;
+      lobby = saved.lobby ?? null;
       match = { n: saved.match.n, config: saved.match.config, log: new Map(saved.match.log), ended: saved.match.ended };
       const deadline = Date.now() + NET_FOLLOW_MS;
       const back = new Promise((resolve) => {
@@ -379,8 +393,17 @@ export function createSession(transport, profile, storage = globalThis.sessionSt
     resumedMatch: () => matchView(),
     get matchNumber() { return match?.n ?? 0; },
 
-    invite(n, config) { send({ type: 'invite', n, config }); },
-    accept(n) { send({ type: 'accept', n }); },
+    /** The host's lobby, sent to the guest and kept with the match (room.js). */
+    get lobby() { return lobby; },
+    set lobby(room) {
+      lobby = room;
+      save();
+      if (seat === 'host') send({ type: 'room', room });
+    },
+    /** The guest is ready, or not any more. */
+    ready(on) { send({ type: 'ready', on }); },
+    /** The host starts match `n`, both being ready. */
+    start(n, config) { send({ type: 'start', n, config }); },
 
     /** Leaves for good: says so, and closes everything. */
     leave() {

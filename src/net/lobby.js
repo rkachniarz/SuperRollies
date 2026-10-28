@@ -2,10 +2,11 @@
 // joining one, and what each player sees between matches.
 //
 // The host picks the dice and Spice from the full catalogue (docs/spec.md
-// R4.2, docs/decisions.md D3), bar what can't be played over the network;
-// the guest sees the choice with its full rules and accepts it, and the
-// match starts on both screens. After it, the host's room invites the guest
-// to the same again, or the host changes the choice. A page reloaded
+// R4.2, docs/decisions.md D3), bar what can't be played over the network.
+// Between matches both players see the room (R7): both cards, `[Card] vs
+// [Card]`, each with its Ready mark and games won, and the choice with its
+// full rules, which the host can change. A match starts once both are ready
+// (room.js), and after it both are back in the room. A page reloaded
 // mid-match picks its match back up (D49).
 //
 // Left out of the artifact build (tools/build-artifact.mjs), where there's
@@ -13,9 +14,11 @@
 
 import { createTransport, cleanCode } from './transport.js';
 import { createSession, savedSession, forgetSession } from './session.js';
+import { newRoom, setReady, setChoice, bothReady, started, newGuest, tally, checkRoom } from './room.js';
 import { DICE_SETS } from '../rules/dice-sets.js';
 import { testBenchSpice } from '../rules/draft.js';
 import { diceSetCard, spiceCard, renderCard } from '../cards.js';
+import { looksOf } from '../profile.js';
 import { randomSeed } from '../rng.js';
 
 // Not offered in multiplayer: No Man's Land needs both handfuls in one
@@ -32,27 +35,45 @@ export function createLobby({ hud, game, profiles }) {
   const menuStatus = $('netMenuStatus');
   const codeInput = /** @type {HTMLInputElement} */ ($('netCodeInput'));
   const roomCard = $('netRoom');
+  const roomStep = $('netRoomStep');
+  const hostOnly = $('netHostOnly');
   const roomCode = $('netRoomCode');
   const roomLink = /** @type {HTMLInputElement} */ ($('netRoomLink'));
   const roomStatus = $('netRoomStatus');
   const roomCards = $('netRoomCards');
-  const inviteCard = $('netInvite');
-  const inviteStep = $('netInviteStep');
-  const inviteTitle = $('netInviteTitle');
-  const inviteCards = $('netInviteCards');
-  const inviteStatus = $('netInviteStatus');
-  const acceptBtn = $('netAcceptBtn');
+  const backBtn = $('netRoomBack');
+  const changeBtn = $('netChangeBtn');
+  const readyBtn = /** @type {HTMLButtonElement} */ ($('netReadyBtn'));
+  const seats = {
+    me: { el: $('netMe'), ready: $('netMeReady'), wins: $('netMeWins') },
+    them: { el: $('netThem'), name: $('netThemName'), ready: $('netThemReady'), wins: $('netThemWins') },
+  };
 
   /** @type {ReturnType<typeof createSession> | null} */
   let session = null;
-  // The host's choice ({ diceSet, spice }), and its matches, counted.
-  let choice = null;
+  // The room (room.js): the host's own, or the guest's copy of it, once
+  // one has come (`heard`).
+  let room = newRoom();
+  let heard = false;
+  // The host's matches, counted, and the last whose result is in the count.
   let matches = 0;
-  // The match offered and not yet accepted: the host's sent, or the guest's received.
-  let offered = null;
+  let counted = 0;
   let playing = false;
+  // The host is choosing new dice or Spice: no match starts meanwhile.
+  let choosing = false;
+  // What the room says above the cards, when it's more than who's ready.
+  let note = '';
 
   const nameOf = () => session?.them?.name ?? 'Your friend';
+  const isHost = () => session?.seat === 'host';
+  const mySeat = () => session?.seat ?? 'host';
+  const theirSeat = () => (mySeat() === 'host' ? 'guest' : 'host');
+  /** The choice's dice set and Spice, if this version of the game has both. */
+  const known = (choice) => {
+    const diceSet = choice && DICE_SETS[choice.diceSet];
+    const spice = diceSet && spiceFor(choice.diceSet).find((sp) => sp.id === choice.spice);
+    return spice ? { diceSet, spice } : null;
+  };
 
   function showMenu(status) {
     menuStatus.textContent = status ?? '';
@@ -63,9 +84,11 @@ export function createLobby({ hud, game, profiles }) {
   function leave(status) {
     session?.leave();
     session = null;
-    choice = null;
-    offered = null;
+    room = newRoom();
+    heard = false;
     playing = false;
+    choosing = false;
+    note = '';
     if (status === undefined) hud.showMenu();
     else showMenu(status);
   }
@@ -73,61 +96,78 @@ export function createLobby({ hud, game, profiles }) {
   /** A new session, listening for what happens outside a match. */
   function newSession() {
     const s = createSession(createTransport(), profiles.get());
-    s.on('joined', () => { if (s === session && s.seat === 'host' && !playing) welcome(); });
-    // An invite that comes while the last match's card is still up waits for it.
-    s.on('invite', (invite) => {
-      if (s !== session) return;
-      offered = invite;
-      if (!playing) showInvite(invite);
-    });
-    s.on('accept', ({ n }) => { if (s === session && offered?.n === n) begin(offered); });
-    s.on('left', (reason) => {
-      if (s !== session || playing) return;
+    const mine = (fn) => (payload) => { if (s === session) fn(payload); };
+    // A new guest starts from 0-0 (D50); one coming back keeps the count.
+    s.on('joined', mine(() => {
+      if (s.seat === 'host') room = newGuest(room);
+      note = '';
+      render();
+    }));
+    // The room goes to the guest on every hello, so one back after a
+    // dropped link or a reload has it too.
+    s.on('back', mine(() => { if (s.seat === 'host') update(room); }));
+    s.on('room', mine((r) => {
+      room = checkRoom(r);
+      heard = true;
+      render();
+    }));
+    s.on('ready', mine((on) => { if (!playing) update(setReady(room, 'guest', on)); }));
+    s.on('start', mine((start) => { if (!playing) begin(start); }));
+    // A game won (R7.3), counted by the host as the match ends, so the
+    // guest's room has the new count by the time its card has gone.
+    s.on('ended', mine(({ n, result }) => {
+      if (s.seat !== 'host' || n <= counted) return;
+      counted = n;
+      update(tally(room, result));
+    }));
+    s.on('left', mine((reason) => {
+      if (playing) return;
       if (s.seat === 'host') {
-        offered = null;
-        showRoom(`${reason === 'full' ? 'Somebody' : nameOf()} left. Waiting for a friend to join…`);
+        note = `${reason === 'full' ? 'Somebody' : nameOf()} left.`;
+        update(setReady(room, 'guest', false));
       } else {
         leave(reason === 'full' ? 'That room already has two players in it.' : 'The host closed the room.');
       }
-    });
-    s.on('failed', (err) => { if (s === session) leave(err.message); });
-    s.on('status', (status) => {
-      if (s !== session || playing) return;
-      if (status === 'lost') setStatus('Connection lost. Trying to reconnect…');
-      if (status === 'open') setStatus(s.seat === 'host' ? `${nameOf()} is back.` : `Back. Waiting for ${nameOf()}…`);
-    });
+    }));
+    s.on('failed', mine((err) => leave(err.message)));
+    s.on('status', mine((status) => {
+      if (playing) return;
+      if (status === 'lost') note = 'Connection lost. Trying to reconnect…';
+      if (status === 'open') note = '';
+      render();
+      maybeStart();
+    }));
     return s;
   }
 
-  const setStatus = (text) => { (session?.seat === 'guest' ? inviteStatus : roomStatus).textContent = text; };
+  // ---------- The room ----------
 
-  // ---------- Hosting ----------
-
-  /** The host picks the dice, then the Spice; `then` goes on from there. */
-  function choose(then, onBack) {
-    const pickDice = () => hud.showPicker('Play a friend: choose the dice',
-      Object.values(DICE_SETS).map(diceSetCard), pickSpice, onBack);
-    const pickSpice = (diceSet) => hud.showPicker(`Play a friend: Spice for ${DICE_SETS[diceSet].name}`,
-      spiceFor(diceSet).map(spiceCard), (spice) => { choice = { diceSet, spice }; then(); }, pickDice);
-    pickDice();
+  /** The host's room changed: the guest is told, and a match starts if both are ready. */
+  function update(next) {
+    room = next;
+    if (isHost()) session.lobby = room;
+    render();
+    maybeStart();
   }
 
-  async function host() {
-    session = newSession();
-    const s = session;
-    showRoom('Opening your room…');
-    try {
-      await s.host();
-    } catch (err) {
-      if (s === session) leave(err.message);
-      return;
-    }
-    if (s !== session) return;
-    showRoom('Waiting for a friend to join…');
+  function maybeStart() {
+    if (!isHost() || playing || choosing || !session.them || session.status !== 'open' || !bothReady(room)) return;
+    matches = Math.max(matches, session.matchNumber) + 1;
+    const start = { n: matches, config: { seed: randomSeed(), ...room.choice } };
+    room = started(room);
+    session.lobby = room;
+    session.start(start.n, start.config);
+    begin(start);
   }
 
-  function showRoom(status) {
-    const code = session?.code;
+  /** Brings the room's card in line with the room (`show` puts it on screen). */
+  function render() {
+    if (!session) return;
+    const host = isHost();
+    const them = session.them;
+    const code = session.code;
+    roomStep.textContent = host ? 'Your room' : `Room ${code ?? ''}`;
+    hostOnly.hidden = !host;
     roomCode.textContent = code ?? '·····';
     const url = new URL(window.location.href);
     url.search = '';
@@ -136,26 +176,82 @@ export function createLobby({ hud, game, profiles }) {
     // Two tabs on one machine, for testing, stay on the local transport.
     if (new URLSearchParams(window.location.search).get('net') === 'local') url.searchParams.set('net', 'local');
     roomLink.value = code ? url.href : '';
-    roomCards.replaceChildren(...(choice
-      ? [diceSetCard(DICE_SETS[choice.diceSet]), spiceCard(spiceFor(choice.diceSet).find((sp) => sp.id === choice.spice))]
-        .map((card) => renderCard(card, { full: true }))
-      : []));
-    if (status !== undefined) roomStatus.textContent = status;
+
+    // Both cards (R7.1), each with its Ready mark (R7.2) and games won (R7.3).
+    hud.showRoomPlayer('me', looksOf(profiles.get()));
+    seats.them.el.classList.toggle('empty', !them);
+    if (them) hud.showRoomPlayer('them', looksOf(them));
+    else seats.them.name.textContent = host ? 'Waiting for a friend to join…' : 'Waiting for the host…';
+    const showSeat = ({ ready, wins }, seat) => {
+      const on = room.ready[seat];
+      ready.textContent = on ? 'Ready' : 'Not ready';
+      ready.classList.toggle('on', on);
+      const n = room.wins[seat];
+      wins.textContent = `${n} ${n === 1 ? 'game' : 'games'} won`;
+    };
+    showSeat(seats.me, mySeat());
+    showSeat(seats.them, theirSeat());
+    seats.them.wins.hidden = !them;
+
+    const chosen = known(room.choice);
+    roomCards.replaceChildren(...(chosen ? [diceSetCard(chosen.diceSet), spiceCard(chosen.spice)] : [])
+      .map((card) => renderCard(card, { full: true })));
+
+    const mineOn = room.ready[mySeat()];
+    const theirsOn = room.ready[theirSeat()];
+    let status = note;
+    if (!status) {
+      if (!host && !heard) status = them ? `Waiting for ${nameOf()} to choose the dice…` : 'Joining…';
+      else if (room.choice && !chosen) status = 'The host chose something this version of the game doesn\'t have. Both reload the page and try again.';
+      else if (!them) status = 'Send a friend the link, or the code.';
+      else if (mineOn && theirsOn) status = 'Starting…';
+      else if (mineOn) status = `Waiting for ${nameOf()} to be ready…`;
+      else if (theirsOn) status = `${nameOf()} is ready. Are you?`;
+      else status = host ? 'Press Ready when you are. You can still change the dice and Spice.' : 'Read the rules, then press Ready.';
+    }
+    roomStatus.textContent = status;
+
+    backBtn.textContent = host ? '← Close the room' : '← Leave';
+    changeBtn.hidden = !host;
+    readyBtn.disabled = !chosen || (!host && !heard);
+    readyBtn.textContent = mineOn ? 'Not ready' : 'Ready';
+    readyBtn.setAttribute('aria-pressed', String(mineOn));
+    readyBtn.classList.toggle('secondary', mineOn);
+  }
+
+  function show() {
+    render();
     hud.showMenuCard(roomCard, () => leave());
   }
 
-  // A guest has said hello: they're offered the match.
-  function welcome() {
-    showRoom(`${nameOf()} joined.`);
-    invite();
+  // ---------- Hosting ----------
+
+  /** The host picks the dice, then the Spice; `then` goes on from there with the choice. */
+  function choose(then, onBack) {
+    const pickDice = () => hud.showPicker('Play a friend: choose the dice',
+      Object.values(DICE_SETS).map(diceSetCard), pickSpice, onBack);
+    const pickSpice = (diceSet) => hud.showPicker(`Play a friend: Spice for ${DICE_SETS[diceSet].name}`,
+      spiceFor(diceSet).map(spiceCard), (spice) => then({ diceSet, spice }), pickDice);
+    pickDice();
   }
 
-  function invite() {
-    if (!session?.them || !choice) return;
-    matches = Math.max(matches, session.matchNumber) + 1;
-    offered = { n: matches, config: { seed: randomSeed(), ...choice } };
-    session.invite(offered.n, offered.config);
-    showRoom(`${nameOf()} is reading the rules…`);
+  async function host(choice) {
+    session = newSession();
+    const s = session;
+    room = newRoom(choice);
+    matches = 0;
+    counted = 0;
+    note = 'Opening your room…';
+    show();
+    try {
+      await s.host();
+    } catch (err) {
+      if (s === session) leave(err.message);
+      return;
+    }
+    if (s !== session) return;
+    note = '';
+    render();
   }
 
   // ---------- Joining ----------
@@ -163,50 +259,26 @@ export function createLobby({ hud, game, profiles }) {
   async function join(code) {
     session = newSession();
     const s = session;
-    showInviteCard({ step: `Room ${code}`, title: 'Joining…', status: '' });
+    room = newRoom();
+    heard = false;
+    show();
+    roomStep.textContent = `Room ${code}`;
     try {
       await s.join(code);
     } catch (err) {
       if (s === session) leave(err.kind === 'missing' ? `No game with the code ${code}. Check it and try again.` : err.message);
       return;
     }
-    if (s !== session) return;
-    if (!offered) showInviteCard({ step: `Room ${code}`, title: `${nameOf()}'s room`, status: `Waiting for ${nameOf()} to choose the dice…` });
-  }
-
-  function showInviteCard({ step, title, cards = [], status, accept = false }) {
-    inviteStep.textContent = step;
-    inviteTitle.textContent = title;
-    inviteCards.replaceChildren(...cards.map((card) => renderCard(card, { full: true })));
-    inviteStatus.textContent = status;
-    acceptBtn.hidden = !accept;
-    hud.showMenuCard(inviteCard, () => leave());
-    if (accept) acceptBtn.focus();
-  }
-
-  function showInvite({ n, config }) {
-    const diceSet = DICE_SETS[config.diceSet];
-    const spice = spiceFor(config.diceSet).find((sp) => sp.id === config.spice);
-    if (!diceSet || !spice) {
-      leave('The host chose something this version of the game doesn\'t have. Both reload the page and try again.');
-      return;
-    }
-    offered = { n, config };
-    showInviteCard({
-      step: `Room ${session.code}`,
-      title: n > 1 ? `${nameOf()} wants another game` : `${nameOf()} invites you to play`,
-      cards: [diceSetCard(diceSet), spiceCard(spice)],
-      status: '',
-      accept: true,
-    });
+    if (s === session) render();
   }
 
   // ---------- Playing ----------
 
-  /** Starts the match `offered`, on both screens. */
+  /** Starts match `n` on `config`, on this screen. */
   function begin({ n, config }) {
-    offered = null;
     playing = true;
+    note = '';
+    if (!isHost()) room = started(room);
     game.startNet(session.startMatch(n, config), session, { onOver: over });
   }
 
@@ -216,25 +288,25 @@ export function createLobby({ hud, game, profiles }) {
       leave(left ? undefined : 'The room has closed.');
       return;
     }
-    if (session.seat === 'host') {
-      showRoom(session.them ? '' : 'Waiting for a friend to join…');
-      invite();
-    } else if (offered) {
-      showInvite(offered);
-    } else {
-      showInviteCard({ step: `Room ${session.code}`, title: `${nameOf()}'s room`, status: `Waiting for ${nameOf()}…` });
-    }
+    show();
   }
 
   /** Back into the match this tab was playing before it reloaded (D49). */
   async function resume(saved) {
     session = newSession();
     const s = session;
+    const { diceSet, spice } = saved.match.config;
     if (saved.seat === 'host') {
-      choice = { diceSet: saved.match.config.diceSet, spice: saved.match.config.spice };
+      room = saved.lobby ? checkRoom(saved.lobby) : newRoom({ diceSet, spice });
       matches = saved.match.n;
+      counted = saved.match.n - 1;
+    } else {
+      room = newRoom({ diceSet, spice });
+      heard = true;
     }
-    showInviteCard({ step: `Room ${saved.code}`, title: 'Getting back into your match…', status: 'Reconnecting…' });
+    note = 'Getting back into your match…';
+    show();
+    roomStep.textContent = `Room ${saved.code}`;
     try {
       const { ended } = await s.resume(saved);
       if (s !== session) return;
@@ -245,6 +317,7 @@ export function createLobby({ hud, game, profiles }) {
         return;
       }
       playing = true;
+      note = '';
       game.startNet(s.resumedMatch(), s, { restore: true, onOver: over });
     } catch (err) {
       if (s === session) {
@@ -276,16 +349,34 @@ export function createLobby({ hud, game, profiles }) {
     }
     join(code);
   });
-  $('netRoomBack').addEventListener('click', () => leave());
-  $('netInviteBack').addEventListener('click', () => leave());
-  $('netChangeBtn').addEventListener('click', () => choose(() => {
-    showRoom();
-    invite();
-  }, () => showRoom()));
-  acceptBtn.addEventListener('click', () => {
-    if (!offered || !session) return;
-    session.accept(offered.n);
-    begin(offered);
+  backBtn.addEventListener('click', () => leave());
+  // The Ready marks stay as they are (D50): a ready guest plays whatever
+  // the host settles on, and sees it change meanwhile.
+  changeBtn.addEventListener('click', () => {
+    choosing = true;
+    const done = () => {
+      choosing = false;
+      if (!session) return;
+      show();
+      maybeStart();
+    };
+    choose((choice) => {
+      room = setChoice(room, choice);
+      if (session) session.lobby = room;
+      done();
+    }, done);
+  });
+  readyBtn.addEventListener('click', () => {
+    if (!session || playing || readyBtn.disabled) return;
+    const on = !room.ready[mySeat()];
+    if (isHost()) {
+      update(setReady(room, 'host', on));
+    } else {
+      // Shown at once; the host's room, when it comes, has the last word.
+      room = setReady(room, 'guest', on);
+      session.ready(on);
+      render();
+    }
   });
   $('netCopyBtn').addEventListener('click', async () => {
     const btn = $('netCopyBtn');
@@ -306,6 +397,8 @@ export function createLobby({ hud, game, profiles }) {
   return {
     /** The session, for tests. */
     get session() { return session; },
-    get choice() { return choice; },
+    get choice() { return room.choice; },
+    /** The room as this screen has it: the choice, Ready marks and games won. */
+    get room() { return room; },
   };
 }

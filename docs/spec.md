@@ -174,6 +174,29 @@ Some Spice works with any dice; some only makes sense with particular dice
   match is set up, and each client shows the other's card and colours on its
   half. A received profile is checked as a stored one is (R6.2, R6.3).
 
+### R7 — Multiplayer lobby *(Phase 8)*
+
+The lobby is what both players see between matches: the host's room, and
+the guest's view of it.
+
+- **R7.1** The top of the lobby shows **both players as player cards**
+  (R6.4), side by side, **`[Card] vs [Card]`**, so each player's name and
+  colours (card, tray, dice) can be seen. Both the host's and the guest's
+  screen show it. Until a guest has joined, the second place is an empty
+  slot saying the room is waiting for a friend.
+- **R7.2** A **ready check**: each player, host and guest alike, has a
+  **Ready** button, and a match starts only once both are ready. Each
+  player's ready status is shown **on their card**. The host's existing
+  button for changing the dice and Spice stays alongside it. A player can
+  **take their Ready back** until the match starts; nothing else does (the
+  host changing the dice or Spice leaves both as they are). *(D50)*
+- **R7.3** **Games won**: each player's card in the lobby (or right next to
+  it) shows how many matches they have won in this room, so the two can play
+  for "big points" across several matches. A match won by **walkover**
+  counts as won; a draw, or a match ended out of sync, counts for nobody.
+  The count lasts **as long as the room**: a new room starts from 0-0.
+  *(D50)*
+
 ---
 
 ## 5. Catalogue: dice sets
