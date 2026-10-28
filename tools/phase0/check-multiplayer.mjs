@@ -221,7 +221,7 @@ export async function multiplayerChecks(report, only) {
     await Promise.all([host, guest].map((p) => p.waitForFunction(() => window.superRollies.rounds.length > 0)));
     for (const [name, page] of [['host', host], ['guest', guest]]) {
       const seen = await page.evaluate(async () => {
-        const { readFace } = await import('/src/replay.js');
+        const { readFace } = await import('./src/replay.js');
         const { dice, rounds } = window.superRollies;
         const { faces } = rounds.at(-1).outcome;
         return ['player', 'opponent'].map((side) => ({
@@ -324,7 +324,7 @@ export async function multiplayerChecks(report, only) {
     const alone = await roomSeen(host);
     // The guest in another card colour, so the two cards can't pass for each other.
     await guest.evaluate(async () => {
-      const { CARD_COLORS } = await import('/src/config.js');
+      const { CARD_COLORS } = await import('./src/config.js');
       const { profiles } = window.superRollies;
       profiles.save({ ...profiles.get(), card: CARD_COLORS.find((c) => c.id !== profiles.get().card).id });
     });
@@ -332,7 +332,7 @@ export async function multiplayerChecks(report, only) {
     await host.waitForFunction(() => !document.getElementById('netThem').classList.contains('empty'));
     await guest.waitForFunction(() => !document.getElementById('netThem').classList.contains('empty'));
     const cardOf = (page) => page.evaluate(async () => {
-      const { looksOf } = await import('/src/profile.js');
+      const { looksOf } = await import('./src/profile.js');
       return looksOf(window.superRollies.profiles.get()).card;
     });
     const hostLooks = { name: 'Hosty', card: await cardOf(host) };
