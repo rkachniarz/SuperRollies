@@ -820,7 +820,21 @@
     white-space:normal;
   }
   .net-seat.empty .pc-foot{ display:none; }
-  .net-buttons{ gap:8px; flex-wrap:wrap; }
+  /* Leave on the left; Change and Ready on the right, Ready always last,
+     wrapping onto a line of their own rather than Ready dropping left. */
+  .net-buttons{ gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+  .net-buttons .picker-back{ margin-right:auto; }
+  /* Ready: big, red until you are, green once you are. */
+  .net-buttons .menu-btn[id^="netReadyBtn"]{
+    font-size:20px;
+    padding:14px 30px;
+    min-width:8em;
+    color:#fff;
+    background:#d9435a;
+    box-shadow:0 6px 0 #9e2a3d;
+  }
+  .net-buttons .menu-btn[id^="netReadyBtn"].on{ background:#2f9e5b; box-shadow:0 6px 0 #1f6e3e; }
+  .net-buttons .menu-btn[id^="netReadyBtn"]:disabled{ background:#6b5a60; box-shadow:0 6px 0 #4a3e42; }
   .net-buttons-top{ margin:0 0 14px; }
   /* Your own card in the room opens the editor (the room stays open). */
   #netMeCard{ cursor:pointer; }
@@ -828,7 +842,6 @@
   .card.off{ opacity:0.4; filter:grayscale(0.8); }
   .card.off .card-name{ text-decoration:line-through; }
   .net-buttons .menu-btn{ padding:10px 18px; font-size:16px; }
-  .net-buttons #netReadyBtn{ min-width:7.5em; }
   @media (max-width:580px){
     .net-versus{ gap:6px; }
     .net-seat .player-card{ padding:4px 8px 6px; border-width:2px; border-radius:10px; min-height:62px; }
@@ -838,7 +851,6 @@
     .net-seat .pc-look-die{ width:16px; height:16px; }
     .net-vs{ font-size:14px; }
     .net-buttons .menu-btn{ padding:10px 12px; font-size:15px; }
-    .net-buttons #netReadyBtn{ min-width:6.5em; }
   }
 
   /* A side's state-based advantage, by its name (R3.5). */

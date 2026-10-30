@@ -128,6 +128,12 @@ export const CLASHES = [
     minDice: 8,
   },
   {
+    a: ['reroll-cocked'],
+    b: ['tug-of-war'],
+    why: 'A die propped on the rope counts as cocked, so it is tossed again and again: measured, 1 throw in 25 waited out the timeout.',
+    fixable: true,
+  },
+  {
     a: ['draw-poker'],
     b: ['pothole'],
     why: 'A redraw picks dice up from where they lie, and lifting one out of a pit has never been tried.',

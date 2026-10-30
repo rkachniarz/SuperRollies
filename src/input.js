@@ -17,7 +17,7 @@
 import * as THREE from 'three';
 import {
   HELD_HEIGHT, HISTORY_MS, THROW_POWER, MIN_DRAG_DISTANCE,
-  MAX_THROW_SPEED, MAX_LIFT_SPEED, LIFT_FACTOR, SPIN_POWER,
+  maxThrowSpeed, MAX_LIFT_SPEED, LIFT_FACTOR, SPIN_POWER, MIN_THROW_SPEED, MIN_SPIN,
   PHYSICS_STEP, MAX_STEPS_PER_FRAME,
 } from './config.js';
 import { scatter, handLayout } from './handful.js';
@@ -264,11 +264,23 @@ export function createThrowControls({
       return;
     }
 
-    const speed = Math.hypot(vx, vz);
-    if (speed > MAX_THROW_SPEED) {
-      const s = MAX_THROW_SPEED / speed;
+    let speed = Math.hypot(vx, vz);
+    const max = maxThrowSpeed(offsetsOf(held).length);
+    if (speed > max) {
+      const s = max / speed;
       vx *= s;
       vz *= s;
+      speed = max;
+    }
+    // Never a drop (D55): a throw let go nearly still goes at least
+    // MIN_THROW_SPEED, the way the hand went from where it grabbed.
+    if (speed < MIN_THROW_SPEED) {
+      const dx = last.x - startX;
+      const dz = last.z - startZ;
+      const d = Math.hypot(dx, dz);
+      vx = (dx / d) * MIN_THROW_SPEED;
+      vz = (dz / d) * MIN_THROW_SPEED;
+      speed = MIN_THROW_SPEED;
     }
     const vy = Math.min(speed * LIFT_FACTOR, MAX_LIFT_SPEED);
 
@@ -277,6 +289,12 @@ export function createThrowControls({
       (random() - 0.5) * 6,
       vx * SPIN_POWER + (random() - 0.5) * 6,
     ];
+    // And it always tumbles: at least MIN_SPIN.
+    const turn = Math.hypot(...spin);
+    if (turn < MIN_SPIN) {
+      const k = MIN_SPIN / Math.max(turn, 1e-6);
+      for (let i = 0; i < 3; i++) spin[i] = turn > 1e-6 ? spin[i] * k : (i === 0 ? MIN_SPIN : 0);
+    }
     onThrow(release(held, scatter([vx, vy, vz], spin, offsetsOf(held), random)));
     finish(held);
   }

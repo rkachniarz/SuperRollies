@@ -156,7 +156,7 @@ export function edgeOf(rules, state) {
  * @returns {import('./types.js').TableEffects}
  */
 export function tableOf(rules, state) {
-  return { holes: [], wind: null, divider: true, rope: null, ...rules.spice.table?.({ rules, state }) };
+  return { holes: [], wind: null, divider: true, rope: null, reroll: false, ...rules.spice.table?.({ rules, state }) };
 }
 
 /**

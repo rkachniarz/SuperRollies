@@ -236,9 +236,11 @@ export function createLobby({ hud, game, profiles }) {
     backBtn.textContent = host ? '← Close the room' : '← Leave';
     changeBtn.hidden = !host;
     readyBtn.disabled = !chosen || (!host && !heard);
-    readyBtn.textContent = mineOn ? 'Not ready' : 'Ready';
+    // Red until this player is ready, green once they are; tapped again, it's taken back.
+    readyBtn.textContent = mineOn ? 'Ready ✓' : 'Ready';
+    readyBtn.title = mineOn ? 'You’re ready: tap to take it back' : 'Tap when you’re ready';
     readyBtn.setAttribute('aria-pressed', String(mineOn));
-    readyBtn.classList.toggle('secondary', mineOn);
+    readyBtn.classList.toggle('on', mineOn);
     mirrorButtons();
   }
 

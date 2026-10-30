@@ -70,7 +70,7 @@ describe('Phase 5 in the catalogue', () => {
   test('without a Spice that changes it, the table is plain and a round has no fallen dice or extra throws', () => {
     const rules = rulesFor('greatsword', 'vanilla');
     const state = startMatch(rules);
-    assert.deepEqual(tableOf(rules, state), { holes: [], wind: null, divider: true, rope: null });
+    assert.deepEqual(tableOf(rules, state), { holes: [], wind: null, divider: true, rope: null, reroll: false });
     assert.deepEqual(afterSettle(rules, state, { player: 2, opponent: 2 }), { state, swipes: [] });
     assert.equal(throwsAgain(rules, state, 'player', [[3, 3]]), false);
     assert.equal(canRethrow(rules, state, 'player'), false);

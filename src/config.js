@@ -72,11 +72,13 @@ export const GRAVITY = -20;
 // friction 0.45 / bounce 0.3, die-wall 0.3 / 0.55, die-die 0.3 / 0.4), but the
 // same numbers bounce noticeably less in Rapier - dice felt heavy. Die-floor
 // bounce is now 0.375, which matches how high cannon-es's dice bounced on the
-// same throws (measured side by side in Node, not by eye).
+// same throws (measured side by side in Node, not by eye). Playtesters wanted
+// the dice to "really roll a bit" (D55): a little bouncier again, die-floor
+// 0.475 and die-die 0.5.
 export const DIE_FRICTION = 0.3;
-export const DIE_RESTITUTION = 0.4;
+export const DIE_RESTITUTION = 0.5;
 export const FLOOR_FRICTION = 0.6;
-export const FLOOR_RESTITUTION = 0.35;
+export const FLOOR_RESTITUTION = 0.45;
 export const WALL_FRICTION = 0.3;
 export const WALL_RESTITUTION = 0.7;
 // Per-second damping rates. cannon-es's 0.05 / 0.35 were "fraction lost per
@@ -112,13 +114,27 @@ export const CAMERA_DEPTH_MARGIN = 0.5;
 export const HELD_HEIGHT = DIE_RADIUS + 0.5; // how high the die floats while held
 export const HISTORY_MS = 120; // release velocity is averaged over this recent window
 export const THROW_POWER = 1.5; // drag speed -> linear throw speed
-export const MAX_THROW_SPEED = 9; // so a wild swipe can't send the die off-scale
-export const MAX_LIFT_SPEED = 2.6; // bounds how high a throw can arc
+export const MAX_THROW_SPEED = 14; // so a wild swipe can't send the die off-scale (9 until D55)
+/**
+ * How hard a handful of `count` dice can be thrown: MAX_THROW_SPEED for up to
+ * three, then one less for each die more, 9 for eight. Measured (D55): eight
+ * d6s thrown at 14 heaped up and jittered, 1 throw in 25 waiting out the
+ * timeout, and five dice at 13, 3 in 100; tapered so, 1 in 100 or fewer.
+ * @param {number} count
+ */
+export const maxThrowSpeed = (count) => MAX_THROW_SPEED - Math.max(0, count - 3);
+export const MAX_LIFT_SPEED = 3.4; // bounds how high a throw can arc
 export const LIFT_FACTOR = 0.3; // upward toss proportional to horizontal speed
 export const SPIN_POWER = 2.2; // throw speed/direction -> tumbling spin
 // Below this much total movement a release is a fumble, not a throw. See
 // input.js for why this is measured as distance rather than speed.
 export const MIN_DRAG_DISTANCE = 0.35;
+// Every throw, however gentle, is at least this fast and spins at least this
+// much (rad/s), about an axis the throw stream picks (D55): let go of a die
+// with barely any motion and it used to drop back on the face it was held at,
+// a way to pick your number.
+export const MIN_THROW_SPEED = 4;
+export const MIN_SPIN = 14;
 
 // ---------- A handful, held ----------
 // Several dice held at once are simulated (createHoldSim in physics.js), lying
@@ -136,14 +152,15 @@ export const HOLD_PALM_FLAT = 0.35; // the flat middle, as a fraction of the bow
 export const HOLD_PALM_SLOPE = 0.2; // radians: the bowl's gentle slope (~11 degrees)
 export const HOLD_PALM_LIP = 1.3; // the lip's length, x a die's circumradius
 export const HOLD_PALM_LIP_SLOPE = 1.2; // radians: steep (~70 degrees), so nothing climbs out
-export const HOLD_PALM_FINGERS = 1.5; // how far the fingers stand up above the lip, x a die's circumradius
+export const HOLD_PALM_FINGERS = 2.2; // how far the fingers stand up above the lip, x a die's circumradius
 export const HOLD_PALM_FRICTION = 0.8; // grippy, so dice roll rather than slide
 export const HOLD_PALM_RESTITUTION = 0.05; // a hand is soft: dice barely bounce off it
 // The palm chases the pointer like a critically damped spring of this natural
 // frequency (rad/s), but never accelerates harder than HOLD_MAX_ACCEL: a palm
 // jerked faster than gravity can hold the dice in it would fling them out.
-export const HOLD_FOLLOW = 14;
-export const HOLD_MAX_ACCEL = 14;
+export const HOLD_FOLLOW = 24;
+export const HOLD_MAX_ACCEL = 20;
+export const HOLD_MAX_ACCEL_MANY = 16; // for five dice or more
 // The gentle shake: side to side by HOLD_SWAY either way, HOLD_SWAY_HZ times a
 // second, rocking by up to HOLD_TILT radians as it goes.
 export const HOLD_SWAY = 0.06;

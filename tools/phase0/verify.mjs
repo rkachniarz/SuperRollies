@@ -146,12 +146,18 @@ await withMatch(DESKTOP, '3', async (page) => {
       await page.waitForSelector('#menu:not([hidden])');
       await startQuickGame(page);
     }
-    // Slow and short: a throw is as hard as the hand moved, so a fast drag
-    // would bounce the die off the divider and back towards you.
-    const from = await dieScreenPos(page);
+    // A throw, for the card announcing it; then the die laid where the card
+    // sits, against the divider, as a throw leaves it now and then. (A throw
+    // can't be gentle enough to stop there on purpose any more: every throw
+    // has a minimum speed and spin, D55.)
     const before = await page.evaluate(() => window.superRollies.rounds.length);
-    await drag(page, page.viewportSize().width / 2 - from.x, -90 - (i % 3) * 40, 30);
+    await drag(page, 40, -200, 20);
     await page.waitForFunction((n) => window.superRollies.rounds.length > n, before, { timeout: 15000 });
+    await waitForDiceAtRest(page);
+    await page.evaluate((k) => {
+      const die = window.superRollies.dice.player[0];
+      die.placeAt(0, 0.45 + 0.1 * k, k);
+    }, i % 3);
     const card = await page.locator('#result').boundingBox();
     const die = await dieScreenPos(page);
     // A point that is on the die AND inside the card's box.
@@ -374,13 +380,16 @@ for (const [name, viewport] of [['desktop', DESKTOP], ['390x844', PHONE]]) {
     // reach the far half, and the card must name the face the game read.
     let farHalf = false;
     let namesFace = true;
-    for (let i = 0; i < 5; i++) {
+    const landed = [];
+    // Bouncy dice often come back off the far wall (D55): up to ten throws.
+    for (let i = 0; i < 10 && !(i >= 5 && farHalf); i++) {
       const round = await throwAndWait(page, (i - 2) * 40, -viewport.height * 0.45);
       const said = await page.textContent('#resultHeadline');
       namesFace &&= said === `You rolled ${round.result.dice[0].face}` && round.result.dice.length === 1;
       farHalf ||= round.result.dice[0].p[2] < 0;
+      landed.push(round.result.dice[0].p[2].toFixed(2));
     }
-    report(`Zen (${name}): die reaches the far half; card shows the face read`, farHalf && namesFace);
+    report(`Zen (${name}): die reaches the far half; card shows the face read`, farHalf && namesFace, `came to rest at z ${landed.join(', ')}`);
 
     // The back button is clear of anywhere a die can rest: the far corner of
     // the tray on its side is the nearest such spot.

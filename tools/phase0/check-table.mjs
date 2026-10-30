@@ -20,7 +20,7 @@ import { SHAPES } from '../../src/die-shapes.js';
 import { handLayout, scatter, randomHandful, aimHandful, liftClear } from '../../src/handful.js';
 import { DICE_SETS, dieTypes } from '../../src/rules/dice-sets.js';
 import { matchConfig, resolveRules, startMatch, beginRound, tableOf } from '../../src/rules/engine.js';
-import { DIVIDER_T, DIE_RADIUS, HELD_HEIGHT, MAX_THROW_SPEED, MAX_LIFT_SPEED, SPIN_POWER, PHYSICS_STEP } from '../../src/config.js';
+import { DIVIDER_T, DIE_RADIUS, HELD_HEIGHT, maxThrowSpeed, MAX_LIFT_SPEED, SPIN_POWER, PHYSICS_STEP } from '../../src/config.js';
 import { replayThrow } from '../../src/replay.js';
 import { canStack } from '../../src/rules/stacking.js';
 import { mulberry32, randomQuaternion } from './rng.mjs';
@@ -44,6 +44,8 @@ const SPICE = [
   'pothole+gusty-table+cat-paw+tug-of-war', 'pothole+gusty-table+no-mans-land+cat-paw',
   'pothole+no-mans-land+cat-paw',
   'gusty-table+draw-poker', 'no-mans-land+cat-paw+draw-poker',
+  // Reroll Cocked (D56): alone, and on the table Spice that cock dice most.
+  'reroll-cocked', 'reroll-cocked+tug-of-war', 'reroll-cocked+pothole',
 ];
 // The sets a Spice is checked with, where it's only played with some.
 const SETS_FOR = Object.fromEntries(SPICE.map((spice) => [spice, spice.includes('draw-poker') ? ['dice-poker'] : SETS]));
@@ -52,7 +54,7 @@ const SETS_FOR = Object.fromEntries(SPICE.map((spice) => [spice, spice.includes(
 function throwFor(set, spice, seed) {
   const rules = resolveRules(matchConfig({ seed, diceSet: set.id, spices: spice.split('+') }));
   const { state } = beginRound(rules, startMatch(rules));
-  const { holes, wind, divider, rope } = tableOf(rules, state);
+  const { holes, wind, divider, rope, reroll } = tableOf(rules, state);
   const types = dieTypes(set);
   const { tray, dieScale } = set;
   const radius = Math.max(...types.map((t) => SHAPES[t].circumradius * dieScale));
@@ -63,7 +65,7 @@ function throwFor(set, spice, seed) {
   const cx = (rand() * 2 - 1) * xMax;
   const cz = zMin + rand() * (zMax - zMin);
   const angle = rand() * Math.PI * 2;
-  const speed = MAX_THROW_SPEED * (0.3 + rand() * 0.7);
+  const speed = maxThrowSpeed(offsets.length) * (0.3 + rand() * 0.7);
   const vx = Math.cos(angle) * speed;
   const vz = Math.sin(angle) * speed;
   const spin = [-vz * SPIN_POWER + (rand() - 0.5) * 6, (rand() - 0.5) * 6, vx * SPIN_POWER + (rand() - 0.5) * 6];
@@ -76,7 +78,7 @@ function throwFor(set, spice, seed) {
   const opponent = divider ? thrown : aimHandful(thrown, [cx, cz], rand);
   return {
     v: 1, arenaHalfWidth: tray.halfWidth - DIE_RADIUS, divider, tray,
-    ...(holes.length ? { holes } : {}), ...(wind ? { wind } : {}), ...(rope ? { rope: true } : {}),
+    ...(holes.length ? { holes } : {}), ...(wind ? { wind } : {}), ...(rope ? { rope: true } : {}), ...(reroll ? { reroll: true } : {}),
     dice: [
       ...opponent.map((r, k) => ({ id: `opponent-${k}`, type: types[k], s: dieScale, ...r })),
       ...player.map((r, k) => ({ id: `player-${k}`, type: types[k], s: dieScale, ...r })),

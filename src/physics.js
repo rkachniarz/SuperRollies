@@ -21,11 +21,12 @@ import {
   DIE_FRICTION, DIE_RESTITUTION, FLOOR_FRICTION, FLOOR_RESTITUTION,
   WALL_FRICTION, WALL_RESTITUTION, DIE_LINEAR_DAMPING, DIE_ANGULAR_DAMPING,
   HELD_HEIGHT, HOLD_PALM_SIZE, HOLD_PALM_FLAT, HOLD_PALM_SLOPE, HOLD_PALM_LIP, HOLD_PALM_LIP_SLOPE, HOLD_PALM_FINGERS, HOLD_PALM_FRICTION, HOLD_PALM_RESTITUTION, HOLD_MAX_DIE_SPEED,
-  HOLD_FOLLOW, HOLD_MAX_ACCEL, HOLD_SWAY, HOLD_SWAY_HZ, HOLD_TILT, HOLD_CALM_SPEED, HOLD_HOP_CHANCE, HOLD_HOP, HOLD_HOP_SPIN,
+  HOLD_FOLLOW, HOLD_MAX_ACCEL, HOLD_MAX_ACCEL_MANY, HOLD_SWAY, HOLD_SWAY_HZ, HOLD_TILT, HOLD_CALM_SPEED, HOLD_HOP_CHANCE, HOLD_HOP, HOLD_HOP_SPIN,
   HOLD_SETTLE_STEPS, HOLD_SETTLE_DAMPING, HOLD_RELEASE_OVERLAP, WIND_FULL_TIME, WIND_END_TIME,
   ROPE_RADIUS, ROPE_FRICTION, ROPE_RESTITUTION, ROCK_MOVE, ROCK_TURN_COS, HELD_ROCK_MOVE, HELD_ROCK_TURN_COS,
 } from './config.js';
 import { SHAPES } from './die-shapes.js';
+import { createRng } from './rng.js';
 
 /**
  * One die at the moment it is let go. Arrays rather than objects so a record
@@ -50,6 +51,7 @@ import { SHAPES } from './die-shapes.js';
  *   holes?: Hole[],          // holes in the floor, each over a pit (Pothole; default none)
  *   wind?: number[] | null,  // a steady breeze, [x, z] in units/s², on every die still moving (Gusty Table)
  *   rope?: boolean,          // a rope lying down the middle, end to end (Tug of War; default none)
+ *   reroll?: boolean,        // a die that comes to rest cocked is tossed up again (Reroll Cocked; default not)
  *   dice: DieRelease[],
  * }} ThrowRecord
  *
@@ -62,6 +64,48 @@ import { SHAPES } from './die-shapes.js';
 
 /** @type {Tray} */
 const CLASSIC_TRAY = { halfWidth: TRAY_HALF_WIDTH, depth: TRAY_DEPTH };
+
+// Reroll Cocked (docs/decisions.md D56). A die lies flat when its most
+// downward face points within 5 degrees of straight down (cos 5 degrees,
+// written out: no Math.cos in anything a simulation decides, see WINDS in
+// spice.js). Each die is tossed up again at most MAX_REROLLS times, then
+// read as it lies (D24); every toss buys the throw REROLL_STEPS more
+// before it gives up waiting.
+const FLAT_COS = 0.9961946980917455;
+const MAX_REROLLS = 3;
+const REROLL_STEPS = Math.ceil(1.5 / PHYSICS_STEP);
+
+/**
+ * Whether a die of `type` at orientation `q` lies flat on a face, not
+ * cocked. Arithmetic only: the same bits on every engine.
+ * @param {string} type
+ * @param {number[]} q
+ */
+export function liesFlat(type, [x, y, z, w]) {
+  let lowest = 1;
+  for (const { normal: n } of SHAPES[type].faces) {
+    // The face's normal turned by q (v + w t + q x t, t = 2 q x v): its y.
+    const tx = 2 * (y * n.z - z * n.y);
+    const ty = 2 * (z * n.x - x * n.z);
+    const tz = 2 * (x * n.y - y * n.x);
+    const ny = n.y + w * ty + (z * tx - x * tz);
+    if (ny < lowest) lowest = ny;
+  }
+  return lowest < -FLAT_COS;
+}
+
+/**
+ * The seed of a throw's re-tosses, from where its dice start, so every client
+ * simulating the record (both players', a replay) tosses the same.
+ * @param {ThrowRecord} record
+ */
+function rerollSeed(record) {
+  const keys = record.dice.map(({ p }) => [p[0] * p[0] + p[2] * p[2], p[1]]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const words = new Uint32Array(new Float64Array(keys.flat()).buffer);
+  let h = 0x811c9dc5;
+  for (const word of words) h = Math.imul(h ^ word, 0x01000193) >>> 0;
+  return h;
+}
 
 /** Convex-hull points for each die type, in the die's own frame. */
 export const HULLS = Object.fromEntries(Object.entries(SHAPES).map(([type, shape]) => [type, shape.hull]));
@@ -523,6 +567,9 @@ function addPalm(world, body, { bowl, lip, fingers }) {
  * @param {() => number} rand  A seeded stream, for the hops and the shake.
  */
 export function createHoldSim({ arenaHalfWidth, divider, tray, dice, centre }, rand) {
+  // A handful of five or more is jerked about a little less hard (D55):
+  // eight small d6s were flung out of the palm, and five dice squeezed.
+  const maxAccel = dice.length >= 5 ? HOLD_MAX_ACCEL_MANY : HOLD_MAX_ACCEL;
   const world = new RAPIER.World({ x: 0, y: GRAVITY, z: 0 });
   world.timestep = PHYSICS_STEP;
   // Dice squeezed together in a bowl, jostled, sink into each other more than
@@ -600,8 +647,8 @@ export function createHoldSim({ arenaHalfWidth, divider, tray, dice, centre }, r
       let ax = k * (hand[0] - at[0]) - c * speed[0];
       let az = k * (hand[1] - at[1]) - c * speed[1];
       const aSq = ax * ax + az * az;
-      if (aSq > HOLD_MAX_ACCEL * HOLD_MAX_ACCEL) {
-        const s = HOLD_MAX_ACCEL / Math.sqrt(aSq);
+      if (aSq > maxAccel * maxAccel) {
+        const s = maxAccel / Math.sqrt(aSq);
         ax *= s; az *= s;
       }
       speed[0] += ax * PHYSICS_STEP;
@@ -722,6 +769,8 @@ export function createRoundSim(record, { clamp = true } = {}) {
   // recorded throw replays unchanged.
   const held = record.dice.some((d) => d.fixed);
   const rocks = Boolean(rope) || held;
+  const rerolls = record.reroll ? createRng(rerollSeed(record)) : null;
+  let limit = TIMEOUT_STEPS;
   const [rockMoveSq, rockTurnCos] = held ? [HELD_ROCK_MOVE_SQ, HELD_ROCK_TURN_COS] : [ROCK_MOVE_SQ, ROCK_TURN_COS];
 
   const dice = record.dice.map((d) => {
@@ -750,8 +799,42 @@ export function createRoundSim(record, { clamp = true } = {}) {
     const pose = readPose(body);
     const radius = radiusOf(d.type, d.s ?? 1);
     const fixed = Boolean(d.fixed);
-    return { id: d.id, type: d.type, radius, body, collider, prev: pose, curr: pose, quietSteps: 0, stillSteps: 0, settled: fixed, asleep: false, fixed };
+    return { id: d.id, type: d.type, radius, body, collider, prev: pose, curr: pose, quietSteps: 0, stillSteps: 0, settled: fixed, asleep: false, fixed, rerolled: 0 };
   });
+
+  /**
+   * Tosses a cocked die up again (Reroll Cocked): up, towards the middle of
+   * its own side's half, rolling forward and twisting by amounts drawn from
+   * the throw's re-toss stream.
+   */
+  function toss(d) {
+    d.rerolled++;
+    const [x, , z] = d.curr.p;
+    const towards = (d.id.startsWith('player') ? 0.5 : -0.5) * tray.depth;
+    let dx = -x;
+    let dz = towards - z;
+    const length = Math.sqrt(dx * dx + dz * dz);
+    if (length > 1e-6) {
+      dx /= length;
+      dz /= length;
+    } else {
+      dx = 0;
+      dz = Math.sign(towards);
+    }
+    const along = 1 + rerolls.next() * 1.5;
+    const up = 4 + rerolls.next() * 1.5;
+    const roll = 10 + rerolls.next() * 8;
+    const twist = (rerolls.next() - 0.5) * 8;
+    d.body.wakeUp();
+    d.body.setLinvel({ x: dx * along, y: up, z: dz * along }, true);
+    d.body.setAngvel({ x: -dz * roll, y: twist, z: dx * roll }, true);
+    d.settled = false;
+    d.asleep = false;
+    d.quietSteps = 0;
+    d.stillSteps = 0;
+    d.rockSteps = 0;
+    d.rockFrom = null;
+  }
 
   // How long a die has stayed close to one pose (see ROCK_MOVE): the pose it's
   // measured from moves on whenever the die strays from it. Squared lengths
@@ -776,6 +859,8 @@ export function createRoundSim(record, { clamp = true } = {}) {
     steps: 0,
     done: false,
     timedOut: false,
+    /** How many times a cocked die was tossed again (Reroll Cocked). */
+    rerolled: 0,
 
     step() {
       if (sim.done) return;
@@ -875,8 +960,18 @@ export function createRoundSim(record, { clamp = true } = {}) {
       }
       // Anything that never settles (rare - e.g. balanced on an edge) is
       // simply stopped where it is, so a round can never soft-lock on physics.
+      // Reroll Cocked: once everything has settled, any die cocked (not down
+      // a hole, not held) is tossed again, and the throw goes on.
+      if (rerolls && dice.every((d) => d.settled)) {
+        const cocked = dice.filter((d) => !d.fixed && !d.fallen && d.rerolled < MAX_REROLLS && !liesFlat(d.type, d.curr.q));
+        for (const d of cocked) toss(d);
+        if (cocked.length) {
+          limit += REROLL_STEPS;
+          sim.rerolled += cocked.length;
+        }
+      }
       if (dice.every((d) => d.settled)) sim.done = true;
-      else if (sim.steps >= TIMEOUT_STEPS) { sim.done = true; sim.timedOut = true; }
+      else if (sim.steps >= limit) { sim.done = true; sim.timedOut = true; }
     },
 
     free() { world.free(); },

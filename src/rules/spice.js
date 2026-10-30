@@ -575,6 +575,20 @@ const GUSTY_TABLE = {
 };
 
 /** @type {Spice} */
+const REROLL_COCKED = {
+  id: 'reroll-cocked',
+  name: 'Reroll Cocked',
+  icon: '🔁',
+  kind: 'table',
+  summary: 'A die that lands cocked, not flat on a face, is tossed again.',
+  rules: 'A die that comes to rest leaning, against a wall, another die or the rope, rather than flat on a face, is tossed up again where it lies, until it lands flat: up to three times, then it counts as it lies. Every throw, all match.',
+  eligibility: {},
+  // The physics does it, from the throw's record (physics.js, D56), so a
+  // replay, and the other player's screen, toss it the same.
+  table: () => ({ reroll: true }),
+};
+
+/** @type {Spice} */
 const NO_MANS_LAND = {
   id: 'no-mans-land',
   name: 'No Man\'s Land',
@@ -786,7 +800,7 @@ export const SPICE = Object.fromEntries([
   SECOND_WIND,
   HIT_POINTS, RACE_TO_N, TUG_OF_WAR,
   UNDERDOG, REVENGE, MERCY,
-  POTHOLE, CAT_PAW, GUSTY_TABLE, NO_MANS_LAND,
+  POTHOLE, CAT_PAW, GUSTY_TABLE, NO_MANS_LAND, REROLL_COCKED,
   CRITICAL_HIT, CRITICAL_FUMBLE, INSPIRATION, BRUTAL_CRITICAL, SNAKE_EYES, TRIPLES, CALTROPS,
   DOUBLES_AGAIN, DEATH_SAVES_SPICE,
   DRAW_POKER, COUNT_THE_SIXES, BURNOUT, CROWN, WILD_MAGIC,

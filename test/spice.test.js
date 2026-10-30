@@ -49,7 +49,7 @@ describe('the Spice catalogue', () => {
       'raising-the-stakes', 'cursed-number', 'second-wind',
       'hit-points', 'race-to-n', 'tug-of-war',
       'underdog', 'revenge', 'mercy',
-      'pothole', 'cat-paw', 'gusty-table', 'no-mans-land',
+      'pothole', 'cat-paw', 'gusty-table', 'no-mans-land', 'reroll-cocked',
       'critical-hit', 'critical-fumble', 'inspiration', 'brutal-critical', 'snake-eyes', 'triples', 'caltrops',
       'doubles-again', 'death-saves',
       'draw-poker', 'count-the-sixes', 'burnout', 'crown', 'wild-magic',

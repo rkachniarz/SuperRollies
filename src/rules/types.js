@@ -195,8 +195,9 @@
  * What the table is like for a round, beyond the dice set's tray: holes in
  * it, a steady breeze across it (an acceleration along x and z, in units/s²,
  * felt by every die still moving), and whether the divider is up. All of it
- * goes in the throw's record, so a replay meets the same table.
- * @typedef {{ holes: Hole[], wind: number[] | null, divider: boolean, rope: Rope | null }} TableEffects
+ * goes in the throw's record, so a replay meets the same table. `reroll`: a
+ * die that comes to rest cocked is tossed up again (Reroll Cocked).
+ * @typedef {{ holes: Hole[], wind: number[] | null, divider: boolean, rope: Rope | null, reroll: boolean }} TableEffects
  */
 
 /**

@@ -8,7 +8,7 @@ silently changing requirements.
 out of scope (D1).
 
 **Where things stand (2026-10-28):** Phases 0 to 6b are done: Rapier physics,
-every die type from d4 to d20 plus percentile, 16 dice sets, 33 Spice, the
+every die type from d4 to d20 plus percentile, 16 dice sets, 34 Spice, the
 two-card draft, Zen, the `?dev` test bench, and player profiles with each side
 shown as a card. Phase 7, multiplayer, is played over PeerJS, bar a TURN
 server (7.1a). Phase 8 has given the room both players' cards, a ready check
@@ -20,7 +20,7 @@ on the bench and by the multiplayer host; playtest pending (9.11).
 
 | Cited as | What | Where |
 |---|---|---|
-| `D1`–`D54` | Decisions and their reasons | [docs/decisions.md](docs/decisions.md) |
+| `D1`–`D56` | Decisions and their reasons | [docs/decisions.md](docs/decisions.md) |
 | `R1.1`–`R7.3`, `§1`, `§4`–`§6` | Vision, requirements, catalogue of dice sets and Spice | [docs/spec.md](docs/spec.md) |
 | `0.1`–`6b.9`, `§8` | Finished phases, task by task, with what was measured | [docs/history.md](docs/history.md) |
 | `Q1`–`Q10`, `7.x`–`10.x`, `P.x` | Open questions, work still to do | here |
@@ -238,6 +238,12 @@ From the first evening with Spice stacks. *(D52)*
   then how many.
 - [x] **10.6** The host taps the dice in the room to change just them, the
   Spice kept, bar any the new dice don't allow (D54).
+- [x] **10.7** Throws that really roll: much harder (14, tapering to 10
+  for eight dice), a little bouncier, never a drop (a minimum speed and
+  spin), and a handful that follows the finger much faster (D55).
+- [x] **10.8** Reroll Cocked, a Spice: a cocked die is tossed again (D56).
+- [x] **10.9** The room's Ready button: bigger, red until you're ready and
+  green once you are, and always on the right.
 
 ## Post-MVP — Browser compatibility *(D14)*
 

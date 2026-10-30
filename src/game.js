@@ -163,7 +163,7 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
    * `on` (Cat Paw's swipe in multiplayer, simulated in the host's frame).
    */
   function recordOf(dice, { on = tableNow, arenaHalfWidth = arena.arenaHalfWidth } = {}) {
-    const { holes, wind, rope } = on;
+    const { holes, wind, rope, reroll } = on;
     return {
       v: 1,
       arenaHalfWidth,
@@ -172,6 +172,7 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
       ...(holes.length ? { holes } : {}),
       ...(wind ? { wind } : {}),
       ...(rope ? { rope: true } : {}),
+      ...(reroll ? { reroll: true } : {}),
       dice,
     };
   }

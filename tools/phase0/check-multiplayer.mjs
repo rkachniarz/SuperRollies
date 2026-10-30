@@ -482,6 +482,9 @@ export async function multiplayerChecks(report, only) {
     [['tug-of-war', 'exploding-dice', 'underdog', 'pothole'], 'classic'],
     // Any dice (D53).
     [['exploding-dice', 'cat-paw'], '3d8'],
+    // Reroll Cocked (D56), on d8s, which come to rest cocked most: the
+    // physics tosses them again, the same on both screens.
+    ['reroll-cocked', 'divine-smite'],
   ];
   for (const [stack, diceSet, { fires = false, ...hostPlay } = {}, guestPlay = hostPlay] of SPICED) {
     const spice = [stack].flat().join(' + ');

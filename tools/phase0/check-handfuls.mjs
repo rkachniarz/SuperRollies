@@ -28,7 +28,7 @@ import { DICE_SETS, dieTypes, extraDieType, diceSetOf, ANY_DICE_TYPES, ANY_DICE_
 import { SPICE } from '../../src/rules/spice.js';
 import { isEligible } from '../../src/rules/engine.js';
 import {
-  DIVIDER_T, DIE_RADIUS, HELD_HEIGHT, MAX_THROW_SPEED, MAX_LIFT_SPEED, SPIN_POWER, PHYSICS_STEP,
+  DIVIDER_T, DIE_RADIUS, HELD_HEIGHT, maxThrowSpeed, MAX_LIFT_SPEED, SPIN_POWER, PHYSICS_STEP,
 } from '../../src/config.js';
 import { mulberry32, randomQuaternion } from './rng.mjs';
 
@@ -85,7 +85,7 @@ for (const { set, id, notation, types } of CASES) {
     const cx = (rand() * 2 - 1) * xMax;
     const cz = zMin + rand() * (zMax - zMin);
     const angle = rand() * Math.PI * 2;
-    const speed = MAX_THROW_SPEED * (0.3 + rand() * 0.7);
+    const speed = maxThrowSpeed(offsets.length) * (0.3 + rand() * 0.7);
     const vx = Math.cos(angle) * speed;
     const vz = Math.sin(angle) * speed;
     const spin = [-vz * SPIN_POWER + (rand() - 0.5) * 6, (rand() - 0.5) * 6, vx * SPIN_POWER + (rand() - 0.5) * 6];
