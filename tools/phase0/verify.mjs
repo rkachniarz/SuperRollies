@@ -16,7 +16,8 @@ import { DICE_SETS } from '../../src/rules/dice-sets.js';
 import { SPICE } from '../../src/rules/spice.js';
 import { isEligible, matchConfig, resolveRules, startMatch, beginRound, afterSettle } from '../../src/rules/engine.js';
 import { dealDice, dealSpice, testBenchSpice } from '../../src/rules/draft.js';
-import { openGame, startQuickGame, startMode, waitForDiceAtRest, dieScreenPos, drag, throwAndWait } from './driver.mjs';
+import { openGame, startQuickGame, startMode, waitForDiceAtRest, dieScreenPos, drag, throwAndWait, pickStack } from './driver.mjs';
+import { canStack } from '../../src/rules/stacking.js';
 import { multiplayerChecks } from './check-multiplayer.mjs';
 
 const engine = process.argv[2] ?? 'chromium';
@@ -426,7 +427,8 @@ await withMatch(DESKTOP, 'draft', async (page) => {
   await page.click(`#draftCards [data-pick="${dice[1]}"]`);
   const spice = await cards();
   const secondStep = await step();
-  const eligible = spice.every((id) => isEligible(SPICE[id], DICE_SETS[dice[1]]));
+  // Each offer is a Spice stack (D51): its ids joined with `+`.
+  const eligible = spice.every((stack) => stack === 'vanilla' || canStack(stack.split('+'), dice[1]));
   // Back goes to the dice again, the same two; then on to the match.
   await page.click('#draftBack');
   const again = await cards();
@@ -434,11 +436,11 @@ await withMatch(DESKTOP, 'draft', async (page) => {
   await page.click(`#draftCards [data-pick="${spice[0]}"]`);
   await waitForDiceAtRest(page);
   const config = await page.evaluate(() => ({ ...window.superRollies.game.config, draftSeed: window.superRollies.game.draftSeed }));
-  report('Draft: two dice sets, then two Spice eligible for the one picked, then that match',
+  report('Draft: two dice sets, then two Spice stacks for the one picked, then that match',
     dice.length === 2 && dice.every((id) => DICE_SETS[id]) && spice.length === 2 && eligible &&
       firstStep === 'Step 1 of 2' && secondStep === 'Step 2 of 2' && again.join() === dice.join() &&
-      config.diceSet === dice[1] && config.spice === spice[0] && config.seed === config.draftSeed,
-    `dice ${dice.join(', ')}; Spice ${spice.join(', ')}; played ${config.diceSet} + ${config.spice}`);
+      config.diceSet === dice[1] && config.spices.join('+') === spice[0] && config.seed === config.draftSeed,
+    `dice ${dice.join(', ')}; Spice ${spice.join(', ')}; played ${config.diceSet} + ${config.spices.join('+')}`);
 }, '#quickGameBtn', { pickAfter: true });
 
 // §8, 7: the same seed deals the same cards, on screen as in the rules.
@@ -456,7 +458,7 @@ await withMatch(DESKTOP, 'draft seed', async (page) => {
   const first = await deal(1);
   const same = await deal(1);
   const different = await deal(other);
-  const expected = `${dealDice(1).join()} / ${dealSpice(1, dealDice(1)[0]).join()}`;
+  const expected = `${dealDice(1).join()} / ${dealSpice(1, dealDice(1)[0]).map((s) => s.join('+')).join()}`;
   report('7. Same seed, same offers (on screen and in the rules); another seed, others',
     first === same && first === expected && different !== first, `${first} | ${different}`);
 }, '#quickGameBtn', { pickAfter: true });
@@ -509,6 +511,33 @@ for (const [name, viewport] of [['desktop', DESKTOP], ['390x844', PHONE]]) {
     });
     report(`Label (${name}): Marathon's six hearts clear of the label and the back button`,
       overlaps.count === 6 && !overlaps.hit, `${overlaps.count} hearts${overlaps.hit ? ', OVERLAPPING' : ''}`);
+
+    // A Spice stack (D51): its icons and how many on the label, no taller
+    // than one Spice's; a card for each in the popup; and its announcements,
+    // a line each, clear of the corner controls.
+    const before = await page.evaluate(() => document.getElementById('matchInfo').getBoundingClientRect().height);
+    await page.evaluate(() => window.superRollies.game.start('quick',
+      { diceSet: 'classic', spices: ['marathon', 'cursed-number', 'gusty-table', 'critical-hit'] }));
+    const stacked = await page.evaluate(() => {
+      const box = (id) => document.getElementById(id).getBoundingClientRect();
+      const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+      const announce = document.getElementById('announce');
+      return {
+        label: document.getElementById('matchInfoSpice').textContent,
+        height: box('matchInfo').height,
+        lines: announce.textContent.split('\n').length,
+        hidden: announce.hidden,
+        inside: box('announce').left >= 0 && box('announce').right <= window.innerWidth,
+        hit: hit(box('announce'), box('matchInfo')) || hit(box('announce'), box('backBtn')),
+      };
+    });
+    await page.click('#matchInfo');
+    const cards = await page.$$eval('#rulesCards .card', (els) => els.length);
+    await page.click('#rulesClose');
+    report(`Label (${name}): a Spice stack shows as its icons and a count, a card each, its announcements a line each, clear of the corners`,
+      /4 Spice$/.test(stacked.label) && stacked.height <= before + 0.5 && cards === 5 &&
+        !stacked.hidden && stacked.lines === 2 && stacked.inside && !stacked.hit,
+      JSON.stringify({ ...stacked, before, cards }));
   }, '#quickGameBtn', { pick: 'swarm-of-daggers', spice: 'raising-the-stakes' });
 }
 
@@ -638,15 +667,21 @@ if (!ONLY || BENCH.includes(ONLY)) {
     await page.click('#pickerBack');
     const backToDice = (await picks()).join() === sets.join();
     await page.click('#pickerOptions [data-pick="greatsword"]');
+    // A stack (D51): with Second Wind picked, Doubles Again clashes, greyed out and saying why.
     await page.click('#pickerOptions [data-pick="snake-eyes"]');
+    await page.click('#pickerOptions [data-pick="second-wind"]');
+    const greyed = await page.$eval('#pickerOptions [data-pick="doubles-again"]',
+      (el) => ({ off: el.disabled, why: el.querySelector('.card-why').textContent }));
+    await pickStack(page, ['snake-eyes', 'second-wind', 'cat-paw']);
     await waitForDiceAtRest(page);
     const config = await page.evaluate(() => window.superRollies.game.config);
-    const expected = testBenchSpice('greatsword').map((s) => s.id);
+    const expected = testBenchSpice('greatsword').map((s) => s.id).filter((id) => id !== 'vanilla');
     report(BENCH,
       hiddenWithoutFlag && sets.join() === Object.keys(DICE_SETS).join() && spice.join() === expected.join() &&
         expected.slice(0, 2).join() === 'snake-eyes,doubles-again' && backToDice &&
-        config.diceSet === 'greatsword' && config.spice === 'snake-eyes',
-      `${sets.length} sets; Greatsword offers ${spice.join(', ')}`);
+        greyed.off && /Clashes with Second Wind/.test(greyed.why) &&
+        config.diceSet === 'greatsword' && config.spices.join() === 'second-wind,cat-paw,snake-eyes',
+      `${sets.length} sets; Greatsword offers ${spice.join(', ')}; played ${config.spices.join(' + ')}; "${greyed.why}"`);
   } catch (e) {
     report(BENCH, false, e.message.split('\n')[0]);
   }
@@ -663,7 +698,7 @@ if (!ONLY || REMATCH.includes(ONLY)) {
     await page.waitForSelector('#testBenchBtn:not([disabled])', { timeout: 30000 });
     await page.click('#testBenchBtn');
     await page.click('#pickerOptions [data-pick="classic"]');
-    await page.click('#pickerOptions [data-pick="sudden-death"]');
+    await pickStack(page, 'sudden-death');
     await waitForDiceAtRest(page);
     const first = await page.evaluate(() => window.superRollies.game.config);
     for (let i = 0; i < 20 && !(await page.locator('#result.game-over').count()); i++) await playARound(page);
@@ -677,7 +712,7 @@ if (!ONLY || REMATCH.includes(ONLY)) {
       menu: !document.getElementById('menu').hidden,
     }));
     report(REMATCH,
-      next.config.diceSet === 'classic' && next.config.spice === 'sudden-death' && !next.menu && /the same again/.test(note),
+      next.config.diceSet === 'classic' && next.config.spices.join() === 'sudden-death' && !next.menu && /the same again/.test(note),
       `seed ${first.seed}, then ${next.config.seed}`);
   } catch (e) {
     report(REMATCH, false, e.message.split('\n')[0]);
@@ -1301,6 +1336,28 @@ for (const [name, viewport] of [['desktop', DESKTOP], ['390x844', PHONE]]) {
       report(`Profile (${name}): ${set} with ${spice}: both cards named, clear of the corners and the dice`, ok,
         Object.entries(cards).map(([s, c]) => `${s} ${c.dice}px from dice, ${c.corners}px from corners${c.nameInside ? '' : ', NAME OUTSIDE'}`).join('; '));
     }
+
+    // A Spice stack (D51) can give a side several edges at once, in one badge:
+    // the longest there can be, on both cards, still clear of everything.
+    await page.evaluate(() => window.superRollies.game.start('quick',
+      { diceSet: 'classic', spices: ['second-wind', 'underdog', 'revenge'] }));
+    await waitForDiceAtRest(page);
+    await page.evaluate(() => {
+      for (const id of ['youEdge', 'opponentEdge']) {
+        const el = document.getElementById(id);
+        el.hidden = false;
+        el.textContent = '+1 die · Revenge: a win costs double · Second Wind ready';
+      }
+    });
+    const edged = await cardLayout(page);
+    const fits = await page.evaluate(() => ['youEdge', 'opponentEdge'].every((id) => {
+      const el = document.getElementById(id);
+      const card = el.closest('.player-card') ?? el.parentElement;
+      return el.getBoundingClientRect().right <= card.getBoundingClientRect().right + 0.5;
+    }));
+    report(`Profile (${name}): a Spice stack's edges in one badge, inside its card, the cards clear of the corners and the dice`,
+      fits && Object.values(edged).every((c) => c.dice > 0 && c.corners > 0 && c.nameInside),
+      Object.entries(edged).map(([s, c]) => `${s} ${c.dice}px from dice, ${c.corners}px from corners`).join('; ') + (fits ? '' : '; BADGE OUTSIDE ITS CARD'));
 
     // The player's colours on their side; the opponent's never their dice
     // colour, and the same seed the same look.

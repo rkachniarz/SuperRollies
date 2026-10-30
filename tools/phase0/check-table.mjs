@@ -3,7 +3,8 @@
 // divider (No Man's Land, the opponent throwing at the player's dice), the
 // knock a cat's paw gives dice at rest (Cat Paw), and over a rope down the
 // middle (Tug of War), and a redraw: some dice thrown again onto the rest,
-// held where they lie (Draw Poker). Every step of every throw is checked: no die sinks into the floor or
+// held where they lie (Draw Poker); and those together, as a Spice stack
+// lays them out (docs/decisions.md D51). Every step of every throw is checked: no die sinks into the floor or
 // through a pit's bottom, none leaves the tray, and with the divider up none
 // crosses it. At rest, a die counted as fallen is down a pit and one not
 // counted is on the floor. And the throws settle, bar a few timeouts.
@@ -21,6 +22,7 @@ import { DICE_SETS, dieTypes } from '../../src/rules/dice-sets.js';
 import { matchConfig, resolveRules, startMatch, beginRound, tableOf } from '../../src/rules/engine.js';
 import { DIVIDER_T, DIE_RADIUS, HELD_HEIGHT, MAX_THROW_SPEED, MAX_LIFT_SPEED, SPIN_POWER, PHYSICS_STEP } from '../../src/config.js';
 import { replayThrow } from '../../src/replay.js';
+import { canStack } from '../../src/rules/stacking.js';
 import { mulberry32, randomQuaternion } from './rng.mjs';
 
 const THROWS = Number(process.argv[2] ?? 100);
@@ -31,13 +33,24 @@ const rand = mulberry32(0x7AB1E);
 
 // One die and the most dice, the biggest dice and the d4's corners.
 const SETS = ['classic', 'fireball', 'the-whole-bag', 'swarm-of-daggers'];
-const SPICE = ['pothole', 'gusty-table', 'no-mans-land', 'cat-paw', 'tug-of-war', 'draw-poker'];
+const SPICE = [
+  'pothole', 'gusty-table', 'no-mans-land', 'cat-paw', 'tug-of-war', 'draw-poker',
+  // Stacks (D51): every two of the table's own, and as many at once as
+  // stack. With Fireball, a breeze or the rope with no divider, and the
+  // breeze with the rope, are clashes (stacking.js, minDice): measured
+  // here, 1 throw in 40 to 1 in 20 waited out the timeout. Skipped there.
+  'pothole+gusty-table', 'pothole+no-mans-land', 'pothole+tug-of-war', 'gusty-table+no-mans-land',
+  'gusty-table+tug-of-war', 'no-mans-land+tug-of-war', 'pothole+cat-paw', 'cat-paw+tug-of-war',
+  'pothole+gusty-table+cat-paw+tug-of-war', 'pothole+gusty-table+no-mans-land+cat-paw',
+  'pothole+no-mans-land+cat-paw',
+  'gusty-table+draw-poker', 'no-mans-land+cat-paw+draw-poker',
+];
 // The sets a Spice is checked with, where it's only played with some.
-const SETS_FOR = { 'draw-poker': ['dice-poker'] };
+const SETS_FOR = Object.fromEntries(SPICE.map((spice) => [spice, spice.includes('draw-poker') ? ['dice-poker'] : SETS]));
 
-/** A throw like the game's: both sides' handfuls on the table the rules lay out for `seed`. */
+/** A throw like the game's: both sides' handfuls on the table the rules lay out for `seed`. `spice` may be a stack, `a+b`. */
 function throwFor(set, spice, seed) {
-  const rules = resolveRules(matchConfig({ seed, diceSet: set.id, spice }));
+  const rules = resolveRules(matchConfig({ seed, diceSet: set.id, spices: spice.split('+') }));
   const { state } = beginRound(rules, startMatch(rules));
   const { holes, wind, divider, rope } = tableOf(rules, state);
   const types = dieTypes(set);
@@ -121,9 +134,13 @@ function redrawFor(record, result, fresh) {
 
 let failures = 0;
 for (const spice of SPICE) {
-  for (const setId of SETS_FOR[spice] ?? SETS) {
+  for (const setId of SETS_FOR[spice]) {
     const id = `${spice}/${setId}`;
     if (ONLY && !id.includes(ONLY)) continue;
+    if (spice.includes('+') && !canStack(spice.split('+'), setId)) {
+      console.log(`SKIP  ${id}: doesn't stack with these dice (stacking.js)`);
+      continue;
+    }
     const set = DICE_SETS[setId];
     const { tray } = set;
     const restOf = (type) => SHAPES[type].restHeight * set.dieScale;
@@ -132,12 +149,16 @@ for (const spice of SPICE) {
     let fallen = 0;
     let dice = 0;
     let steps = 0;
-    for (let i = 0; i < THROWS; i++) {
+    // A stack with eight dice a side times out near the 2% allowed (1-2% at
+    // 300 throws, measured): 100 throws can't tell that from 3%, so it gets
+    // three times as many.
+    const throws = spice.includes("+") ? 3 * THROWS : THROWS;
+    for (let i = 0; i < throws; i++) {
       let record = throwFor(set, spice, i);
       // Cat Paw: the knock is what's checked, from where a throw came to rest.
-      if (spice === 'cat-paw') record = knockFor(record, replayThrow(record));
+      if (spice.includes('cat-paw')) record = knockFor(record, replayThrow(record));
       // Draw Poker: the redraw is what's checked, onto a throw at rest.
-      if (spice === 'draw-poker') record = redrawFor(record, replayThrow(record), throwFor(set, spice, i + THROWS));
+      if (spice.includes('draw-poker')) record = redrawFor(record, replayThrow(record), throwFor(set, spice, i + THROWS));
       const holes = record.holes ?? [];
       const pitOf = (x, z) => holes.find((h) => (x - h.x) ** 2 + (z - h.z) ** 2 < h.r * h.r);
       // Near enough a hole to be tipped over its rim, a die can sit lower
@@ -177,12 +198,12 @@ for (const spice of SPICE) {
         if (problems <= 3) console.log(`  ${id} throw ${i}: ${problem}\n  ${JSON.stringify(record)}`);
       }
     }
-    const ok = problems === 0 && timeouts <= THROWS * MAX_TIMEOUT_RATE;
+    const ok = problems === 0 && timeouts <= throws * MAX_TIMEOUT_RATE;
     if (!ok) failures++;
-    console.log(`${ok ? 'PASS' : 'FAIL'}  ${id}: ${THROWS} throws, ${problems} with a die sunk, escaped or misread, ` +
+    console.log(`${ok ? 'PASS' : 'FAIL'}  ${id}: ${throws} throws, ${problems} with a die sunk, escaped or misread, ` +
       `${timeouts} timed out (${(TIMEOUT_STEPS * PHYSICS_STEP).toFixed(0)} s)` +
-      `${spice === 'pothole' ? `, ${fallen} of ${dice} dice down a hole` : ''}. ` +
-      `Mean time to settle ${((steps / THROWS) * PHYSICS_STEP).toFixed(2)} s.`);
+      `${spice.includes('pothole') ? `, ${fallen} of ${dice} dice down a hole` : ''}. ` +
+      `Mean time to settle ${((steps / throws) * PHYSICS_STEP).toFixed(2)} s.`);
   }
 }
 

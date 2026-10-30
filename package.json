@@ -2,7 +2,7 @@
   "name": "super-rollies",
   "version": "0.1.0",
   "private": true,
-  "description": "A dice roll-off game. Draft your dice and a Spice that bends the rules or the table, throw them, roll higher than your opponent or a friend over the network - or just roll, in Zen.",
+  "description": "A dice roll-off game. Draft your dice and a stack of Spice that bends the rules or the table, throw them, roll higher than your opponent or a friend over the network - or just roll, in Zen.",
   "type": "module",
   "scripts": {
     "dev": "serve . --listen 8000",

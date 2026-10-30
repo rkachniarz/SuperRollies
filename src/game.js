@@ -37,8 +37,9 @@ import * as engine from './rules/engine.js';
 import { guestSeat, swapSides, swapId, turnDie, turnTable, digestOf } from './seat.js';
 import { DICE_SETS, THE_CLASSIC, dieTypes, sum } from './rules/dice-sets.js';
 import { SPICE } from './rules/spice.js';
+import { clashWith } from './rules/stacking.js';
 import { dealDice, dealSpice, testBenchSpice } from './rules/draft.js';
-import { diceSetCard, dieCard, spiceCard } from './cards.js';
+import { diceSetCard, dieCard, spiceCard, stackCard } from './cards.js';
 import { checkProfile, looksOf, opponentProfile } from './profile.js';
 
 // Zen's catalogue: every dice set, then each die type a set doesn't already
@@ -148,8 +149,8 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
   // A beat for the eye; none while a match is being caught up on.
   const pause = (ms) => (restoring ? Promise.resolve() : new Promise((resolve) => { setTimeout(resolve, ms); }));
 
-  function newMatch(seed, diceSet, spice) {
-    config = engine.matchConfig({ seed, diceSet, spice });
+  function newMatch(seed, diceSet, spices) {
+    config = engine.matchConfig({ seed, diceSet, spices });
     rules = engine.resolveRules(config);
     match = E.startMatch(rules);
     opponentRng = createRng(deriveSeed(seed, 'opponent'));
@@ -220,22 +221,25 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
     return new Promise((resolve) => { awaiting = resolve; });
   }
 
+  /** The Spice in the match's stack that gives a re-throw (Second Wind, Mercy). */
+  const rethrower = () => rules.spices.find((s) => s.rethrow) ?? rules.spice;
+
   // How Zen totals a throw: the dice set's scorer, or for one die alone, its face.
   let zenScorer = sum;
 
   /**
    * Starts a match. Both modes play `diceSet` (an id), Quick Game with
-   * `spice`; Zen can instead throw one die of `dieType`. `seed` is for tests:
+   * `spices` (a stack, D51; or one, as `spice`); Zen can instead throw one die of `dieType`. `seed` is for tests:
    * the same seed plays the same match. A multiplayer match (startNet) is
    * started here too, with both `players` given.
    */
-  function start(newMode, { seed = randomSeed(), diceSet = THE_CLASSIC.id, spice, dieType, players: given } = {}) {
+  function start(newMode, { seed = randomSeed(), diceSet = THE_CLASSIC.id, spice, spices = spice ? [spice] : [], dieType, players: given } = {}) {
     mode = newMode;
     bench = null;
     leaveRound();
     if (mode !== 'net') net = null;
     E = net?.seat === 'guest' ? guestSeat(engine) : engine;
-    newMatch(seed, diceSet, spice);
+    newMatch(seed, diceSet, spices);
     rounds.length = 0;
     const zen = mode === 'zen';
     const alone = zen && dieType;
@@ -262,7 +266,7 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
     hud.showBoard(mode);
     hud.showPlayers({ player: looks.player, opponent: zen ? null : looks.opponent });
     hud.setOpponentName(mode === 'net' ? looks.opponent.name : null);
-    hud.showMatchInfo(diceSetCard(rules.diceSet), zen ? null : spiceCard(rules.spice));
+    hud.showMatchInfo(diceSetCard(rules.diceSet), zen ? null : rules.spices.map(spiceCard));
     roundNo = 0;
     if (mode !== 'zen') {
       hud.showMatch(rules.winCondition.view(match.win));
@@ -303,8 +307,8 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
   }
 
   /**
-   * The Quick Game draft (R1.1-R1.3): two dice sets, then two Spice eligible
-   * for the one picked, both dealt from the match's seed (R1.6), then the
+   * The Quick Game draft (R1.1-R1.3): two dice sets, then two Spice stacks
+   * for the one picked (D51), both dealt from the match's seed (R1.6), then the
    * match. `seed` is for tests.
    */
   function openDraft(seed = randomSeed()) {
@@ -320,8 +324,8 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
       step: 'Step 2 of 2',
       title: 'Choose your Spice',
       chosen: `${DICE_SETS[diceSet].name} · ${DICE_SETS[diceSet].notation}`,
-      cards: dealSpice(seed, diceSet).map((id) => spiceCard(SPICE[id])),
-      onPick: (spice) => start('quick', { seed, diceSet, spice }),
+      cards: dealSpice(seed, diceSet).map((ids) => stackCard(ids.map((id) => SPICE[id]))),
+      onPick: (stack) => start('quick', { seed, diceSet, spices: stack.split('+') }),
       onBack: pickDice,
     });
     pickDice();
@@ -329,29 +333,37 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
 
   /**
    * The test bench, for development only (behind ?dev, docs/decisions.md D39): a
-   * Quick Game without the draft's luck. Every dice set, then every Spice that
-   * set allows, those made for it first (testBenchSpice in rules/draft.js).
+   * Quick Game without the draft's luck. Every dice set, then any stack of
+   * the Spice that set allows (D51), those made for it first (testBenchSpice
+   * in rules/draft.js).
    * The match's seed is logged, and `?seed=` in the address replays it.
    * Once a match is over, another starts on the same dice and Spice, from a
    * new seed.
    */
   function openTestBench() {
-    const startBench = (diceSet, spice) => {
+    const startBench = (diceSet, spices) => {
       const given = new URLSearchParams(window.location.search).get('seed');
-      benchMatch(diceSet, spice, given === null ? randomSeed() : Number(given));
+      benchMatch(diceSet, spices, given === null ? randomSeed() : Number(given));
     };
     const pickDice = () => hud.showPicker('Test bench: choose your dice',
       Object.values(DICE_SETS).map(diceSetCard), pickSpice);
-    const pickSpice = (diceSet) => hud.showPicker(`Test bench: Spice for ${DICE_SETS[diceSet].name}`,
-      testBenchSpice(diceSet).map(spiceCard), (spice) => startBench(diceSet, spice), pickDice);
+    const pickSpice = (diceSet) => hud.showStackPicker({
+      title: `Test bench: Spice for ${DICE_SETS[diceSet].name}`,
+      cards: testBenchSpice(diceSet).filter((s) => s.id !== 'vanilla').map(spiceCard),
+      clash: (picked, id) => clashWith(picked, id, diceSet),
+      start: 'Start',
+      onStart: (spices) => startBench(diceSet, spices),
+      onBack: pickDice,
+    });
     pickDice();
   }
 
-  /** A test bench match of `diceSet` with `spice`, from `seed`, logged. */
-  function benchMatch(diceSet, spice, seed = randomSeed()) {
-    console.info(`Test bench: ${diceSet} with ${spice}, seed ${seed} (replay with ?dev&seed=${seed})`);
-    start('quick', { seed, diceSet, spice });
-    bench = { diceSet, spice };
+  /** A test bench match of `diceSet` with the Spice stack `spices` (ids), from `seed`, logged. */
+  function benchMatch(diceSet, spices, seed = randomSeed()) {
+    const named = spices.length ? spices.join(' + ') : 'vanilla';
+    console.info(`Test bench: ${diceSet} with ${named}, seed ${seed} (replay with ?dev&seed=${seed})`);
+    start('quick', { seed, diceSet, spices });
+    bench = { diceSet, spices };
   }
 
   // Abandons whatever round is under way: the throw in flight, a paw, a
@@ -661,7 +673,7 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
       if (loser === 'opponent' && E.canRethrow(rules, before, loser) && outcome.matchWinner === 'player') {
         hud.showMatch(rules.winCondition.view(after.win));
         hud.showRound(ROUND_HEADLINES.player, breakdownOf(outcome),
-          { notes: [...notesOf(outcome), `Your opponent calls on its ${rules.spice.name}!`] });
+          { notes: [...notesOf(outcome), `Your opponent calls on its ${rethrower().name}!`] });
         await pause(OPPONENT_BEAT_MS);
         if (id !== matchId) return;
         before = E.spendRethrow(rules, before, 'opponent');
@@ -775,7 +787,7 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
     const rethrow = outcome.winner === 'opponent' && E.canRethrow(rules, before, 'player');
     offer = rethrow ? { before, round, throws, outcome, announced } : null;
     const notes = notesOf(outcome);
-    if (rethrow) notes.push(`Not happy? Use your ${rules.spice.name} to throw again.`);
+    if (rethrow) notes.push(`Not happy? Use your ${rethrower().name} to throw again.`);
 
     if (outcome.matchWinner && !rethrow) {
       endMatch(outcome);
@@ -787,12 +799,12 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
       hud.showAnnounce(undefined);
       hud.showEdge(null);
       hud.showRound(MATCH_HEADLINES[outcome.matchWinner], breakdownOf(outcome),
-        { notes: [...notesOf(outcome), `Use your ${rules.spice.name} to throw again, or tap the table to accept it.`] });
+        { notes: [...notesOf(outcome), `Use your ${rethrower().name} to throw again, or tap the table to accept it.`] });
     } else {
       prepareRound();
       hud.showRound(ROUND_HEADLINES[outcome.winner ?? 'tie'], breakdownOf(outcome), { notes: [...notes, announced] });
     }
-    hud.showRethrow(rethrow ? { label: `${rules.spice.icon} Throw again`, title: `${rules.spice.name}: throw your dice again` } : null, table.onScreen);
+    hud.showRethrow(rethrow ? { label: `${rethrower().icon} Throw again`, title: `${rethrower().name}: throw your dice again` } : null, table.onScreen);
     rolling = false;
   }
 
@@ -818,7 +830,7 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
   // again, or in multiplayer, the room.
   function afterMatch() {
     if (mode === 'net') finishNet();
-    else if (bench) benchMatch(bench.diceSet, bench.spice);
+    else if (bench) benchMatch(bench.diceSet, bench.spices);
     else returnToMenu();
   }
 
@@ -845,7 +857,7 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
     hud.showMatch(rules.winCondition.view(match.win));
     hud.showAnnounce(then);
     showEdges();
-    const releases = await playerThrow(`${rules.spice.name}!`, 'Throw your dice again: this throw replaces the last.');
+    const releases = await playerThrow(`${rethrower().name}!`, 'Throw your dice again: this throw replaces the last.');
     if (id !== matchId) return;
     const next = await roll({ player: releases });
     if (id !== matchId) return;
@@ -1243,7 +1255,7 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
     const clock = stepClock([loser], id, { choice: true });
     hud.showMatch(rules.winCondition.view(after.win));
     const headline = outcome.matchWinner ? MATCH_HEADLINES[outcome.matchWinner] : ROUND_HEADLINES[outcome.winner];
-    const { name, icon } = rules.spice;
+    const { name, icon } = rethrower();
     let data;
     if (loser === 'player') {
       data = net.mine(step);

@@ -1,8 +1,10 @@
 // Multiplayer's menus: hosting a room and choosing what's played in it,
 // joining one, and what each player sees between matches.
 //
-// The host picks the dice and Spice from the full catalogue (docs/spec.md
-// R4.2, docs/decisions.md D3), bar what can't be played over the network.
+// The host picks the dice and a Spice stack from the full catalogue
+// (docs/spec.md R4.2, docs/decisions.md D3, D51), bar what can't be played
+// over the network. The stack starts dealt as Quick Game deals one, so
+// the host needn't think about it (DEV_PLAN Q10).
 // Between matches both players see the room (R7): both cards, `[Card] vs
 // [Card]`, each with its Ready mark and games won, and the choice with its
 // full rules, which the host can change. A match starts once both are ready
@@ -16,10 +18,11 @@ import { createTransport, cleanCode } from './transport.js';
 import { createSession, savedSession, forgetSession } from './session.js';
 import { newRoom, setReady, setChoice, bothReady, started, newGuest, tally, checkRoom } from './room.js';
 import { DICE_SETS } from '../rules/dice-sets.js';
-import { testBenchSpice } from '../rules/draft.js';
+import { testBenchSpice, dealStack } from '../rules/draft.js';
+import { canStack, clashWith } from '../rules/stacking.js';
 import { diceSetCard, spiceCard, renderCard } from '../cards.js';
 import { looksOf } from '../profile.js';
-import { randomSeed } from '../rng.js';
+import { randomSeed, createRng } from '../rng.js';
 
 // Not offered in multiplayer: No Man's Land needs both handfuls in one
 // simulation, thrown at once, and throws here are independent (D48).
@@ -68,11 +71,15 @@ export function createLobby({ hud, game, profiles }) {
   const isHost = () => session?.seat === 'host';
   const mySeat = () => session?.seat ?? 'host';
   const theirSeat = () => (mySeat() === 'host' ? 'guest' : 'host');
-  /** The choice's dice set and Spice, if this version of the game has both. */
+  /** The choice's dice set and Spice stack, if this version of the game has them all and they stack. */
   const known = (choice) => {
     const diceSet = choice && DICE_SETS[choice.diceSet];
-    const spice = diceSet && spiceFor(choice.diceSet).find((sp) => sp.id === choice.spice);
-    return spice ? { diceSet, spice } : null;
+    if (!diceSet) return null;
+    const allowed = spiceFor(choice.diceSet);
+    const spices = choice.spices.map((id) => allowed.find((sp) => sp.id === id));
+    if (!spices.length || !spices.every(Boolean)) return null;
+    if (spices.length > 1 && !canStack(choice.spices, choice.diceSet)) return null;
+    return { diceSet, spices };
   };
 
   function showMenu(status) {
@@ -194,7 +201,7 @@ export function createLobby({ hud, game, profiles }) {
     seats.them.wins.hidden = !them;
 
     const chosen = known(room.choice);
-    roomCards.replaceChildren(...(chosen ? [diceSetCard(chosen.diceSet), spiceCard(chosen.spice)] : [])
+    roomCards.replaceChildren(...(chosen ? [diceSetCard(chosen.diceSet), ...chosen.spices.map(spiceCard)] : [])
       .map((card) => renderCard(card, { full: true })));
 
     const mineOn = room.ready[mySeat()];
@@ -226,12 +233,26 @@ export function createLobby({ hud, game, profiles }) {
 
   // ---------- Hosting ----------
 
-  /** The host picks the dice, then the Spice; `then` goes on from there with the choice. */
+  /**
+   * The host picks the dice, then a Spice stack (D51): dealt to start with,
+   * as Quick Game deals one, or the one already chosen for the same dice;
+   * "Deal again" for another. `then` goes on from there with the choice.
+   */
   function choose(then, onBack) {
+    const rng = createRng(randomSeed());
+    const deal = (diceSet) => dealStack(diceSet, rng, { without: [...SOLO_ONLY] }).filter((id) => id !== 'vanilla');
     const pickDice = () => hud.showPicker('Play a friend: choose the dice',
       Object.values(DICE_SETS).map(diceSetCard), pickSpice, onBack);
-    const pickSpice = (diceSet) => hud.showPicker(`Play a friend: Spice for ${DICE_SETS[diceSet].name}`,
-      spiceFor(diceSet).map(spiceCard), (spice) => then({ diceSet, spice }), pickDice);
+    const pickSpice = (diceSet) => hud.showStackPicker({
+      title: `Play a friend: Spice for ${DICE_SETS[diceSet].name}`,
+      cards: spiceFor(diceSet).filter((sp) => sp.id !== 'vanilla').map(spiceCard),
+      picked: room.choice?.diceSet === diceSet ? room.choice.spices.filter((id) => id !== 'vanilla') : deal(diceSet),
+      clash: (picked, id) => clashWith(picked, id, diceSet),
+      start: 'Choose',
+      deal: () => deal(diceSet),
+      onStart: (spices) => then({ diceSet, spices: spices.length ? spices : ['vanilla'] }),
+      onBack: pickDice,
+    });
     pickDice();
   }
 
@@ -295,13 +316,13 @@ export function createLobby({ hud, game, profiles }) {
   async function resume(saved) {
     session = newSession();
     const s = session;
-    const { diceSet, spice } = saved.match.config;
+    const { diceSet, spice, spices = [spice] } = saved.match.config;
     if (saved.seat === 'host') {
-      room = saved.lobby ? checkRoom(saved.lobby) : newRoom({ diceSet, spice });
+      room = saved.lobby ? checkRoom(saved.lobby) : newRoom({ diceSet, spices });
       matches = saved.match.n;
       counted = saved.match.n - 1;
     } else {
-      room = newRoom({ diceSet, spice });
+      room = newRoom({ diceSet, spices });
       heard = true;
     }
     note = 'Getting back into your match…';

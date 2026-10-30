@@ -44,6 +44,20 @@ export async function startMode(page, button, { pick, spice = 'vanilla', pickAft
   if (waitForRest) await waitForDiceAtRest(page);
 }
 
+/**
+ * In a Spice stack picker (the test bench's, the multiplayer host's), picks
+ * exactly `spice` (an id, or a stack of them; 'vanilla' for none),
+ * unpicking whatever was dealt, then presses Start.
+ */
+export async function pickStack(page, spice) {
+  await page.waitForSelector('#stackStart');
+  for (const id of await page.$$eval('#pickerOptions .card.chosen', (els) => els.map((el) => el.dataset.pick))) {
+    await page.click(`#pickerOptions [data-pick="${id}"]`);
+  }
+  for (const id of [spice].flat().filter((id) => id !== 'vanilla')) await page.click(`#pickerOptions [data-pick="${id}"]`);
+  await page.click('#stackStart');
+}
+
 /** Waits until no throw (or fumbled drop) is still being simulated. */
 export async function waitForDiceAtRest(page) {
   await page.waitForFunction(() => !window.superRollies.roller.busy, null, { timeout: 15000 });

@@ -20,6 +20,8 @@ import { createRng, deriveSeed } from '../rng.js';
 import { DICE_SETS, dieTypes } from './dice-sets.js';
 import { SPICE } from './spice.js';
 import { HEARTS } from './win-conditions.js';
+import { composeSpice } from './compose.js';
+import { canStack } from './stacking.js';
 
 /** @typedef {import('./types.js').MatchConfig} MatchConfig */
 /** @typedef {import('./types.js').MatchState} MatchState */
@@ -34,30 +36,38 @@ import { HEARTS } from './win-conditions.js';
 const SIDES = ['player', 'opponent'];
 
 /**
- * A match config, checked. Defaults to The Classic with Vanilla.
- * @param {{ seed: number, diceSet?: string, spice?: string }} options
+ * A match config, checked. Defaults to The Classic with Vanilla. Its Spice
+ * are a stack (docs/decisions.md D51): `spices`, or one given as `spice`,
+ * kept in catalogue order so the same stack is the same config however it
+ * was picked. No Spice is Vanilla.
+ * @param {{ seed: number, diceSet?: string, spice?: string, spices?: string[] }} options
  * @returns {MatchConfig}
  */
-export function matchConfig({ seed, diceSet = 'classic', spice = 'vanilla' }) {
+export function matchConfig({ seed, diceSet = 'classic', spice, spices = spice ? [spice] : [] }) {
   if (!Number.isInteger(seed) || seed < 0 || seed > 0xffffffff) throw new Error(`Seed must be a uint32, got ${seed}`);
   if (!DICE_SETS[diceSet]) throw new Error(`Unknown dice set "${diceSet}"`);
-  if (!SPICE[spice]) throw new Error(`Unknown Spice "${spice}"`);
-  return { seed, diceSet, spice };
+  for (const id of spices) if (!SPICE[id]) throw new Error(`Unknown Spice "${id}"`);
+  const ids = Object.keys(SPICE).filter((id) => spices.includes(id));
+  if (ids.length > 1 && !canStack(ids, diceSet)) throw new Error(`These Spice don't stack with ${diceSet}: ${ids.join(', ')}`);
+  return { seed, diceSet, spices: ids.length ? ids : ['vanilla'] };
 }
 
 /**
- * Looks up the dice set, Spice and win condition a config names.
+ * Looks up the dice set, Spice and win condition a config names. A stack of
+ * Spice is played as one (composeSpice); `spices` lists them.
  * @param {MatchConfig} config
  * @returns {Rules}
  */
 export function resolveRules(config) {
-  const spice = SPICE[config.spice];
+  const spices = config.spices.map((id) => SPICE[id]);
+  const spice = composeSpice(spices);
   const diceSet = DICE_SETS[config.diceSet];
   const { winCondition = HEARTS } = spice;
   return {
     config,
     diceSet,
     spice,
+    spices,
     // Hit Points and the like scale to the dice, so they're made for the set.
     winCondition: typeof winCondition === 'function' ? winCondition(diceSet) : winCondition,
   };
@@ -271,8 +281,8 @@ export function playRound(rules, state, faces, { fallen, again } = {}) {
     }));
     const values = { player: sides.player.values, opponent: sides.opponent.values };
     const adjustments = {
-      player: spice.adjust?.({ faces, values, again }, sides.player.sideCtx) ?? [],
-      opponent: spice.adjust?.({ faces, values, again }, sides.opponent.sideCtx) ?? [],
+      player: spice.adjust?.({ faces, fallen, values, again }, sides.player.sideCtx) ?? [],
+      opponent: spice.adjust?.({ faces, fallen, values, again }, sides.opponent.sideCtx) ?? [],
     };
     const total = (/** @type {Side} */ side) =>
       adjustments[side].reduce((sum, { value }) => sum + value, sides[side].score);

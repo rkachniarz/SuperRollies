@@ -71,6 +71,7 @@ export function hearts(count) {
     // the same round (Mutual Destruction); that ends the match as a draw.
     matchWinner: (state) => whoIsOut(state.player <= 0, state.opponent <= 0),
     behind: fewer,
+    hearts: (state) => state,
     view: (state) => ({
       kind: 'hearts',
       sides: {
@@ -187,11 +188,20 @@ export const DEATH_SAVE_FAILS = 3;
 export const DEATH_SAVE_DC = 10;
 
 /**
- * The d20 that counted for `side`: the higher of two under advantage.
- * @param {Pick<Round, 'faces' | 'kept'>} round
+ * `side`'s faces as they stand: a die down a hole (Pothole) shows nothing,
+ * as 0, whatever it lies on in the pit.
+ * @param {Pick<Round, 'faces'> & Partial<Pick<Round, 'fallen'>>} round
  * @param {Side} side
  */
-export const naturalOf = (round, side) => Math.max(...round.faces[side].filter((_, i) => round.kept[side][i]));
+export const standing = (round, side) => round.faces[side].map((face, i) => (round.fallen?.[side]?.[i] ? 0 : face));
+
+/**
+ * The d20 that counted for `side`: the higher of two under advantage. One
+ * down a hole is 0.
+ * @param {Pick<Round, 'faces' | 'kept'> & Partial<Pick<Round, 'fallen'>>} round
+ * @param {Side} side
+ */
+export const naturalOf = (round, side) => Math.max(...standing(round, side).filter((_, i) => round.kept[side][i]));
 
 /**
  * How many death saves a natural d20 fails, as in D&D: under 10 one, a 1 two.
@@ -231,6 +241,7 @@ export const DEATH_SAVES = {
   matchWinner: ({ hearts: h, fails }) =>
     whoIsOut(h.player <= 0 || fails.player >= DEATH_SAVE_FAILS, h.opponent <= 0 || fails.opponent >= DEATH_SAVE_FAILS),
   behind: (state) => HEARTS.behind(state.hearts) ?? fewer({ player: -state.fails.player, opponent: -state.fails.opponent }),
+  hearts: (state) => state.hearts,
   view: (state) => ({
     ...HEARTS.view(state.hearts),
     marks: {
@@ -241,10 +252,12 @@ export const DEATH_SAVES = {
 };
 
 /**
- * How many of a side's dice burn out (Burnout): those showing a 1.
+ * How many of a side's dice burn out (Burnout): those showing a 1, bar any
+ * down a hole (`fallen`, Pothole).
  * @param {number[]} faces
+ * @param {boolean[]} [fallen]
  */
-export const burntOut = (faces) => faces.filter((face) => face === 1).length;
+export const burntOut = (faces, fallen) => faces.filter((face, i) => face === 1 && !fallen?.[i]).length;
 
 /**
  * @typedef {{ hearts: import('./types.js').PerSide<number>, dice: import('./types.js').PerSide<number> }} BurnoutState
@@ -269,12 +282,13 @@ export function burnout(diceSet) {
     apply: (state, round, damage) => ({
       hearts: HEARTS.apply(state.hearts, round, damage),
       dice: {
-        player: Math.max(0, state.dice.player - burntOut(round.faces.player)),
-        opponent: Math.max(0, state.dice.opponent - burntOut(round.faces.opponent)),
+        player: Math.max(0, state.dice.player - burntOut(round.faces.player, round.fallen?.player)),
+        opponent: Math.max(0, state.dice.opponent - burntOut(round.faces.opponent, round.fallen?.opponent)),
       },
     }),
     matchWinner: ({ hearts: h, dice }) => whoIsOut(h.player <= 0 || dice.player <= 0, h.opponent <= 0 || dice.opponent <= 0),
     behind: (state) => HEARTS.behind(state.hearts) ?? fewer(state.dice),
+    hearts: (state) => state.hearts,
     view: (state) => ({
       ...HEARTS.view(state.hearts),
       marks: { player: marks(state.dice.player), opponent: marks(state.dice.opponent) },

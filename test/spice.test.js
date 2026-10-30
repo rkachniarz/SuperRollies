@@ -6,6 +6,7 @@ import {
 import { DICE_SETS, DIE_MAX, extraDieType, sum, percentile } from '../src/rules/dice-sets.js';
 import { SPICE, SPICE_KINDS } from '../src/rules/spice.js';
 import { dealDice, dealSpice, eligibleSpice, OFFERS } from '../src/rules/draft.js';
+import { canStack } from '../src/rules/stacking.js';
 
 const rulesFor = (diceSet, spice, seed = 1) => resolveRules(matchConfig({ seed, diceSet, spice }));
 
@@ -97,13 +98,13 @@ describe('the draft (R1.2, R1.6)', () => {
     }
   });
 
-  test('two different eligible Spice, the same for the same seed and set', () => {
+  test('two different stacks of eligible Spice, the same for the same seed and set', () => {
     for (let seed = 0; seed < 50; seed++) {
       for (const set of Object.keys(DICE_SETS)) {
         const offer = dealSpice(seed, set);
         assert.equal(offer.length, OFFERS);
-        assert.notEqual(offer[0], offer[1]);
-        assert.ok(offer.every((id) => isEligible(SPICE[id], DICE_SETS[set])), `${seed} ${set}`);
+        assert.notEqual(offer[0].join(), offer[1].join());
+        assert.ok(offer.every((stack) => canStack(stack, set) || stack.join() === 'vanilla'), `${seed} ${set}`);
         assert.deepEqual(dealSpice(seed, set), offer);
       }
     }
@@ -115,10 +116,29 @@ describe('the draft (R1.2, R1.6)', () => {
     for (let seed = 0; seed < 2000; seed++) {
       const offer = dealDice(seed);
       offer.forEach((id) => sets.add(id));
-      dealSpice(seed, offer[0]).forEach((id) => spice.add(id));
+      dealSpice(seed, offer[0]).flat().forEach((id) => spice.add(id));
     }
     assert.equal(sets.size, Object.keys(DICE_SETS).length);
     assert.equal(spice.size, Object.keys(SPICE).length);
+  });
+
+  test('stacks come in the sizes Q8 settled on: mostly two or three, Vanilla now and then', () => {
+    const sizes = new Map();
+    let vanilla = 0;
+    let n = 0;
+    for (let seed = 0; seed < 2000; seed++) {
+      for (const stack of dealSpice(seed, 'classic')) {
+        n++;
+        if (stack.join() === 'vanilla') vanilla++;
+        else sizes.set(Math.min(stack.length, 5), (sizes.get(Math.min(stack.length, 5)) ?? 0) + 1);
+      }
+    }
+    const share = (k) => (sizes.get(k) ?? 0) / (n - vanilla);
+    assert.ok(Math.abs(share(1) - 0.15) < 0.03, `1: ${share(1)}`);
+    assert.ok(Math.abs(share(2) - 0.35) < 0.03, `2: ${share(2)}`);
+    assert.ok(Math.abs(share(3) - 0.35) < 0.03, `3: ${share(3)}`);
+    assert.ok(share(5) > 0.02 && share(5) < 0.08, `5+: ${share(5)}`);
+    assert.ok(vanilla / n > 0.01 && vanilla / n < 0.08, `vanilla: ${vanilla / n}`);
   });
 });
 

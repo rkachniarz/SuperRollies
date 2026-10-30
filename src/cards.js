@@ -40,6 +40,8 @@ function dieIcon(type) {
  * @property {string} icon  Markup: die outlines, or an emoji.
  * @property {string} [emoji]  A Spice's emoji alone, for the match label.
  * @property {string} [rules]  The full rules, for the rules popup.
+ * @property {{ emoji: string, name: string, summary: string }[]} [items]  A
+ *   Spice stack's Spice (D51), listed in place of a summary.
  */
 
 /**
@@ -87,6 +89,28 @@ export function spiceCard(spice) {
 }
 
 /**
+ * A Spice stack's card (D51): one Spice's own card, or for several, every
+ * one of them listed with its summary. Picking it gives back their ids,
+ * joined with `+`.
+ * @param {import('./rules/types.js').Spice[]} spices
+ * @returns {CardData}
+ */
+export function stackCard(spices) {
+  if (spices.length === 1) return spiceCard(spices[0]);
+  const emoji = spices.map((s) => s.icon).join('');
+  return {
+    id: spices.map((s) => s.id).join('+'),
+    kind: 'spice',
+    name: `${spices.length} Spice`,
+    tag: 'Stacked',
+    summary: spices.map((s) => s.name).join(', '),
+    icon: `<span class="emoji${spices.length > 3 ? ' many' : ''}" aria-hidden="true">${emoji}</span>`,
+    emoji,
+    items: spices.map((s) => ({ emoji: s.icon, name: s.name, summary: s.summary })),
+  };
+}
+
+/**
  * The card as an element: a button when it can be picked (`onPick`), a plain
  * box when it's only there to be read (the rules popup, which shows the full
  * rules instead of the summary). `compact` lays it out in a row, for long
@@ -110,6 +134,18 @@ export function renderCard(card, { onPick, compact = false, full = false } = {})
   const summary = document.createElement('div');
   summary.className = 'card-summary';
   summary.textContent = full && card.rules ? card.rules : card.summary;
+  if (card.items) {
+    const list = document.createElement('ul');
+    list.className = 'card-stack';
+    list.append(...card.items.map((item) => {
+      const li = document.createElement('li');
+      const what = document.createElement('b');
+      what.textContent = `${item.emoji} ${item.name}`;
+      li.append(what, ` ${item.summary}`);
+      return li;
+    }));
+    summary.replaceChildren(list);
+  }
   el.append(icon, name, tag, summary);
   if (onPick) el.addEventListener('click', () => onPick(card.id));
   return el;

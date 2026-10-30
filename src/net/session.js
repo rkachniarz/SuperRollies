@@ -27,7 +27,7 @@ import { checkProfile } from '../profile.js';
 import { digestOf } from '../seat.js';
 import { newCode, NetError } from './transport.js';
 
-const PROTOCOL = 2;
+const PROTOCOL = 3;
 const STORE_KEY = 'superRollies.net';
 // A saved session older than this isn't picked up again: the other player
 // will have been given the match by now.

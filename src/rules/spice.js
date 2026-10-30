@@ -1,5 +1,6 @@
 // @ts-check
-// Spice: what is special about a match (docs/spec.md §6). One per match (D9).
+// Spice: what is special about a match (docs/spec.md §6). Several can be
+// played together where they don't clash (D51, stacking.js, compose.js).
 //
 // Most Spice change only the rules: what the dice count for, who wins a round,
 // what it costs, and what each side throws. Some change the table (a hole, a
@@ -11,11 +12,11 @@
 // (Doubles Again, Second Wind) are thrown.
 
 import {
-  hearts, hitPoints, raceTo, tugOfWar, burnout, burntOut, DEATH_SAVES, DEATH_SAVE_DC, DEATH_SAVE_FAILS, failsFor, naturalOf,
+  hearts, hitPoints, raceTo, tugOfWar, burnout, burntOut, DEATH_SAVES, DEATH_SAVE_DC, DEATH_SAVE_FAILS, failsFor, naturalOf, standing,
 } from './win-conditions.js';
 import { DIE_MAX, extraDieType, keepHighest, countOf } from './dice-sets.js';
 import {
-  TRAY_HALF_WIDTH, DIVIDER_T, POTHOLE_RADIUS, POTHOLE_DEPTH, CAT_PAW_CHANCE, WIND_MIN, WIND_MAX,
+  TRAY_HALF_WIDTH, DIVIDER_T, POTHOLE_RADIUS, POTHOLE_DEPTH, CAT_PAW_CHANCE, WIND_MIN, WIND_MAX, ROPE_RADIUS,
 } from '../config.js';
 
 /** @typedef {import('./types.js').Spice} Spice */
@@ -139,6 +140,14 @@ const EXPLODING_DICE = {
   }),
 };
 
+/**
+ * A stake of `k` as the round's cost: `3 hearts`, or where the match isn't won
+ * on hearts (a stack with Hit Points, D51), `3 times as much`.
+ * @param {number} k
+ * @param {import('./types.js').Rules} rules
+ */
+const stakeOf = (k, rules) => (rules.winCondition.hearts ? `${k} hearts` : `${k} times as much`);
+
 /** @type {Spice} */
 const RAISING_THE_STAKES = {
   id: 'raising-the-stakes',
@@ -149,17 +158,17 @@ const RAISING_THE_STAKES = {
   rules: 'A tie costs nothing, but it raises the stakes: the next round costs its loser two hearts. Another tie makes it three, and so on. Once a round has a winner, the stakes go back to one heart.',
   eligibility: {},
   setup: () => ({ stake: 1 }),
-  beforeThrow: ({ state }) => {
+  beforeThrow: ({ rules, state }) => {
     const { stake } = /** @type {{ stake: number }} */ (state.spice);
     const next = state.previous && state.previous.winner === null ? stake + 1 : 1;
-    return { spice: { stake: next }, announce: next > 1 ? `This round costs ${next} hearts` : undefined };
+    return { spice: { stake: next }, announce: next > 1 ? `This round costs ${stakeOf(next, rules)}` : undefined };
   },
   applyDamage: (round, damage, { state }) =>
     multiplyLoser(round, damage, /** @type {{ stake: number }} */ (state.spice).stake),
-  explain: ({ winner }, { state }) => {
+  explain: ({ winner }, { rules, state }) => {
     const { stake } = /** @type {{ stake: number }} */ (state.spice);
-    if (winner) return stake > 1 ? `That cost ${stake} hearts.` : undefined;
-    return `The stakes go up: the next round costs ${stake + 1} hearts.`;
+    if (winner) return stake > 1 ? `That cost ${stakeOf(stake, rules)}.` : undefined;
+    return `The stakes go up: the next round costs ${stakeOf(stake + 1, rules)}.`;
   },
 };
 
@@ -305,14 +314,15 @@ const SNAKE_EYES = {
   summary: 'Double 1 loses the round outright; double 6 wins it.',
   rules: 'Throw two 1s (snake eyes) and you lose the round, whatever your opponent threw. Throw two 6s (boxcars) and you win it. Both of you on the same: a tie.',
   eligibility: { diceSets: ['greatsword'] },
-  compare: ({ faces, scores }) => {
-    const p = pairRank(faces.player);
-    const o = pairRank(faces.opponent);
+  compare: (round) => {
+    const { scores } = round;
+    const p = pairRank(standing(round, 'player'));
+    const o = pairRank(standing(round, 'opponent'));
     if (p !== o) return p > o ? 'player' : 'opponent';
     return scores.player > scores.opponent ? 'player' : scores.opponent > scores.player ? 'opponent' : null;
   },
-  explain: ({ faces }) => {
-    const ranks = [pairRank(faces.player), pairRank(faces.opponent)];
+  explain: (round) => {
+    const ranks = [pairRank(standing(round, 'player')), pairRank(standing(round, 'opponent'))];
     if (ranks.includes(2)) return 'Boxcars!';
     if (ranks.includes(0)) return 'Snake eyes!';
     return undefined;
@@ -334,13 +344,14 @@ const TRIPLES = {
   summary: 'Three of a kind wins the round outright.',
   rules: 'Throw three dice showing the same number and you win the round, whatever the totals. If you both do, the higher total wins as usual. With Heroic Stats the dropped die still counts towards a triple.',
   eligibility: { diceSets: ['ability-score', 'heroic-stats', 'guiding-bolt'] },
-  compare: ({ faces, scores }) => {
-    const p = hasTriple(faces.player);
-    const o = hasTriple(faces.opponent);
+  compare: (round) => {
+    const { scores } = round;
+    const p = hasTriple(standing(round, 'player'));
+    const o = hasTriple(standing(round, 'opponent'));
     if (p !== o) return p ? 'player' : 'opponent';
     return scores.player > scores.opponent ? 'player' : scores.opponent > scores.player ? 'opponent' : null;
   },
-  explain: ({ faces }) => (hasTriple(faces.player) || hasTriple(faces.opponent) ? 'Three of a kind!' : undefined),
+  explain: (round) => (hasTriple(standing(round, 'player')) || hasTriple(standing(round, 'opponent')) ? 'Three of a kind!' : undefined),
 };
 
 /** @type {Spice} */
@@ -352,8 +363,8 @@ const CALTROPS = {
   summary: 'Every 1 you roll takes 1 off your opponent\'s total.',
   rules: 'Each of your dice that lands on 1 still counts for you, and also takes 1 off your opponent\'s total.',
   eligibility: { diceSets: ['magic-missile', 'swarm-of-daggers'] },
-  adjust: ({ faces }, { side }) => {
-    const ones = faces[other(side)].filter((f) => f === 1).length;
+  adjust: (round, { side }) => {
+    const ones = standing(round, other(side)).filter((f) => f === 1).length;
     return ones ? [{ label: 'caltrops', value: -ones }] : [];
   },
 };
@@ -439,9 +450,9 @@ const MERCY_BEHIND = 2;
  * @param {Side} side
  * @param {import('./types.js').StateContext} ctx
  */
-const heartsBehind = (side, { state }) => {
-  const hearts = /** @type {import('./types.js').PerSide<number>} */ (state.win);
-  return hearts[other(side)] - hearts[side];
+const heartsBehind = (side, { rules, state }) => {
+  const hearts = rules.winCondition.hearts?.(state.win);
+  return hearts ? hearts[other(side)] - hearts[side] : 0;
 };
 
 /** @type {Spice} */
@@ -489,7 +500,10 @@ const POTHOLE = {
     const r = POTHOLE_RADIUS * k;
     const near = DIVIDER_T + r + 0.2 * k;
     const far = half - r - 0.2 * k;
-    const x = u * 0.3 * halfWidth;
+    // With a rope down the middle (a stack with Tug of War, D51), the hole
+    // keeps clear of it: only then, so every recorded throw stays as it was.
+    const clear = rules.winCondition.pull ? ROPE_RADIUS + r + 0.05 * k : 0;
+    const x = clear ? Math.sign(u || 1) * (clear + Math.abs(u) * Math.max(0, 0.3 * halfWidth - clear)) : u * 0.3 * halfWidth;
     const z = near + v * (far - near);
     const depth = POTHOLE_DEPTH * k;
     return { holes: [{ x, z, r, depth }, { x: -x, z: -z, r, depth }] };
@@ -661,9 +675,9 @@ const BURNOUT = {
   hand: (side, base, { state }) =>
     ({ ...base, types: base.types.slice(0, /** @type {import('./win-conditions.js').BurnoutState} */ (state.win).dice[side]) }),
   values: (faces) => faces.map((face) => (face === 1 ? { value: face, text: '1', tag: 'burnt' } : { value: face })),
-  explain: ({ faces }) => {
+  explain: ({ faces, fallen }) => {
     const lost = /** @type {Side[]} */ (['player', 'opponent']).map((side) => {
-      const n = burntOut(faces[side]);
+      const n = burntOut(faces[side], fallen[side]);
       return n ? `${side === 'player' ? 'you lose' : 'they lose'} ${n === 1 ? 'a die' : `${n} dice`}` : '';
     }).filter(Boolean);
     return lost.length ? `🔥 Burnt out: ${lost.join(', ')}.` : undefined;

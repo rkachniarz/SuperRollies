@@ -29,7 +29,8 @@
  * @typedef {Object} MatchConfig
  * @property {number} seed  uint32; every random event in the match follows from it.
  * @property {string} diceSet  A key of DICE_SETS.
- * @property {string} spice  A key of SPICE.
+ * @property {string[]} spices  Keys of SPICE, in catalogue order: the
+ *   match's Spice stack (D51). `['vanilla']` for none.
  */
 
 /**
@@ -143,6 +144,8 @@
  * @property {(state: S) => Side | null} behind  Who is losing, if anyone
  *   (Underdog helps them).
  * @property {(state: S) => MatchView} view
+ * @property {(state: S) => PerSide<number>} [hearts]  Each side's hearts left,
+ *   where the match is won on hearts (Mercy counts how far behind a side is).
  * @property {(state: S) => number} [pull]  How far a marker has been pulled
  *   towards the opponent's edge, -1 (the player's) to 1 (Tug of War's rope).
  */
@@ -156,7 +159,6 @@
  * @property {string[]} [dieTypes]  All of these must be in the set.
  * @property {string[]} [diceSets]  Only these sets, by id.
  * @property {string[]} [excludeDiceSets]  Never these sets, by id.
- * @property {string[]} [incompatible]  Spice ids it can't be combined with.
  */
 
 /**
@@ -260,7 +262,7 @@
  * @property {(faces: number[], ctx: SideContext) => DieValue[]} [values]
  *   What each of a side's dice counts for, one entry per die, before the
  *   scorer totals them.
- * @property {(round: Pick<Round, 'faces' | 'values' | 'again'>, ctx: SideContext) => Adjustment[]} [adjust]
+ * @property {(round: Pick<Round, 'faces' | 'fallen' | 'values' | 'again'>, ctx: SideContext) => Adjustment[]} [adjust]
  *   Added to (or taken off) a side's total after the scorer.
  * @property {(round: Omit<Round, 'winner'>, ctx: HookContext) => Side | null} [compare]
  *   Decides the round winner. Default: higher score wins, equal is a tie.
@@ -275,7 +277,8 @@
  * @typedef {Object} Rules
  * @property {MatchConfig} config
  * @property {DiceSet} diceSet
- * @property {Spice} spice
+ * @property {Spice} spice  The match's Spice: its stack as one (compose.js).
+ * @property {Spice[]} spices  Each Spice in the stack, in catalogue order.
  * @property {WinCondition<any>} winCondition
  */
 
@@ -286,7 +289,8 @@
  * @property {number} round  Rounds played so far.
  * @property {number} rng  State of the rules stream (see rng.js).
  * @property {unknown} win  The win condition's own state.
- * @property {unknown} spice  The Spice's own state.
+ * @property {unknown} spice  The Spice's own state; with a stack, each
+ *   Spice's by its id (compose.js).
  * @property {{ winner: Side | null } | null} previous  How the last round
  *   went; null before the first.
  * @property {MatchResult | null} winner  Set once the match is over.

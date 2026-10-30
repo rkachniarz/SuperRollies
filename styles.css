@@ -530,6 +530,19 @@
   /* A set of four or more die types (The Whole Bag) draws them smaller. */
   .card-icon:has(.die-icon:nth-child(4)) .die-icon{ width:26px; height:26px; }
   .card-icon .emoji{ font-size:38px; line-height:44px; }
+  .card-icon .emoji.many{ font-size:24px; line-height:32px; word-break:break-all; }
+  /* A Spice stack's card lists its Spice, each with its summary (D51). */
+  .card-stack{
+    list-style:none;
+    margin:2px 0 0;
+    padding:0;
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+    text-align:left;
+    font-size:13px;
+  }
+  .card-stack b{ color:var(--ink); }
   .card-name{
     font-family:'Bungee', system-ui, sans-serif;
     font-size:17px;
@@ -568,6 +581,26 @@
   .card.compact .card-name{ grid-area:name; font-size:15px; }
   .card.compact .card-tag{ grid-area:tag; }
   .card.compact .card-summary{ grid-area:summary; font-size:13px; }
+  /* Picking a Spice stack (D51): Start (and Deal again) above the list;
+     a card picked is lit, one that clashes is greyed and says why. */
+  .stack-bar{
+    grid-column:1 / -1;
+    display:flex;
+    flex-wrap:wrap;
+    justify-content:center;
+    gap:12px;
+    margin-bottom:6px;
+  }
+  .stack-bar .menu-btn{ padding:12px 24px; font-size:16px; }
+  .stack-bar .menu-btn[hidden]{ display:none; }
+  .card.chosen{
+    background:linear-gradient(180deg, #3a2f5e, #261f3d);
+    border-color:var(--accent);
+  }
+  .card.chosen .card-name::after{ content:' ✓'; color:var(--accent); }
+  button.card:disabled{ opacity:0.45; cursor:not-allowed; transform:none; }
+  .card-why{ grid-column:2; font-size:12px; line-height:1.3; color:var(--ink-dim); font-style:italic; }
+  .card-why:empty{ display:none; }
   .picker-back{
     margin-top:24px;
     font-family:'Karla', system-ui, sans-serif;
@@ -678,9 +711,11 @@
     font-weight:700;
     color:var(--ink);
     background:rgba(124,92,255,0.85);
-    border-radius:999px;
+    border-radius:16px;
     padding:6px 14px;
-    white-space:nowrap;
+    /* A line per announcement, when a Spice stack makes several (D51). */
+    white-space:pre-line;
+    text-align:center;
     overflow:hidden;
     text-overflow:ellipsis;
   }
@@ -806,6 +841,9 @@
     font-weight:700;
     letter-spacing:0.02em;
     white-space:nowrap;
+    max-width:100%;
+    overflow:hidden;
+    text-overflow:ellipsis;
     color:#fff;
     background:#2f9e5b;
     border-radius:999px;

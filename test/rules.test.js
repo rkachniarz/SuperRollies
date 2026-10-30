@@ -22,7 +22,7 @@ function playOut(rules, rolls) {
 
 describe('match config', () => {
   test('defaults to The Classic with Vanilla', () => {
-    assert.deepEqual(matchConfig({ seed: 7 }), { seed: 7, diceSet: 'classic', spice: 'vanilla' });
+    assert.deepEqual(matchConfig({ seed: 7 }), { seed: 7, diceSet: 'classic', spices: ['vanilla'] });
   });
 
   test('rejects an unknown dice set, Spice or a bad seed', () => {

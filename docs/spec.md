@@ -80,8 +80,11 @@ Some Spice works with any dice; some only makes sense with particular dice
   | `applyDamage` | Decide what the round result costs |
 
 - **R3.2** Each Spice declares eligibility: minimum and maximum dice count,
-  required die types, allowed dice sets, and incompatible Spice.
-- **R3.3** Exactly one Spice per match. *(D9)*
+  required die types and allowed dice sets. Which Spice can't be played
+  together is `src/rules/stacking.js`'s (D51).
+- **R3.3** ~~Exactly one Spice per match. *(D9)*~~ Any number of Spice that
+  don't clash, per `src/rules/stacking.js` and the cross-list in
+  [stacking.md](stacking.md). *(D51, Phase 9)*
 - **R3.4** The default win condition is **3 hearts per side**. `hud.js` must not
   assume hearts; it renders whatever the active win condition provides. *(D7)*
 - **R3.5** When a state-based advantage is active (R1.7), the HUD shows who holds

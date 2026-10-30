@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { newRoom, setReady, setChoice, bothReady, started, newGuest, tally, checkRoom } from '../src/net/room.js';
 
-const CHOICE = { diceSet: 'classic', spice: 'vanilla' };
+const CHOICE = { diceSet: 'classic', spices: ['vanilla'] };
 
 test('a match starts only once both are ready, and something is chosen', () => {
   let room = newRoom(CHOICE);
@@ -24,7 +24,7 @@ test('a player can take their Ready back', () => {
 
 test('changing the dice or Spice leaves both Ready marks as they are (Q5)', () => {
   const room = setReady(setReady(newRoom(CHOICE), 'host', true), 'guest', true);
-  const changed = setChoice(room, { diceSet: 'greatsword', spice: 'underdog' });
+  const changed = setChoice(room, { diceSet: 'greatsword', spices: ['underdog', 'cat-paw'] });
   assert.deepEqual(changed.ready, { host: true, guest: true });
   assert.equal(bothReady(changed), true);
 });

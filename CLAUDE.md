@@ -1,7 +1,7 @@
 # Super Rollies — notes for Claude
 
-A dice roll-off game (one die up to 8 a side, d4 to d20 and percentile, and a Spice that bends the
-rules or the table each match), against the AI or a friend over the network: three.js for rendering,
+A dice roll-off game (one die up to 8 a side, d4 to d20 and percentile, and a stack of Spice that
+bends the rules or the table each match), against the AI or a friend over the network: three.js for rendering,
 Rapier (deterministic build) for physics, PeerJS for multiplayer, no framework, no build step to run it. See README.md for the
 file-by-file map.
 
@@ -16,11 +16,14 @@ it, since code comments cite all of these by number:
   there rather than silently changing requirements.
 - `docs/spec.md`: the vision, requirements (`R1.1`–`R7.3`) and the catalogue
   of dice sets (`§5`) and Spice (`§6`).
+- `docs/stacking.md`: which Spice stack, generated from `src/rules/stacking.js`
+  by `node tools/stacking-table.mjs` (run it after changing that file).
 - `docs/history.md`: finished phases task by task (`0.5`, `4.6a`, `5.1`...),
   with what was measured on the way.
 
-A few rules every change keeps: at most 8 dice a side (D6); one Spice a match
-(D9); a rule may favour whoever is in a given state (behind, just lost) but
+A few rules every change keeps: at most 8 dice a side (D6); Spice stack only
+where `src/rules/stacking.js` says they don't clash (D51), and a match with one
+Spice plays exactly as before stacking; a rule may favour whoever is in a given state (behind, just lost) but
 never a player by identity, such as the host (D8).
 
 A phase ends with `npm test`, `npm run verify` and `npm run phase0` passing,
@@ -204,6 +207,18 @@ someone (or something) tidying with good intentions.
   opponent's throws, the player's spin jitter and the rules each have their
   own (`deriveSeed`). Sharing one would let an extra draw in one shift the
   others, and in multiplayer only the rules stream is common to both players.
+- **`src/rules/compose.js` — a stack of one Spice is that Spice itself.**
+  That's what keeps every single-Spice match, recorded throw and test as it
+  was. A stack of several keeps each Spice's state under its id
+  (`state.spice[id]`) and hands each hook only its own slice, so a Spice never
+  reads another's bookkeeping. Hooks run in catalogue order, all drawing from
+  the one rules stream; `values` runs in `VALUES_FIRST`'s order instead, the
+  first Spice to change a die keeping it (a die down a hole is 0, a cursed 6
+  doesn't explode). A new Spice that changes how a die counts goes in that list.
+- **`src/rules/spice.js` — a die down a hole shows nothing (`standing`).** Spice
+  that read faces rather than values (Snake Eyes, Triples, Caltrops, a natural
+  20 or 1, Burnout) read a fallen die as 0. Alone, no Spice ever saw a hole;
+  stacked with Pothole they do.
 - **`src/hud.js` — the HUD draws the win condition's `view`, it doesn't keep
   score.** Hearts are only the default win condition (R3.4).
 - **`src/physics.js` — squared magnitudes, not `Math.hypot`, in anything that

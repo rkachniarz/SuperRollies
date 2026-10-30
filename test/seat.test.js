@@ -4,6 +4,7 @@ import * as engine from '../src/rules/engine.js';
 import { DICE_SETS, DIE_MAX } from '../src/rules/dice-sets.js';
 import { SPICE } from '../src/rules/spice.js';
 import { createRng } from '../src/rng.js';
+import { clashOf, largestStack } from '../src/rules/stacking.js';
 import { guestSeat, swapSides, turnTable, turnQ, turnP, turnDie, swapId, digestOf } from '../src/seat.js';
 
 const guest = guestSeat(engine);
@@ -13,10 +14,11 @@ const SIDES = ['player', 'opponent'];
  * Plays a match on the host's engine and, alongside it, on the guest's
  * (guestSeat), feeding the guest everything turned round, and checks that
  * every answer the guest gets is the host's turned round. Faces are random,
- * from `seed`. Returns the notes each side was given.
+ * from `seed`. `spice` is one id, or a stack of them (D51). Returns the
+ * notes each side was given.
  */
 function playBoth(diceSet, spice, seed) {
-  const rules = engine.resolveRules(engine.matchConfig({ seed, diceSet, spice }));
+  const rules = engine.resolveRules(engine.matchConfig({ seed, diceSet, spices: [spice].flat() }));
   const rng = createRng(seed ^ 0x5eed);
   const roll = (types) => types.map((t) => 1 + rng.int(DIE_MAX[t]));
   let host = engine.startMatch(rules);
@@ -92,13 +94,26 @@ describe('the guest\'s seat (D27)', () => {
     }
   });
 
+  test('every pair of Spice that stacks, with every dice set both allow, and each set\'s largest stack (D51)', () => {
+    let seed = 1;
+    for (const diceSet of Object.values(DICE_SETS)) {
+      const ids = Object.values(SPICE).filter((s) => s.id !== 'vanilla' && engine.isEligible(s, diceSet)).map((s) => s.id);
+      for (const [i, a] of ids.entries()) {
+        for (const b of ids.slice(i + 1)) if (!clashOf(a, b)) playBoth(diceSet.id, [a, b], seed++);
+      }
+      for (let k = 0; k < 3; k++) playBoth(diceSet.id, largestStack(diceSet.id), seed++);
+    }
+  });
+
   test('what the Spice says is said from the guest\'s seat: "you" is the guest', () => {
     // Burnout: a side whose die shows a 1 loses it.
     let checked = 0;
     for (let seed = 1; seed < 200 && checked < 5; seed++) {
       for (const { host, guest: theirs, outcome } of playBoth('classic', 'burnout', seed)) {
-        const hostLost = outcome.faces.player.includes(1);
-        const guestLost = outcome.faces.opponent.includes(1);
+        // A 1 down a hole doesn't burn (D51).
+        const burns = (side) => outcome.faces[side].some((f, i) => f === 1 && !outcome.fallen[side][i]);
+        const hostLost = burns('player');
+        const guestLost = burns('opponent');
         if (hostLost === guestLost) continue;
         assert.match(host, hostLost ? /you lose/ : /they lose/);
         assert.match(theirs, hostLost ? /they lose/ : /you lose/);

@@ -7,10 +7,12 @@ natural 20 hits twice as hard, whoever's behind throws an extra die. Or it
 bends the table: a pothole in each half, a breeze across it, a cat's paw
 swiping at the dice once they've settled, no wall down the middle. Or how
 you score and win: poker hands with a redraw, only the sixes counting, dice
-that burn out on a 1, hit points, a race to a target, a tug of war. Pick them up, throw
+that burn out on a 1, hit points, a race to a target, a tug of war. Or
+several Spice at once, stacked wherever they don't clash: hit points with a
+breeze, a cat and exploding dice. Pick them up, throw
 them, roll higher than your opponent. Lose a round and you lose a heart; lose
 them all and the match is over. Or **play a friend**: host a room, send
-them its link, pick the dice and Spice, and once you're both ready each of
+them its link, pick the dice and a stack of Spice (or take the one dealt), and once you're both ready each of
 you throws when you like, your friend's dice landing on your screen as they
 throw them; the room keeps count of the games each of you has won. Or pick
 **Zen** and just throw: any of the dice, the whole tray, no score. Make it
@@ -123,7 +125,11 @@ src/
     win-conditions.js how a match is won (Hearts by default; Hit Points,
                       Race to N and Tug of War scaled to the dice; Death
                       Saves and Burnout, Hearts with a second way to lose)
-    draft.js          the two cards offered at each step of the draft
+    draft.js          the two cards offered at each step of the draft,
+                      the Spice ones each a stack of one Spice or more
+    stacking.js       which Spice can be played together, and why not;
+                      docs/stacking.md, the cross-list, is made from it
+    compose.js        a Spice stack played as one Spice
     types.js          the JSDoc types they share
   main.js     wires it together and runs the frame loop
 test/         unit tests for the RNG, the rules and every Spice, handfuls, die

@@ -284,7 +284,7 @@ export function createHud() {
 
   /**
    * What the Spice announces for the coming round (`Cursed number: 7`), shown
-   * for as long as it holds.
+   * for as long as it holds. A stack's announcements are a line each.
    * @param {string | undefined} text
    */
   function showAnnounce(text) {
@@ -310,9 +310,11 @@ export function createHud() {
   function showEdge(edge) {
     const edges = edge ? [edge].flat() : [];
     for (const [side, el] of Object.entries(edgeEls)) {
-      const held = edges.find((e) => e.side === side);
+      // A Spice stack can give a side several at once (D51): one line, cut short.
+      const held = edges.filter((e) => e.side === side).map((e) => e.label).join(' · ');
       el.hidden = !held;
-      el.textContent = held ? held.label : '';
+      el.textContent = held;
+      el.title = held;
     }
   }
 
@@ -378,18 +380,21 @@ export function createHud() {
 
   /**
    * The match's Dice/Spice label (R1.5): its dice and its Spice, by name.
-   * Tapping it shows both cards with their full rules. Without a Spice (Zen)
+   * Tapping it shows every card with its full rules. Without a Spice (Zen)
    * there's no label.
    * @param {import('./cards.js').CardData} dice
-   * @param {(import('./cards.js').CardData & { emoji: string }) | null} spice
+   * @param {(import('./cards.js').CardData & { emoji: string })[] | null} spices  A stack (D51).
    */
-  function showMatchInfo(dice, spice) {
-    matchCards = spice ? [dice, spice] : [];
+  function showMatchInfo(dice, spices) {
+    matchCards = spices ? [dice, ...spices] : [];
     // Names only, one line each, so the label stays as small as the back
-    // button on a phone; the notation is on the cards it opens.
+    // button on a phone; the notation is on the cards it opens. A stack is
+    // its icons and how many: names would be cut short at once.
     matchInfoDiceEl.textContent = dice.name;
-    matchInfoSpiceEl.textContent = spice ? `${spice.emoji} ${spice.name}` : '';
-    matchInfoBtn.hidden = !spice;
+    matchInfoSpiceEl.textContent = !spices ? ''
+      : spices.length === 1 ? `${spices[0].emoji} ${spices[0].name}`
+        : `${spices.map((s) => s.emoji).join('')} ${spices.length} Spice`;
+    matchInfoBtn.hidden = !spices;
   }
 
   function showRules() {
@@ -605,6 +610,60 @@ export function createHud() {
     pickerOptionsEl.querySelector('button')?.focus();
   }
 
+  /**
+   * A Spice stack to pick (D51): the catalogue's list, any number of cards
+   * toggled on, then Start. A card that clashes with one picked is greyed
+   * out, and says why (`clash(picked, id)`, a reason or null), on the card
+   * itself, so it reads on a phone too. `deal`, if given, offers "Deal
+   * again", which picks a fresh stack (the multiplayer host's default, Q10).
+   * @param {{ title: string, cards: import('./cards.js').CardData[], picked?: string[],
+   *   clash: (picked: string[], id: string) => string | null, start: string,
+   *   onStart: (ids: string[]) => void, onBack?: () => void, deal?: () => string[] }} options
+   */
+  function showStackPicker({ title, cards, picked = [], clash, start, onStart, onBack = showMenu, deal }) {
+    let chosen = [...picked];
+    pickerTitleEl.textContent = title;
+    const bar = document.createElement('div');
+    bar.className = 'stack-bar';
+    const startBtn = document.createElement('button');
+    startBtn.className = 'menu-btn';
+    startBtn.id = 'stackStart';
+    const dealBtn = document.createElement('button');
+    dealBtn.className = 'menu-btn secondary';
+    dealBtn.id = 'stackDeal';
+    dealBtn.textContent = 'Deal again';
+    dealBtn.hidden = !deal;
+    bar.append(startBtn, dealBtn);
+    const els = cards.map((card) => {
+      const el = renderCard(card, { compact: true, onPick: (id) => {
+        chosen = chosen.includes(id) ? chosen.filter((c) => c !== id) : [...chosen, id];
+        refresh();
+      } });
+      const why = document.createElement('div');
+      why.className = 'card-why';
+      el.append(why);
+      return el;
+    });
+    function refresh() {
+      for (const el of els) {
+        const { pick: id } = el.dataset;
+        const on = chosen.includes(id);
+        const reason = on ? null : clash(chosen, id);
+        el.classList.toggle('chosen', on);
+        el.setAttribute('aria-pressed', String(on));
+        /** @type {HTMLButtonElement} */ (el).disabled = Boolean(reason);
+        el.querySelector('.card-why').textContent = reason ?? '';
+      }
+      startBtn.textContent = chosen.length ? `${start}: ${chosen.length} Spice` : `${start}: no Spice`;
+    }
+    startBtn.addEventListener('click', () => onStart(cards.map((c) => c.id).filter((id) => chosen.includes(id))));
+    dealBtn.addEventListener('click', () => { chosen = deal(); refresh(); });
+    refresh();
+    pickerOptionsEl.replaceChildren(bar, ...els);
+    showMenuCard(pickerEl, onBack);
+    startBtn.focus();
+  }
+
   // The test bench is for development only: shown with ?dev in the address.
   testBenchBtn.hidden = !new URLSearchParams(window.location.search).has('dev');
 
@@ -617,7 +676,7 @@ export function createHud() {
 
   return {
     showMatch,
-    showResult, showRound, hideResult, showBoard, showMenu, showPicker, showDraft, setLoaded, setLoadFailed,
+    showResult, showRound, hideResult, showBoard, showMenu, showPicker, showStackPicker, showDraft, setLoaded, setLoadFailed,
     showMatchInfo, showAnnounce, showEdge, showRethrow, showPlayers, showMenuPlayer, showEditor,
     showStatus, setOpponentName, showMenuCard, showRoomPlayer,
     onEditPlayer(handler) { editBtn.addEventListener('click', handler); },

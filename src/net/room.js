@@ -9,7 +9,7 @@
 
 /**
  * @typedef {Object} Room
- * @property {{ diceSet: string, spice: string } | null} choice
+ * @property {{ diceSet: string, spices: string[] } | null} choice  The dice and a Spice stack (D51).
  * @property {{ host: boolean, guest: boolean }} ready
  * @property {{ host: number, guest: number }} wins
  */
@@ -53,8 +53,9 @@ export function checkRoom(room) {
   const count = (v) => (Number.isInteger(v) && v >= 0 ? v : 0);
   const choice = room?.choice;
   return {
-    choice: choice && typeof choice.diceSet === 'string' && typeof choice.spice === 'string'
-      ? { diceSet: choice.diceSet, spice: choice.spice } : null,
+    choice: choice && typeof choice.diceSet === 'string' && Array.isArray(choice.spices)
+      && choice.spices.length && choice.spices.every((id) => typeof id === 'string')
+      ? { diceSet: choice.diceSet, spices: [...choice.spices] } : null,
     ready: { host: flag(room?.ready?.host), guest: flag(room?.ready?.guest) },
     wins: { host: count(room?.wins?.host), guest: count(room?.wins?.guest) },
   };

@@ -9,7 +9,7 @@
 // working on multiplayer.
 
 import { chromium } from 'playwright';
-import { BASE_URL, dieScreenPos, drag } from './driver.mjs';
+import { BASE_URL, dieScreenPos, drag, pickStack } from './driver.mjs';
 
 export const DESKTOP = { width: 1280, height: 800 };
 export const PHONE = { width: 390, height: 844 };
@@ -40,15 +40,16 @@ export async function openRoom({ viewport = DESKTOP, guestViewport = viewport, h
 }
 
 /**
- * The host opens a room for `diceSet` with `spice`, and (unless `ready` is
- * false) says it's ready; resolves with its code.
+ * The host opens a room for `diceSet` with `spice` (an id, or a stack of
+ * them), and (unless `ready` is false) says it's ready; resolves with its
+ * code.
  */
 export async function hostRoom(host, diceSet = 'classic', spice = 'vanilla', { ready = true } = {}) {
   await host.waitForSelector('#netBtn:not([disabled])', { timeout: 30000 });
   await host.click('#netBtn');
   await host.click('#netHostBtn');
   await host.click(`#pickerOptions [data-pick="${diceSet}"]`);
-  await host.click(`#pickerOptions [data-pick="${spice}"]`);
+  await pickStack(host, spice);
   await host.waitForFunction(() => /^[A-Z0-9]{5}$/.test(document.getElementById('netRoomCode').textContent));
   if (ready) await pressReady(host);
   return host.textContent('#netRoomCode');
@@ -370,7 +371,7 @@ export async function multiplayerChecks(report, only) {
     await themReady(host, true);
     await host.click('#netChangeBtn');
     await host.click('#pickerOptions [data-pick="greatsword"]');
-    await host.click('#pickerOptions [data-pick="underdog"]');
+    await pickStack(host, ['underdog', 'cat-paw']);
     await guest.waitForSelector('#netRoomCards [data-pick="greatsword"]', { timeout: 5000 });
     const kept = { host: await roomSeen(host), guest: await roomSeen(guest) };
     const stillReady = kept.host.them.ready && kept.guest.me.ready && !kept.host.me.ready && !kept.guest.them.ready;
@@ -378,11 +379,11 @@ export async function multiplayerChecks(report, only) {
     await Promise.all([host, guest].map((p) => p.waitForFunction(() => window.superRollies.game.state === 'playing'
       && window.superRollies.game.net?.n === 1, null, { timeout: 15000 })));
     const config = await Promise.all([host, guest].map((p) => p.evaluate(() => {
-      const { diceSet, spice } = window.superRollies.game.config;
-      return `${diceSet}/${spice}`;
+      const { diceSet, spices } = window.superRollies.game.config;
+      return `${diceSet}/${spices.join('+')}`;
     })));
     report('Multiplayer: a match starts once both are ready, a Ready can be taken back, and changing the Spice keeps both',
-      shownOn && notYet && takenBack && stillReady && config.every((c) => c === 'greatsword/underdog'),
+      shownOn && notYet && takenBack && stillReady && config.every((c) => c === 'greatsword/underdog+cat-paw'),
       JSON.stringify({ shownOn, notYet, takenBack, stillReady, config }));
   });
 
@@ -422,10 +423,14 @@ export async function multiplayerChecks(report, only) {
     ['doubles-again', 'greatsword', { fires: true }],
     ['second-wind', 'classic', { fires: true, rethrow: true }], ['mercy', 'classic', { rethrow: true }],
     ['draw-poker', 'dice-poker', { fires: true, pick: 'one' }, { pick: 'keep' }],
+    // A Spice stack (D51): a table, a paw, a breeze, the stakes and a re-throw at once.
+    [['raising-the-stakes', 'second-wind', 'pothole', 'cat-paw', 'gusty-table'], 'classic', { fires: true, rethrow: true }],
+    [['tug-of-war', 'exploding-dice', 'underdog', 'pothole'], 'classic'],
   ];
-  for (const [spice, diceSet, { fires = false, ...hostPlay } = {}, guestPlay = hostPlay] of SPICED) {
+  for (const [stack, diceSet, { fires = false, ...hostPlay } = {}, guestPlay = hostPlay] of SPICED) {
+    const spice = [stack].flat().join(' + ');
     await withRoom(`multiplayer: ${spice}`, only, report, async ({ host, guest }) => {
-      await joinRoom(guest, await hostRoom(host, diceSet, spice));
+      await joinRoom(guest, await hostRoom(host, diceSet, stack));
       let detail;
       for (let n = 1; ; n++) {
         const ends = await Promise.all([bot(host, { dx: -40, ...hostPlay }), bot(guest, { dx: 50, ...guestPlay })]);
