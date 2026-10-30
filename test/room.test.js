@@ -3,7 +3,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { newRoom, setReady, setChoice, bothReady, started, newGuest, tally, checkRoom } from '../src/net/room.js';
+import { newRoom, setReady, setChoice, toggleSpice, bothReady, started, newGuest, tally, checkRoom } from '../src/net/room.js';
 
 const CHOICE = { diceSet: 'classic', spices: ['vanilla'] };
 
@@ -55,7 +55,20 @@ test('a new guest starts the count from 0-0, unready; the host stays ready', () 
 test('a room received is checked', () => {
   assert.deepEqual(checkRoom(null), newRoom());
   assert.deepEqual(checkRoom({ choice: { diceSet: 1 }, ready: { host: 'yes', guest: true }, wins: { host: -1, guest: 2.5 } }),
-    { choice: null, ready: { host: false, guest: true }, wins: { host: 0, guest: 0 } });
+    { choice: null, pool: [], ready: { host: false, guest: true }, wins: { host: 0, guest: 0 } });
   const room = tally(setReady(newRoom(CHOICE), 'guest', true), { winner: 'guest', reason: 'played' });
   assert.deepEqual(checkRoom(JSON.parse(JSON.stringify(room))), room);
+});
+
+test('the host switches Spice of the last stack off and on again: the same order, none at all Vanilla', () => {
+  let room = setReady(setChoice(newRoom(), { diceSet: 'classic', spices: ['marathon', 'cat-paw', 'gusty-table'] }), 'guest', true);
+  room = toggleSpice(room, 'cat-paw');
+  assert.deepEqual(room.choice.spices, ['marathon', 'gusty-table']);
+  assert.deepEqual(room.pool, ['marathon', 'cat-paw', 'gusty-table']);
+  assert.equal(room.ready.guest, true);
+  room = toggleSpice(toggleSpice(room, 'marathon'), 'gusty-table');
+  assert.deepEqual(room.choice.spices, ['vanilla']);
+  room = toggleSpice(room, 'cat-paw');
+  assert.deepEqual(room.choice.spices, ['cat-paw']);
+  assert.equal(toggleSpice(room, 'lowball'), room, 'only Spice of the stack last chosen');
 });

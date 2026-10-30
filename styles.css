@@ -821,6 +821,12 @@
   }
   .net-seat.empty .pc-foot{ display:none; }
   .net-buttons{ gap:8px; flex-wrap:wrap; }
+  .net-buttons-top{ margin:0 0 14px; }
+  /* Your own card in the room opens the editor (the room stays open). */
+  #netMeCard{ cursor:pointer; }
+  /* A Spice the host has switched off for the next match: tap to switch it on. */
+  .card.off{ opacity:0.4; filter:grayscale(0.8); }
+  .card.off .card-name{ text-decoration:line-through; }
   .net-buttons .menu-btn{ padding:10px 18px; font-size:16px; }
   .net-buttons #netReadyBtn{ min-width:7.5em; }
   @media (max-width:580px){

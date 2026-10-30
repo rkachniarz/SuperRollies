@@ -128,6 +128,8 @@ export const DICE_SETS = Object.fromEntries([
     { summary: 'Two d6s, added up.', range: '2–12' }),
   diceSet('greataxe', 'Greataxe', [{ type: 'd12', count: 1 }],
     { summary: 'One big d12.', range: '1–12' }),
+  diceSet('twin-axes', 'Twin Axes', [{ type: 'd12', count: 2 }],
+    { summary: 'Two d12s, added up.', range: '2–24' }),
   diceSet('ability-score', 'Ability Score', [{ type: 'd6', count: 3 }],
     { tray: 1.15, summary: 'Three d6s, added up, old-school style.', range: '3–18' }),
   diceSet('heroic-stats', 'Heroic Stats', [{ type: 'd6', count: 4 }],

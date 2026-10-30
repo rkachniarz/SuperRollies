@@ -89,6 +89,7 @@ describe('dice sets', () => {
       advantage: '2d20kh1',
       greatsword: '2d6',
       greataxe: '1d12',
+      'twin-axes': '2d12',
       'ability-score': '3d6',
       'heroic-stats': '4d6dl1',
       'magic-missile': '3d4',

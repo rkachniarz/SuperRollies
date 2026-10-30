@@ -387,6 +387,46 @@ export async function multiplayerChecks(report, only) {
       JSON.stringify({ shownOn, notYet, takenBack, stillReady, config }));
   });
 
+  // The room between matches: the host switches a Spice of the last stack
+  // off (a rematch without that rule), the buttons are at the top as well
+  // as the bottom, and a player edits their profile from the room, the
+  // other seeing it; a match that starts mid-edit keeps what they had.
+  await withRoom('multiplayer: room edits', only, report, async ({ host, guest }) => {
+    await joinRoom(guest, await hostRoom(host, 'classic', ['marathon', 'cat-paw', 'gusty-table'], { ready: false }), { ready: false });
+    await host.click('#netRoomCards [data-pick="cat-paw"]');
+    await guest.waitForFunction(() => window.superRollies.lobby.room.choice.spices.join() === 'marathon,gusty-table', null, { timeout: 5000 });
+    const off = await guest.$eval('#netRoomCards [data-pick="cat-paw"]', (el) => el.classList.contains('off'));
+    const tops = await Promise.all([host, guest].map((p) => p.evaluate(() => ({
+      ready: !document.getElementById('netReadyBtnTop').hidden && document.getElementById('netReadyBtnTop').textContent,
+      change: !document.getElementById('netChangeBtnTop').hidden,
+    }))));
+    // The guest renames themselves from the room; the host's room shows it.
+    await guest.click('#netMeCard');
+    await guest.waitForSelector('#editor:not([hidden])');
+    await guest.fill('#editorName', 'Renamed');
+    await guest.click('#editorSave');
+    await guest.waitForSelector('#netRoom:not([hidden])');
+    await host.waitForFunction(() => document.getElementById('netThemName').textContent === 'Renamed', null, { timeout: 5000 });
+    // Ready from the top, then editing when the host starts the match: what
+    // the guest had typed is kept, and they're in the match.
+    await guest.click('#netReadyBtnTop');
+    await host.waitForFunction(() => window.superRollies.lobby.room.ready.guest, null, { timeout: 5000 });
+    await guest.click('#netMeCard');
+    await guest.waitForSelector('#editor:not([hidden])');
+    await guest.fill('#editorName', 'Midway');
+    await pressReady(host);
+    await guest.waitForFunction(() => window.superRollies.game.state === 'playing' && window.superRollies.game.net?.n === 1, null, { timeout: 15000 });
+    const kept = await guest.evaluate(() => ({
+      name: window.superRollies.profiles.get().name,
+      editor: !document.getElementById('editor').hidden,
+      spices: window.superRollies.game.config.spices.join(),
+    }));
+    const ok = off && tops[0].ready === 'Ready' && tops[0].change && tops[1].ready === 'Ready' && !tops[1].change &&
+      kept.name === 'Midway' && !kept.editor && kept.spices === 'marathon,gusty-table';
+    report('Multiplayer: the host switches a Spice off for the next match, the buttons are at the top too, and a player edits their profile from the room (a match starting mid-edit keeps it)',
+      ok, JSON.stringify({ off, tops, kept }));
+  });
+
   // After a match both are back in the room, unready, the winner's game
   // counted on both screens (R7.3); both ready again start the next.
   await withRoom('multiplayer: rematch', only, report, async ({ host, guest }) => {

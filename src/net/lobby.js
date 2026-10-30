@@ -16,7 +16,7 @@
 
 import { createTransport, cleanCode } from './transport.js';
 import { createSession, savedSession, forgetSession } from './session.js';
-import { newRoom, setReady, setChoice, bothReady, started, newGuest, tally, checkRoom } from './room.js';
+import { newRoom, setReady, setChoice, toggleSpice, bothReady, started, newGuest, tally, checkRoom } from './room.js';
 import { DICE_SETS } from '../rules/dice-sets.js';
 import { testBenchSpice, dealStack } from '../rules/draft.js';
 import { canStack, clashWith } from '../rules/stacking.js';
@@ -119,6 +119,7 @@ export function createLobby({ hud, game, profiles }) {
       render();
     }));
     s.on('ready', mine((on) => { if (!playing) update(setReady(room, 'guest', on)); }));
+    s.on('profile', mine(() => render()));
     s.on('start', mine((start) => { if (!playing) begin(start); }));
     // A game won (R7.3), counted by the host as the match ends, so the
     // guest's room has the new count by the time its card has gone.
@@ -160,6 +161,8 @@ export function createLobby({ hud, game, profiles }) {
   function maybeStart() {
     if (!isHost() || playing || choosing || !session.them || session.status !== 'open' || !bothReady(room)) return;
     matches = Math.max(matches, session.matchNumber) + 1;
+    // Mid-edit, what the host had is kept, and the guest told before the match.
+    if (game.saveEdits()) session.setProfile(profiles.get());
     const start = { n: matches, config: { seed: randomSeed(), ...room.choice } };
     room = started(room);
     session.lobby = room;
@@ -200,9 +203,19 @@ export function createLobby({ hud, game, profiles }) {
     showSeat(seats.them, theirSeat());
     seats.them.wins.hidden = !them;
 
+    // The dice, then every Spice the host last chose, those switched off
+    // greyed out: the host taps one to switch it off or on again.
     const chosen = known(room.choice);
-    roomCards.replaceChildren(...(chosen ? [diceSetCard(chosen.diceSet), ...chosen.spices.map(spiceCard)] : [])
-      .map((card) => renderCard(card, { full: true })));
+    const pool = chosen ? spiceFor(room.choice.diceSet).filter((sp) => room.pool.includes(sp.id)) : [];
+    const shown = chosen ? [...new Set([...pool, ...chosen.spices.filter((sp) => sp.id !== 'vanilla' || !pool.length)])] : [];
+    roomCards.replaceChildren(...(chosen ? [renderCard(diceSetCard(chosen.diceSet), { full: true })] : []),
+      ...shown.map((sp) => {
+        const toggles = host && room.pool.includes(sp.id);
+        const el = renderCard(spiceCard(sp), { full: true, onPick: toggles ? (id) => update(toggleSpice(room, id)) : undefined });
+        el.classList.toggle('off', !room.choice.spices.includes(sp.id));
+        if (toggles) el.title = room.choice.spices.includes(sp.id) ? 'Tap to switch it off' : 'Tap to switch it on again';
+        return el;
+      }));
 
     const mineOn = room.ready[mySeat()];
     const theirsOn = room.ready[theirSeat()];
@@ -214,7 +227,7 @@ export function createLobby({ hud, game, profiles }) {
       else if (mineOn && theirsOn) status = 'Starting…';
       else if (mineOn) status = `Waiting for ${nameOf()} to be ready…`;
       else if (theirsOn) status = `${nameOf()} is ready. Are you?`;
-      else status = host ? 'Press Ready when you are. You can still change the dice and Spice.' : 'Read the rules, then press Ready.';
+      else status = host ? `Press Ready when you are. You can still change the dice and Spice${room.pool.length > 1 ? ', or tap a Spice to switch it off or on' : ''}.` : 'Read the rules, then press Ready.';
     }
     roomStatus.textContent = status;
 
@@ -224,7 +237,45 @@ export function createLobby({ hud, game, profiles }) {
     readyBtn.textContent = mineOn ? 'Not ready' : 'Ready';
     readyBtn.setAttribute('aria-pressed', String(mineOn));
     readyBtn.classList.toggle('secondary', mineOn);
+    mirrorButtons();
   }
+
+  // The room's buttons again at its top, so they're at hand on a phone
+  // without scrolling past the cards: each a copy of one at the bottom,
+  // kept in step with it, a tap on it a tap on that one.
+  const bottomRow = backBtn.parentElement;
+  const topRow = bottomRow.cloneNode(true);
+  topRow.classList.add('net-buttons-top');
+  for (const copy of topRow.querySelectorAll('[id]')) copy.id += 'Top';
+  roomStep.after(topRow);
+  const mirrors = [...bottomRow.children].map((btn, i) => {
+    const copy = topRow.children[i];
+    copy.addEventListener('click', () => btn.click());
+    return [btn, copy];
+  });
+  function mirrorButtons() {
+    for (const [btn, copy] of mirrors) {
+      copy.textContent = btn.textContent;
+      copy.hidden = btn.hidden;
+      copy.disabled = btn.disabled;
+      copy.className = btn.className;
+      const pressed = btn.getAttribute('aria-pressed');
+      if (pressed !== null) copy.setAttribute('aria-pressed', pressed);
+    }
+    topRow.classList.add('net-buttons-top');
+  }
+
+  // Tapping your own card edits your profile, without leaving the room.
+  const myCard = seats.me.el.querySelector('.player-card');
+  function editMe() {
+    if (!session || playing) return;
+    game.openEditor({ onDone: () => {
+      session?.setProfile(profiles.get());
+      if (session && !playing) show();
+    } });
+  }
+  myCard.addEventListener('click', editMe);
+  myCard.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); editMe(); } });
 
   function show() {
     render();
@@ -297,6 +348,8 @@ export function createLobby({ hud, game, profiles }) {
 
   /** Starts match `n` on `config`, on this screen. */
   function begin({ n, config }) {
+    // Mid-edit, what this player had is kept (the host's, already, in maybeStart).
+    if (game.saveEdits()) session.setProfile(profiles.get());
     playing = true;
     note = '';
     if (!isHost()) room = started(room);

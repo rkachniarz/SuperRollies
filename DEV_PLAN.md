@@ -8,7 +8,7 @@ silently changing requirements.
 out of scope (D1).
 
 **Where things stand (2026-10-28):** Phases 0 to 6b are done: Rapier physics,
-every die type from d4 to d20 plus percentile, 15 dice sets, 33 Spice, the
+every die type from d4 to d20 plus percentile, 16 dice sets, 33 Spice, the
 two-card draft, Zen, the `?dev` test bench, and player profiles with each side
 shown as a card. Phase 7, multiplayer, is played over PeerJS, bar a TURN
 server (7.1a). Phase 8 has given the room both players' cards, a ready check
@@ -20,10 +20,10 @@ on the bench and by the multiplayer host; playtest pending (9.11).
 
 | Cited as | What | Where |
 |---|---|---|
-| `D1`–`D51` | Decisions and their reasons | [docs/decisions.md](docs/decisions.md) |
+| `D1`–`D52` | Decisions and their reasons | [docs/decisions.md](docs/decisions.md) |
 | `R1.1`–`R7.3`, `§1`, `§4`–`§6` | Vision, requirements, catalogue of dice sets and Spice | [docs/spec.md](docs/spec.md) |
 | `0.1`–`6b.9`, `§8` | Finished phases, task by task, with what was measured | [docs/history.md](docs/history.md) |
-| `Q1`–`Q10`, `7.x`–`9.x`, `P.x` | Open questions, work still to do | here |
+| `Q1`–`Q10`, `7.x`–`10.x`, `P.x` | Open questions, work still to do | here |
 
 ---
 
@@ -217,6 +217,23 @@ exactly as before.
   No Man's Land with the rope or the breeze, and the breeze with the rope.
 - [ ] **9.11** Playtest stacks (owner, 2026-10-30 evening): the sizes Q8
   deals, the cards, and whether any stack that's allowed shouldn't be.
+
+## Phase 10 — Playtest requests (2026-10-30)
+
+From the first evening with Spice stacks. *(D52)*
+
+- [x] **10.1** In the room, the host taps a Spice of the stack last chosen to
+  switch it off or on again (`toggleSpice`, `room.pool`): a rematch without
+  one rule. Switched-off cards stay, greyed, on both screens; all off is
+  Vanilla.
+- [x] **10.2** The room's buttons (Leave, Change, Ready) at its top as well
+  as the bottom: copies kept in step, a tap on one a tap on the other.
+- [x] **10.3** Tapping your own card in the room edits your profile without
+  leaving it; the other player sees it (`profile` message, protocol 3
+  still). Both ready and the match starts mid-edit: what was typed is
+  saved and the match plays (`saveEdits`).
+- [x] **10.4** Twin Axes, 2d12. Brutal Critical plays with it too.
+- [ ] **10.5** A room with any XdY: X from 1 to 8 (D6), Y any die type.
 
 ## Post-MVP — Browser compatibility *(D14)*
 

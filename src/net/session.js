@@ -10,6 +10,7 @@
 //   in     {n, key, data}              one input of match n (see below)
 //   sync   {n, log}                    every input of match n so far, after a reconnect
 //   end    {n, result}                 match n is over off the table (a walkover)
+//   profile {profile}                  either side: their profile, changed in the room
 //   bye    {}                          leaving, on purpose
 //   ping   {}                          still here
 //
@@ -161,6 +162,12 @@ export function createSession(transport, profile, storage = globalThis.sessionSt
       }
       case 'room':
         if (seat === 'guest') emit('room', msg.room);
+        break;
+      case 'profile':
+        if (them) {
+          them.profile = checkProfile(msg.profile);
+          emit('profile', them.profile);
+        }
         break;
       case 'ready':
         if (seat === 'host') emit('ready', msg.on === true);
@@ -323,6 +330,11 @@ export function createSession(transport, profile, storage = globalThis.sessionSt
     get lostAt() { return lostAt; },
     /** The other player's profile, once they've said hello. */
     get them() { return them?.profile ?? null; },
+    /** This player changed their profile (in the room): the next match is played with it, and the other player told. */
+    setProfile(next) {
+      profile = next;
+      if (link) send({ type: 'profile', profile });
+    },
     /** Whether this browser can still reach the server: if not, it's this side that dropped. */
     online: () => transport.online(),
     on(type, fn) { (listeners[type] ??= []).push(fn); },

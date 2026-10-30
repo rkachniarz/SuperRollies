@@ -210,6 +210,7 @@ the guest's view of it.
 | Advantage | 2d20 | keep highest 1 | advantage | 1–20 |
 | Greatsword | 2d6 | sum | greatsword | 2–12 |
 | Greataxe | 1d12 | sum | greataxe | 1–12 |
+| Twin Axes | 2d12 | sum | two-weapon fighting, two handaxes | 2–24 |
 | Ability Score | 3d6 | sum | old-school stat roll | 3–18 |
 | Heroic Stats | 4d6 | drop lowest 1 | standard stat generation | 3–18 |
 | Magic Missile | 3d4 | sum | magic missile | 3–12 |

@@ -10,18 +10,34 @@
 /**
  * @typedef {Object} Room
  * @property {{ diceSet: string, spices: string[] } | null} choice  The dice and a Spice stack (D51).
+ * @property {string[]} pool  The Spice stack the host last chose; the choice's
+ *   Spice are those of it switched on (a rematch without one of its rules).
  * @property {{ host: boolean, guest: boolean }} ready
  * @property {{ host: number, guest: number }} wins
  */
 
 /** @returns {Room} A new room: nothing ready, 0-0. */
-export const newRoom = (choice = null) => ({ choice, ready: { host: false, guest: false }, wins: { host: 0, guest: 0 } });
+export const newRoom = (choice = null) => ({
+  choice, pool: choice?.spices.filter((id) => id !== 'vanilla') ?? [], ready: { host: false, guest: false }, wins: { host: 0, guest: 0 },
+});
 
 /** `room` with `seat` ready (`on`) or not. */
 export const setReady = (room, seat, on) => ({ ...room, ready: { ...room.ready, [seat]: on } });
 
 /** `room` with the dice and Spice changed: the Ready marks stay as they are. */
-export const setChoice = (room, choice) => ({ ...room, choice });
+export const setChoice = (room, choice) => ({ ...room, choice, pool: choice?.spices.filter((id) => id !== 'vanilla') ?? [] });
+
+/**
+ * `room` with Spice `id` of its pool switched on or off: the same dice, the
+ * Spice switched on in the pool's order, none at all being Vanilla. The
+ * Ready marks stay, as for any change (D50).
+ */
+export function toggleSpice(room, id) {
+  if (!room.choice || !room.pool.includes(id)) return room;
+  const on = room.choice.spices.includes(id);
+  const spices = room.pool.filter((s) => (s === id ? !on : room.choice.spices.includes(s)));
+  return { ...room, choice: { ...room.choice, spices: spices.length ? spices : ['vanilla'] } };
+}
 
 /** Whether a match can start: something chosen, and both ready. */
 export const bothReady = (room) => Boolean(room.choice && room.ready.host && room.ready.guest);
@@ -56,6 +72,7 @@ export function checkRoom(room) {
     choice: choice && typeof choice.diceSet === 'string' && Array.isArray(choice.spices)
       && choice.spices.length && choice.spices.every((id) => typeof id === 'string')
       ? { diceSet: choice.diceSet, spices: [...choice.spices] } : null,
+    pool: Array.isArray(room?.pool) ? room.pool.filter((id) => typeof id === 'string') : [],
     ready: { host: flag(room?.ready?.host), guest: flag(room?.ready?.guest) },
     wins: { host: count(room?.wins?.host), guest: count(room?.wins?.guest) },
   };

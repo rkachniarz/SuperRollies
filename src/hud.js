@@ -557,6 +557,19 @@ export function createHud() {
     showMenuCard(editorEl, () => { editing = null; onBack(); });
     showEdits();
   }
+  /**
+   * Closes the editor, if it's open, and returns the profile as it stands in
+   * it, unsaved (a multiplayer match starting while the player edits: what
+   * they had is kept). null if it wasn't open.
+   */
+  function takeEdits() {
+    if (!editing) return null;
+    const { profile } = editing;
+    editing = null;
+    editorEl.hidden = true;
+    menuEl.classList.remove('editing');
+    return profile;
+  }
   document.getElementById('editorBack').addEventListener('click', () => menuBack());
   document.getElementById('editorSave').addEventListener('click', () => {
     if (!editing) return;
@@ -678,7 +691,7 @@ export function createHud() {
     showMatch,
     showResult, showRound, hideResult, showBoard, showMenu, showPicker, showStackPicker, showDraft, setLoaded, setLoadFailed,
     showMatchInfo, showAnnounce, showEdge, showRethrow, showPlayers, showMenuPlayer, showEditor,
-    showStatus, setOpponentName, showMenuCard, showRoomPlayer,
+    showStatus, setOpponentName, showMenuCard, showRoomPlayer, takeEdits,
     onEditPlayer(handler) { editBtn.addEventListener('click', handler); },
     /** Calls `fn` once the physics engine has loaded (now, if it has). */
     onLoaded(fn) { if (loaded) fn(); else whenLoaded.push(fn); },

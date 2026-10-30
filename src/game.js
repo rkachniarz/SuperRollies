@@ -406,7 +406,11 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
   let previewLook = null;
   let previewTurn = 0;
 
-  function openEditor() {
+  /**
+   * The player editor, from the menu or a multiplayer room. `onDone` goes on
+   * from there once it's saved or left (the room); the menu by default.
+   */
+  function openEditor({ onDone } = {}) {
     leaveRound();
     state = 'menu';
     editing = true;
@@ -415,16 +419,30 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
       onChange: showLook,
       onSave(profile) {
         profiles.save(profile);
-        closeEditor();
+        closeEditor(onDone);
       },
-      onBack: closeEditor,
+      onBack: () => closeEditor(onDone),
     });
   }
 
-  function closeEditor() {
+  function closeEditor(onDone) {
     editing = false;
     hud.showMenuPlayer(looksOf(profiles.get()));
-    hud.showMenu();
+    if (onDone) onDone();
+    else hud.showMenu();
+  }
+
+  /**
+   * A multiplayer match is starting while the player edits their profile:
+   * what they had is saved, and the editor closed. Whether it was open.
+   */
+  function saveEdits() {
+    if (!editing) return false;
+    const draft = hud.takeEdits();
+    if (draft) profiles.save(draft);
+    editing = false;
+    hud.showMenuPlayer(looksOf(profiles.get()));
+    return true;
   }
 
   // Lays the preview out for `profile`'s colours; only when they change, not
@@ -1406,7 +1424,7 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
   hud.onZen(() => hud.showPicker('Zen: choose your dice', ZEN_CARDS,
     (id) => start('zen', id.startsWith('die:') ? { dieType: id.slice(4) } : { diceSet: id })));
   hud.onTestBench(openTestBench);
-  hud.onEditPlayer(openEditor);
+  hud.onEditPlayer(() => openEditor());
   hud.onBack(returnToMenu);
   hud.showMenuPlayer(looksOf(profiles.get()));
   // The button under the card: keep all your dice while picking (Draw
@@ -1445,6 +1463,7 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
     start,
     openDraft,
     openEditor,
+    saveEdits,
     startNet,
     /** The multiplayer match under way: its seat, and whether it's still being caught up on. */
     get net() { return net && { seat: net.seat, n: net.n, restoring, round: roundNo }; },

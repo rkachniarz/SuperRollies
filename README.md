@@ -1,7 +1,7 @@
 # Super Rollies
 
 A dice roll-off game. Draft your dice - a single d20, 3d4, a percentile roll,
-all the way up to a Fireball's 8d6 - then a **Spice** that bends the rules for
+two d12s, all the way up to a Fireball's 8d6 - then a **Spice** that bends the rules for
 the match: the lowest total wins, dice explode on their highest number, a
 natural 20 hits twice as hard, whoever's behind throws an extra die. Or it
 bends the table: a pothole in each half, a breeze across it, a cat's paw
@@ -14,7 +14,9 @@ them, roll higher than your opponent. Lose a round and you lose a heart; lose
 them all and the match is over. Or **play a friend**: host a room, send
 them its link, pick the dice and a stack of Spice (or take the one dealt), and once you're both ready each of
 you throws when you like, your friend's dice landing on your screen as they
-throw them; the room keeps count of the games each of you has won. Or pick
+throw them; the room keeps count of the games each of you has won. Between
+matches the host can switch a Spice off for a rematch without it, and either
+of you can tap your card to change it without leaving the room. Or pick
 **Zen** and just throw: any of the dice, the whole tray, no score. Make it
 yours on the menu: your name, your card, the colour of your half of the
 tray and of your dice.

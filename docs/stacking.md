@@ -97,6 +97,7 @@ One largest stack per set (there are often several).
 | Advantage | 13 | 🏃 Marathon, 💥 Mutual Destruction, 🧨 Exploding Dice, 📈 Raising the Stakes, 👻 Cursed Number, 🌬️ Second Wind, 🐶 Underdog, 😤 Revenge, 🕳️ Pothole, 🐾 Cat Paw, 💨 Gusty Table, 🎯 Critical Hit, 🍌 Critical Fumble |
 | Greatsword | 12 | 🏃 Marathon, 💥 Mutual Destruction, 🧨 Exploding Dice, 📈 Raising the Stakes, 👻 Cursed Number, 🌬️ Second Wind, 🐶 Underdog, 😤 Revenge, 🕳️ Pothole, 🐾 Cat Paw, 💨 Gusty Table, 🐍 Snake Eyes / Boxcars |
 | Greataxe | 11 | 🏃 Marathon, 💥 Mutual Destruction, 🧨 Exploding Dice, 📈 Raising the Stakes, 👻 Cursed Number, 🌬️ Second Wind, 🐶 Underdog, 😤 Revenge, 🕳️ Pothole, 🐾 Cat Paw, 💨 Gusty Table |
+| Twin Axes | 11 | 🏃 Marathon, 💥 Mutual Destruction, 🧨 Exploding Dice, 📈 Raising the Stakes, 👻 Cursed Number, 🌬️ Second Wind, 🐶 Underdog, 😤 Revenge, 🕳️ Pothole, 🐾 Cat Paw, 💨 Gusty Table |
 | Ability Score | 12 | 🏃 Marathon, 💥 Mutual Destruction, 🧨 Exploding Dice, 📈 Raising the Stakes, 👻 Cursed Number, 🌬️ Second Wind, 🐶 Underdog, 😤 Revenge, 🕳️ Pothole, 🐾 Cat Paw, 💨 Gusty Table, 🎰 Triples |
 | Heroic Stats | 12 | 🏃 Marathon, 💥 Mutual Destruction, 🧨 Exploding Dice, 📈 Raising the Stakes, 👻 Cursed Number, 🌬️ Second Wind, 🐶 Underdog, 😤 Revenge, 🕳️ Pothole, 🐾 Cat Paw, 💨 Gusty Table, 🎰 Triples |
 | Magic Missile | 12 | 🏃 Marathon, 💥 Mutual Destruction, 🧨 Exploding Dice, 📈 Raising the Stakes, 👻 Cursed Number, 🌬️ Second Wind, 🐶 Underdog, 😤 Revenge, 🕳️ Pothole, 🐾 Cat Paw, 💨 Gusty Table, 📌 Caltrops |

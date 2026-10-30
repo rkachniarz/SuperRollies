@@ -64,7 +64,7 @@ describe('the Spice catalogue', () => {
     const offered = (spice) => Object.keys(DICE_SETS).filter((id) => isEligible(SPICE[spice], DICE_SETS[id]));
     assert.deepEqual(offered('critical-hit'), ['classic', 'advantage']);
     assert.deepEqual(offered('inspiration'), ['classic', 'advantage']);
-    assert.deepEqual(offered('brutal-critical'), ['greataxe']);
+    assert.deepEqual(offered('brutal-critical'), ['greataxe', 'twin-axes']);
     assert.deepEqual(offered('snake-eyes'), ['greatsword']);
     assert.deepEqual(offered('triples'), ['ability-score', 'heroic-stats', 'guiding-bolt']);
     assert.deepEqual(offered('caltrops'), ['magic-missile', 'swarm-of-daggers']);

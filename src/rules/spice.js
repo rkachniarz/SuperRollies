@@ -291,7 +291,7 @@ const BRUTAL_CRITICAL = {
   kind: 'dice',
   summary: 'A 12 rolls another d12 and adds it.',
   rules: 'A d12 showing 12 earns one extra d12, rolled by the game and added to it. Unlike Exploding Dice, it doesn\'t chain.',
-  eligibility: { diceSets: ['greataxe'] },
+  eligibility: { diceSets: ['greataxe', 'twin-axes'] },
   values: (faces, { rng }) => faces.map((face) => {
     if (face !== 12) return { value: face };
     const extra = 1 + rng.int(12);
