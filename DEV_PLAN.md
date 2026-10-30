@@ -20,7 +20,7 @@ on the bench and by the multiplayer host; playtest pending (9.11).
 
 | Cited as | What | Where |
 |---|---|---|
-| `D1`–`D53` | Decisions and their reasons | [docs/decisions.md](docs/decisions.md) |
+| `D1`–`D54` | Decisions and their reasons | [docs/decisions.md](docs/decisions.md) |
 | `R1.1`–`R7.3`, `§1`, `§4`–`§6` | Vision, requirements, catalogue of dice sets and Spice | [docs/spec.md](docs/spec.md) |
 | `0.1`–`6b.9`, `§8` | Finished phases, task by task, with what was measured | [docs/history.md](docs/history.md) |
 | `Q1`–`Q10`, `7.x`–`10.x`, `P.x` | Open questions, work still to do | here |
@@ -236,6 +236,8 @@ From the first evening with Spice stacks. *(D52)*
 - [x] **10.5** A room with any XdY: X from 1 to 8 (D6), Y any die from the
   d4 to the d20 (D53): *Any dice* in the host's dice picker, then the die,
   then how many.
+- [x] **10.6** The host taps the dice in the room to change just them, the
+  Spice kept, bar any the new dice don't allow (D54).
 
 ## Post-MVP — Browser compatibility *(D14)*
 

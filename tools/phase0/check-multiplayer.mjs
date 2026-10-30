@@ -402,6 +402,14 @@ export async function multiplayerChecks(report, only) {
     await host.click('#netRoomCards [data-pick="cat-paw"]');
     await guest.waitForFunction(() => window.superRollies.lobby.room.choice.spices.join() === 'marathon,gusty-table', null, { timeout: 5000 });
     const off = await guest.$eval('#netRoomCards [data-pick="cat-paw"]', (el) => el.classList.contains('off'));
+    // The host taps the dice to change just them: the Spice stay as they were.
+    await host.click('#netRoomCards [data-pick="classic"]');
+    await host.click('#pickerOptions [data-pick="greatsword"]');
+    await guest.waitForFunction(() => window.superRollies.lobby.room.choice.diceSet === 'greatsword', null, { timeout: 5000 });
+    const dice = await guest.evaluate(() => {
+      const { choice, pool } = window.superRollies.lobby.room;
+      return `${choice.diceSet}/${choice.spices.join('+')}/${pool.join('+')}`;
+    });
     const tops = await Promise.all([host, guest].map((p) => p.evaluate(() => ({
       ready: !document.getElementById('netReadyBtnTop').hidden && document.getElementById('netReadyBtnTop').textContent,
       change: !document.getElementById('netChangeBtnTop').hidden,
@@ -427,10 +435,10 @@ export async function multiplayerChecks(report, only) {
       editor: !document.getElementById('editor').hidden,
       spices: window.superRollies.game.config.spices.join(),
     }));
-    const ok = off && tops[0].ready === 'Ready' && tops[0].change && tops[1].ready === 'Ready' && !tops[1].change &&
+    const ok = off && dice === 'greatsword/marathon+gusty-table/marathon+cat-paw+gusty-table' && tops[0].ready === 'Ready' && tops[0].change && tops[1].ready === 'Ready' && !tops[1].change &&
       kept.name === 'Midway' && !kept.editor && kept.spices === 'marathon,gusty-table';
-    report('Multiplayer: the host switches a Spice off for the next match, the buttons are at the top too, and a player edits their profile from the room (a match starting mid-edit keeps it)',
-      ok, JSON.stringify({ off, tops, kept }));
+    report('Multiplayer: the host switches a Spice off for the next match, and changes just the dice, the buttons are at the top too, and a player edits their profile from the room (a match starting mid-edit keeps it)',
+      ok, JSON.stringify({ off, dice, tops, kept }));
   });
 
   // After a match both are back in the room, unready, the winner's game

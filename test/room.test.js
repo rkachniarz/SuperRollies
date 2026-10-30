@@ -3,7 +3,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { newRoom, setReady, setChoice, toggleSpice, bothReady, started, newGuest, tally, checkRoom } from '../src/net/room.js';
+import { newRoom, setReady, setChoice, setDice, toggleSpice, bothReady, started, newGuest, tally, checkRoom } from '../src/net/room.js';
 
 const CHOICE = { diceSet: 'classic', spices: ['vanilla'] };
 
@@ -71,4 +71,15 @@ test('the host switches Spice of the last stack off and on again: the same order
   room = toggleSpice(room, 'cat-paw');
   assert.deepEqual(room.choice.spices, ['cat-paw']);
   assert.equal(toggleSpice(room, 'lowball'), room, 'only Spice of the stack last chosen');
+});
+
+test('the host changes just the dice: the Spice stay, bar those the new dice don\'t allow, and so do the Ready marks', () => {
+  let room = setReady(setChoice(newRoom(), { diceSet: 'classic', spices: ['marathon', 'critical-hit', 'cat-paw'] }), 'guest', true);
+  room = toggleSpice(room, 'cat-paw');
+  const d20Only = (ids) => !ids.includes('critical-hit');
+  room = setDice(room, 'fireball', d20Only);
+  assert.deepEqual(room.choice, { diceSet: 'fireball', spices: ['marathon'] });
+  assert.deepEqual(room.pool, ['marathon', 'cat-paw'], 'cat-paw still there, still off');
+  assert.equal(room.ready.guest, true);
+  assert.deepEqual(setDice(toggleSpice(room, 'marathon'), 'greatsword', () => true).choice.spices, ['vanilla']);
 });

@@ -16,7 +16,7 @@
 
 import { createTransport, cleanCode } from './transport.js';
 import { createSession, savedSession, forgetSession } from './session.js';
-import { newRoom, setReady, setChoice, toggleSpice, bothReady, started, newGuest, tally, checkRoom } from './room.js';
+import { newRoom, setReady, setChoice, setDice, toggleSpice, bothReady, started, newGuest, tally, checkRoom } from './room.js';
 import { DICE_SETS, diceSetOf, ANY_DICE_TYPES, ANY_DICE_MAX } from '../rules/dice-sets.js';
 import { testBenchSpice, dealStack } from '../rules/draft.js';
 import { canStack, clashWith } from '../rules/stacking.js';
@@ -208,7 +208,9 @@ export function createLobby({ hud, game, profiles }) {
     const chosen = known(room.choice);
     const pool = chosen ? spiceFor(room.choice.diceSet).filter((sp) => room.pool.includes(sp.id)) : [];
     const shown = chosen ? [...new Set([...pool, ...chosen.spices.filter((sp) => sp.id !== 'vanilla' || !pool.length)])] : [];
-    roomCards.replaceChildren(...(chosen ? [renderCard(diceSetCard(chosen.diceSet), { full: true })] : []),
+    const diceCard = chosen && renderCard(diceSetCard(chosen.diceSet), { full: true, onPick: host ? () => changeDice() : undefined });
+    if (diceCard && host) diceCard.title = 'Tap to change the dice, keeping the Spice';
+    roomCards.replaceChildren(...(diceCard ? [diceCard] : []),
       ...shown.map((sp) => {
         const toggles = host && room.pool.includes(sp.id);
         const el = renderCard(spiceCard(sp), { full: true, onPick: toggles ? (id) => update(toggleSpice(room, id)) : undefined });
@@ -227,7 +229,7 @@ export function createLobby({ hud, game, profiles }) {
       else if (mineOn && theirsOn) status = 'Starting…';
       else if (mineOn) status = `Waiting for ${nameOf()} to be ready…`;
       else if (theirsOn) status = `${nameOf()} is ready. Are you?`;
-      else status = host ? `Press Ready when you are. You can still change the dice and Spice${room.pool.length > 1 ? ', or tap a Spice to switch it off or on' : ''}.` : 'Read the rules, then press Ready.';
+      else status = host ? `Press Ready when you are. You can still change the dice and Spice${room.pool.length > 1 ? ', or tap a Spice to switch it off or on' : ''}. Tap the dice to change just them.` : 'Read the rules, then press Ready.';
     }
     roomStatus.textContent = status;
 
@@ -288,18 +290,19 @@ export function createLobby({ hud, game, profiles }) {
    * The host picks the dice, then a Spice stack (D51): dealt to start with,
    * as Quick Game deals one, or the one already chosen for the same dice;
    * "Deal again" for another. `then` goes on from there with the choice.
+   * With `onDice`, only the dice are picked, and it's given their id.
    */
-  function choose(then, onBack) {
+  function choose(then, onBack, { onDice } = {}) {
     const rng = createRng(randomSeed());
     const deal = (diceSet) => dealStack(diceSet, rng, { without: [...SOLO_ONLY] }).filter((id) => id !== 'vanilla');
     // The catalogue, and any dice: a die, then how many (D53).
     const pickDice = () => hud.showPicker('Play a friend: choose the dice',
-      [...Object.values(DICE_SETS).map(diceSetCard), anyDiceCard()], (id) => (id === 'any' ? pickType() : pickSpice(id)), onBack);
+      [...Object.values(DICE_SETS).map(diceSetCard), anyDiceCard()], (id) => (id === 'any' ? pickType() : picked(id)), onBack);
     const pickType = () => hud.showPicker('Play a friend: any dice, which die?',
       ANY_DICE_TYPES.map((type) => ({ ...dieCard(type), name: type, tag: `1-${ANY_DICE_MAX}${type}`, summary: `As many ${type}s as you like, up to ${ANY_DICE_MAX}.` })),
       (id) => pickCount(id.slice('die:'.length)), pickDice);
     const pickCount = (type) => hud.showPicker(`Play a friend: how many ${type}s?`,
-      Array.from({ length: ANY_DICE_MAX }, (_, i) => diceSetCard(diceSetOf(`${i + 1}${type}`))), pickSpice, pickType);
+      Array.from({ length: ANY_DICE_MAX }, (_, i) => diceSetCard(diceSetOf(`${i + 1}${type}`))), (id) => picked(id), pickType);
     const pickSpice = (diceSet) => hud.showStackPicker({
       title: `Play a friend: Spice for ${diceSetOf(diceSet).name}`,
       cards: spiceFor(diceSet).filter((sp) => sp.id !== 'vanilla').map(spiceCard),
@@ -310,6 +313,7 @@ export function createLobby({ hud, game, profiles }) {
       onStart: (spices) => then({ diceSet, spices: spices.length ? spices : ['vanilla'] }),
       onBack: pickDice,
     });
+    const picked = (diceSet) => (onDice ? onDice(diceSet) : pickSpice(diceSet));
     pickDice();
   }
 
@@ -432,7 +436,8 @@ export function createLobby({ hud, game, profiles }) {
   backBtn.addEventListener('click', () => leave());
   // The Ready marks stay as they are (D50): a ready guest plays whatever
   // the host settles on, and sees it change meanwhile.
-  changeBtn.addEventListener('click', () => {
+  /** The host changes what's played: `change` makes the new room from the old. Nothing starts meanwhile. */
+  function changing(pick) {
     choosing = true;
     const done = () => {
       choosing = false;
@@ -440,12 +445,22 @@ export function createLobby({ hud, game, profiles }) {
       show();
       maybeStart();
     };
-    choose((choice) => {
-      room = setChoice(room, choice);
+    pick((/** @type {(r: any) => any} */ change) => {
+      room = change(room);
       if (session) session.lobby = room;
       done();
     }, done);
-  });
+  }
+  changeBtn.addEventListener('click', () => changing((then, done) => choose((choice) => then((r) => setChoice(r, choice)), done)));
+
+  // Tapping the dice in the room changes just them: the Spice stay, bar
+  // any the new dice don't allow (D54).
+  function changeDice() {
+    if (!isHost() || playing) return;
+    const fits = (diceSet) => (ids) => ids.every((id) => spiceFor(diceSet).some((sp) => sp.id === id))
+      && (ids.length < 2 || canStack(ids, diceSet));
+    changing((then, done) => choose(null, done, { onDice: (diceSet) => then((r) => setDice(r, diceSet, fits(diceSet))) }));
+  }
   readyBtn.addEventListener('click', () => {
     if (!session || playing || readyBtn.disabled) return;
     const on = !room.ready[mySeat()];

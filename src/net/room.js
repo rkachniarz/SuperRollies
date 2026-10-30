@@ -28,6 +28,21 @@ export const setReady = (room, seat, on) => ({ ...room, ready: { ...room.ready, 
 export const setChoice = (room, choice) => ({ ...room, choice, pool: choice?.spices.filter((id) => id !== 'vanilla') ?? [] });
 
 /**
+ * `room` with new dice, `diceSet` (an id), and the Spice it had kept, those
+ * the new dice allow: the pool's in its order, each kept while `fits` says
+ * the ones kept so far and it can be played with them (eligible, no clash).
+ * Those switched on stay on; none at all is Vanilla. The Ready marks stay (D50).
+ * @param {Room} room
+ * @param {string} diceSet
+ * @param {(ids: string[]) => boolean} fits
+ */
+export function setDice(room, diceSet, fits) {
+  const pool = room.pool.reduce((kept, id) => (fits([...kept, id]) ? [...kept, id] : kept), /** @type {string[]} */ ([]));
+  const spices = pool.filter((id) => room.choice?.spices.includes(id));
+  return { ...room, choice: { diceSet, spices: spices.length ? spices : ['vanilla'] }, pool };
+}
+
+/**
  * `room` with Spice `id` of its pool switched on or off: the same dice, the
  * Spice switched on in the pool's order, none at all being Vanilla. The
  * Ready marks stay, as for any change (D50).
