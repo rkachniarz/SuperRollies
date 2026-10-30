@@ -535,6 +535,9 @@ export function createHud() {
   // on, for the table to show it off.
   function showEdits() {
     const { profile, onChange } = editing;
+    compactBtn.setAttribute('aria-pressed', String(Boolean(profile.compact)));
+    compactBtn.textContent = profile.compact ? 'Compact: on' : 'Compact: off';
+    setCompact(profile.compact);
     editorCountEl.textContent = `${nameLength(profile.name)}/${NAME_MAX}`;
     paintCard(cards.editor, looksOf({ ...profile, name: cleanName(profile.name) }));
     for (const [key, { el }] of Object.entries(swatchRows)) {
@@ -557,6 +560,20 @@ export function createHud() {
     showMenuCard(editorEl, () => { editing = null; onBack(); });
     showEdits();
   }
+  // Compact cards (D58): the player's choice, tried out as it's toggled.
+  const compactBtn = document.getElementById('editorCompact');
+  compactBtn.addEventListener('click', () => {
+    if (!editing) return;
+    const { compact, ...rest } = editing.profile;
+    editing.profile = compact ? rest : { ...rest, compact: true };
+    showEdits();
+  });
+
+  /** Spice cards a quarter the size, two to a row on a phone, or not (D58). */
+  function setCompact(on) {
+    document.body.classList.toggle('compact-cards', Boolean(on));
+  }
+
   /**
    * Closes the editor, if it's open, and returns the profile as it stands in
    * it, unsaved (a multiplayer match starting while the player edits: what
@@ -629,11 +646,14 @@ export function createHud() {
    * out, and says why (`clash(picked, id)`, a reason or null), on the card
    * itself, so it reads on a phone too. `deal`, if given, offers "Deal
    * again", which picks a fresh stack (the multiplayer host's default, Q10).
+   * `groups`, if given, lays the cards out under a heading each (stackGroups
+   * in stacking.js): those only one of which can be picked together.
    * @param {{ title: string, cards: import('./cards.js').CardData[], picked?: string[],
    *   clash: (picked: string[], id: string) => string | null, start: string,
-   *   onStart: (ids: string[]) => void, onBack?: () => void, deal?: () => string[] }} options
+   *   onStart: (ids: string[]) => void, onBack?: () => void, deal?: () => string[],
+   *   groups?: { title: string, note: string, ids: string[] }[] }} options
    */
-  function showStackPicker({ title, cards, picked = [], clash, start, onStart, onBack = showMenu, deal }) {
+  function showStackPicker({ title, cards, picked = [], clash, start, onStart, onBack = showMenu, deal, groups }) {
     let chosen = [...picked];
     pickerTitleEl.textContent = title;
     const bar = document.createElement('div');
@@ -672,7 +692,19 @@ export function createHud() {
     startBtn.addEventListener('click', () => onStart(cards.map((c) => c.id).filter((id) => chosen.includes(id))));
     dealBtn.addEventListener('click', () => { chosen = deal(); refresh(); });
     refresh();
-    pickerOptionsEl.replaceChildren(bar, ...els);
+    // Under their groups' headings, if any: each heading the width of the list.
+    const laidOut = groups ? groups.flatMap(({ title: heading, note, ids }) => {
+      const head = document.createElement('div');
+      head.className = 'stack-group';
+      const name = document.createElement('span');
+      name.textContent = heading;
+      const hint = document.createElement('span');
+      hint.className = 'stack-group-note';
+      hint.textContent = note;
+      head.append(name, hint);
+      return [head, ...els.filter((el) => ids.includes(el.dataset.pick))];
+    }) : els;
+    pickerOptionsEl.replaceChildren(bar, ...laidOut);
     showMenuCard(pickerEl, onBack);
     startBtn.focus();
   }
@@ -691,7 +723,7 @@ export function createHud() {
     showMatch,
     showResult, showRound, hideResult, showBoard, showMenu, showPicker, showStackPicker, showDraft, setLoaded, setLoadFailed,
     showMatchInfo, showAnnounce, showEdge, showRethrow, showPlayers, showMenuPlayer, showEditor,
-    showStatus, setOpponentName, showMenuCard, showRoomPlayer, takeEdits,
+    showStatus, setOpponentName, showMenuCard, showRoomPlayer, takeEdits, setCompact,
     onEditPlayer(handler) { editBtn.addEventListener('click', handler); },
     /** Calls `fn` once the physics engine has loaded (now, if it has). */
     onLoaded(fn) { if (loaded) fn(); else whenLoaded.push(fn); },

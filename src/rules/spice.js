@@ -15,6 +15,7 @@ import {
   hearts, hitPoints, raceTo, tugOfWar, burnout, burntOut, DEATH_SAVES, DEATH_SAVE_DC, DEATH_SAVE_FAILS, failsFor, naturalOf, standing,
 } from './win-conditions.js';
 import { DIE_MAX, extraDieType, keepHighest, countOf } from './dice-sets.js';
+import { deriveSeed } from '../rng.js';
 import {
   TRAY_HALF_WIDTH, DIVIDER_T, POTHOLE_RADIUS, POTHOLE_DEPTH, CAT_PAW_CHANCE, WIND_MIN, WIND_MAX, ROPE_RADIUS,
 } from '../config.js';
@@ -123,20 +124,25 @@ const EXPLODING_DICE = {
   name: 'Exploding Dice',
   icon: '🧨',
   kind: 'rule',
-  summary: 'A die showing its highest number rolls again and adds it. It can chain.',
-  rules: 'Whenever a die lands on its highest number (a 6 on a d6, a 20 on a d20), it explodes: it is rolled again and the new roll is added to it. If that roll is the highest number too, it explodes again, and so on. The extra rolls are made by the game, the same on both screens.',
+  summary: 'A die on its highest number rolls again and adds it; on a 1, rolls again and takes it off. Both chain.',
+  rules: 'Whenever a die lands on its highest number (a 6 on a d6, a 20 on a d20), it explodes: it is rolled again and the new roll is added to it. If that roll is the highest number too, it explodes again, and so on. A die that lands on a 1 explodes the other way: it is rolled again and the new roll is taken off it, and a highest number takes another off, so a total can drop below zero. The extra rolls are made by the game, the same on both screens.',
   // Percentile's tens and units aren't a total that can grow, nor is a
   // poker hand.
   eligibility: { excludeDiceSets: ['percentile', ...NOT_POKER] },
+  // A 1 explodes downwards (D58): each roll is taken off instead of added,
+  // chaining the same way, on the highest number.
   values: (faces, { hand, rng }) => faces.map((face, i) => {
     const max = DIE_MAX[hand.types[i]];
-    if (face !== max) return { value: face };
+    if (face !== max && face !== 1) return { value: face };
+    const down = face !== max;
     const rolls = [face];
     for (let roll = max; roll === max && rolls.length <= MAX_EXPLOSIONS;) {
       roll = 1 + rng.int(max);
       rolls.push(roll);
     }
-    return { value: rolls.reduce((a, b) => a + b, 0), text: `(${rolls.join('+')})`, tag: 'exploded', extra: rolls.slice(1) };
+    const extra = rolls.slice(1);
+    const value = extra.reduce((total, roll) => (down ? total - roll : total + roll), face);
+    return { value, text: `(${rolls.join(down ? '−' : '+')})`, tag: down ? 'imploded' : 'exploded', extra };
   }),
 };
 
@@ -515,6 +521,19 @@ const POTHOLE = {
   },
 };
 
+/** Who the cat under the table might be (D58). */
+export const CAT_NAMES = [
+  'Mittens', 'Sir Pounce', 'Biscuit', 'Gremlin', 'Pickle', 'Mr. Whiskers',
+  'Nibbles', 'Captain Fluff', 'Pudding', 'Lord Purrington', 'Socks', 'Duchess',
+];
+
+/**
+ * The cat's name in a match: from the match seed, not the rules stream, so
+ * naming it moved none of the rules' draws.
+ * @param {import('./types.js').Rules} rules
+ */
+export const catOf = (rules) => CAT_NAMES[deriveSeed(rules.config.seed, 'cat') % CAT_NAMES.length];
+
 /** @type {Spice} */
 const CAT_PAW = {
   id: 'cat-paw',
@@ -522,8 +541,10 @@ const CAT_PAW = {
   icon: '🐾',
   kind: 'table',
   summary: 'Once the dice settle, a paw might swipe in and knock one or two.',
-  rules: 'There is a cat under the table. After each throw, once the dice have settled, there is a good chance a paw swipes in and knocks one or two of the dice, from either side, and they roll again. What they land on counts.',
+  rules: 'There is a cat under the table, with a name of its own. After each throw, once the dice have settled, there is a good chance a paw swipes in and knocks one or two of the dice, from either side, and they roll again. What they land on counts.',
   eligibility: {},
+  // The first round, the cat is introduced.
+  beforeThrow: ({ rules, state }) => (state.round === 0 ? { announce: `🐾 ${catOf(rules)} is under the table` } : undefined),
   afterSettle: ({ dice, rng }) => {
     if (rng.next() >= CAT_PAW_CHANCE) return { spice: { swiped: 0 } };
     /** @type {{ side: Side, index: number }[]} */
@@ -539,9 +560,9 @@ const CAT_PAW = {
     }
     return { swipes, spice: { swiped: count } };
   },
-  explain: (_round, { state }) => {
+  explain: (_round, { rules, state }) => {
     const swiped = /** @type {{ swiped?: number }} */ (state.spice ?? {}).swiped;
-    return swiped ? `🐾 The cat knocked ${swiped === 1 ? 'a die' : 'two dice'}!` : undefined;
+    return swiped ? `🐾 ${catOf(rules)} knocked ${swiped === 1 ? 'a die' : 'two dice'}!` : undefined;
   },
 };
 
@@ -562,14 +583,16 @@ const GUSTY_TABLE = {
   name: 'Gusty Table',
   icon: '💨',
   kind: 'table',
-  summary: 'A breeze blows across the table, pushing the dice as they roll.',
-  rules: 'Each round a breeze blows across the table from a new direction, sometimes gently, sometimes hard. It pushes every die that is still rolling, yours and your opponent\'s alike, but can\'t shift one lying still. Its direction is shown before you throw.',
+  summary: 'A wind blows across the table, from a breeze to a gale, pushing the dice as they roll.',
+  rules: 'Each round a wind blows across the table from a new direction: a light breeze, a strong wind, or a gale that drives the dice as hard as the hardest throw. It pushes every die that is still rolling, yours and your opponent\'s alike, but can\'t shift one lying still. How strong it is and where it blows are shown before you throw.',
   eligibility: {},
   beforeThrow: ({ rng }) => {
     const [dx, dz, arrow] = WINDS[rng.int(WINDS.length)];
     const strength = WIND_MIN + rng.next() * (WIND_MAX - WIND_MIN);
-    const gale = strength > (WIND_MIN + WIND_MAX) / 2;
-    return { spice: { wind: [dx * strength, dz * strength] }, announce: `${gale ? 'Strong wind' : 'A breeze'} blowing ${arrow}` };
+    // A third of the way up is a breeze, two thirds a strong wind, past that a gale.
+    const how = (strength - WIND_MIN) / (WIND_MAX - WIND_MIN);
+    const said = how < 1 / 3 ? 'A breeze' : how < 2 / 3 ? 'Strong wind' : 'A gale';
+    return { spice: { wind: [dx * strength, dz * strength] }, announce: `${said} blowing ${arrow}` };
   },
   table: ({ state }) => ({ wind: /** @type {{ wind?: number[] }} */ (state.spice ?? {}).wind ?? null }),
 };

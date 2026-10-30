@@ -20,7 +20,7 @@ on the bench and by the multiplayer host; playtest pending (9.11).
 
 | Cited as | What | Where |
 |---|---|---|
-| `D1`–`D57` | Decisions and their reasons | [docs/decisions.md](docs/decisions.md) |
+| `D1`–`D58` | Decisions and their reasons | [docs/decisions.md](docs/decisions.md) |
 | `R1.1`–`R7.3`, `§1`, `§4`–`§6` | Vision, requirements, catalogue of dice sets and Spice | [docs/spec.md](docs/spec.md) |
 | `0.1`–`6b.9`, `§8` | Finished phases, task by task, with what was measured | [docs/history.md](docs/history.md) |
 | `Q1`–`Q10`, `7.x`–`10.x`, `P.x` | Open questions, work still to do | here |
@@ -244,6 +244,8 @@ From the first evening with Spice stacks. *(D52)*
 - [x] **10.8** Reroll Cocked, a Spice: a cocked die is tossed again (D56).
 - [x] **10.10** The AI has a name for its dice set, two or three each (D57).
 - [x] **10.11** A full room hides its code and link (D57).
+- [x] **10.12** Gusty Table from a breeze to a gale; a named cat; Exploding
+  Dice both ways; the stack picker grouped; compact cards (D58).
 - [x] **10.9** The room's Ready button: bigger, red until you're ready and
   green once you are, and always on the right.
 

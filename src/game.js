@@ -37,7 +37,7 @@ import * as engine from './rules/engine.js';
 import { guestSeat, swapSides, swapId, turnDie, turnTable, digestOf } from './seat.js';
 import { DICE_SETS, THE_CLASSIC, dieTypes, sum } from './rules/dice-sets.js';
 import { SPICE } from './rules/spice.js';
-import { clashWith } from './rules/stacking.js';
+import { clashWith, stackGroups } from './rules/stacking.js';
 import { dealDice, dealSpice, testBenchSpice } from './rules/draft.js';
 import { diceSetCard, dieCard, spiceCard, stackCard } from './cards.js';
 import { checkProfile, looksOf, opponentProfile } from './profile.js';
@@ -352,6 +352,7 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
       title: `Test bench: Spice for ${DICE_SETS[diceSet].name}`,
       cards: testBenchSpice(diceSet).filter((s) => s.id !== 'vanilla').map(spiceCard),
       clash: (picked, id) => clashWith(picked, id, diceSet),
+      groups: stackGroups(testBenchSpice(diceSet).filter((s) => s.id !== 'vanilla').map((s) => s.id)),
       start: 'Start',
       onStart: (spices) => startBench(diceSet, spices),
       onBack: pickDice,
@@ -428,6 +429,7 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
 
   function closeEditor(onDone) {
     editing = false;
+    hud.setCompact(profiles.get().compact);
     hud.showMenuPlayer(looksOf(profiles.get()));
     if (onDone) onDone();
     else hud.showMenu();
@@ -442,6 +444,7 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
     const draft = hud.takeEdits();
     if (draft) profiles.save(draft);
     editing = false;
+    hud.setCompact(profiles.get().compact);
     hud.showMenuPlayer(looksOf(profiles.get()));
     return true;
   }
@@ -1426,6 +1429,7 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
     (id) => start('zen', id.startsWith('die:') ? { dieType: id.slice(4) } : { diceSet: id })));
   hud.onTestBench(openTestBench);
   hud.onEditPlayer(() => openEditor());
+  hud.setCompact(profiles.get().compact);
   hud.onBack(returnToMenu);
   hud.showMenuPlayer(looksOf(profiles.get()));
   // The button under the card: keep all your dice while picking (Draw

@@ -80,6 +80,8 @@ export function checkProfile(raw) {
     card: choice(CARD_COLORS, p.card).id,
     tray: choice(TRAY_COLORS, p.tray).id,
     dice: choice(DICE_COLORS, p.dice).id,
+    // Compact cards (D58): only there when it's on.
+    ...(p.compact === true ? { compact: true } : {}),
   };
 }
 

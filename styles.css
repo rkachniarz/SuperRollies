@@ -600,6 +600,52 @@
   .card.chosen .card-name::after{ content:' ✓'; color:var(--accent); }
   button.card:disabled{ opacity:0.45; cursor:not-allowed; transform:none; }
   .card-why{ grid-column:2; font-size:12px; line-height:1.3; color:var(--ink-dim); font-style:italic; }
+  /* The stack picker's groups (D58): those only one of which can be picked. */
+  .stack-group{
+    grid-column:1 / -1;
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    gap:8px;
+    margin:12px 2px 0;
+    padding-bottom:4px;
+    border-bottom:1px solid var(--card-border);
+    font-weight:700;
+    font-size:14px;
+    color:var(--ink);
+  }
+  .stack-group-note{ font-size:12px; font-weight:600; color:var(--ink-dim); }
+  .editor-toggle{ justify-self:start; margin:0; }
+  .editor-toggle[aria-pressed="true"]{ color:var(--bg); background:var(--player-accent); border-color:var(--player-accent); }
+
+  /* Compact cards (D58): a quarter the size, two to a row on a phone. */
+  @media (max-width:580px){
+    body.compact-cards .picker-options{ grid-template-columns:1fr 1fr; gap:6px; }
+    body.compact-cards .picker-options .card.compact{
+      grid-template-columns:24px 1fr; column-gap:6px; padding:6px 8px; border-left-width:3px;
+    }
+    body.compact-cards .picker-options .card.compact .card-icon .emoji{ font-size:18px; line-height:22px; }
+    body.compact-cards .picker-options .card.compact .die-icon{ width:20px; height:20px; }
+    body.compact-cards .picker-options .card.compact .card-name{ font-size:11px; }
+    body.compact-cards .picker-options .card.compact .card-tag{ font-size:9px; }
+    body.compact-cards .picker-options .card.compact .card-summary,
+    body.compact-cards .picker-options .card.compact .card-why{
+      font-size:10px; line-height:1.25;
+      display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;
+    }
+    body.compact-cards #netRoomCards{ gap:6px; }
+    body.compact-cards #netRoomCards .card{ width:calc(50% - 3px); padding:8px 8px 10px; gap:3px; }
+    body.compact-cards #netRoomCards .card-icon{ min-height:24px; }
+    body.compact-cards #netRoomCards .card-icon .emoji{ font-size:20px; line-height:24px; }
+    body.compact-cards #netRoomCards .die-icon{ width:22px; height:22px; }
+    body.compact-cards #netRoomCards .card-name{ font-size:12px; }
+    body.compact-cards #netRoomCards .card-tag{ font-size:10px; }
+    body.compact-cards #netRoomCards .card-summary{
+      font-size:10px; line-height:1.25;
+      display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden;
+    }
+    body.compact-cards .stack-group{ font-size:12px; margin-top:8px; }
+  }
   .card-why:empty{ display:none; }
   .picker-back{
     margin-top:24px;
@@ -955,6 +1001,8 @@
   #result .dropped{ opacity:0.45; text-decoration:line-through; }
   /* A die a Spice changed: one that exploded, one that was cursed to 0. */
   #result .exploded{ color:var(--player-accent); font-weight:700; }
+  /* One that exploded downwards, from a 1 (Exploding Dice, D58). */
+  #result .imploded{ color:#ff8a9d; font-weight:700; }
   #result .cursed{ color:#ff5470; text-decoration:line-through; }
   #result .fallen{ color:#ff8a9d; font-style:italic; }
   /* A die lost for the rest of the match (Burnout). */

@@ -92,8 +92,8 @@ export const CLASHES = [
   },
   {
     a: ['lowball'],
-    b: ['underdog', 'inspiration', 'caltrops', 'doubles-again', 'crown', 'exploding-dice', 'brutal-critical', 'critical-hit'],
-    why: 'Under Lowball a Spice meant to help a side would hurt it: an extra die, a bonus or an explosion raises the total, and Caltrops would lower the other side\'s.',
+    b: ['underdog', 'inspiration', 'caltrops', 'doubles-again', 'crown', 'brutal-critical', 'critical-hit'],
+    why: 'Under Lowball a Spice meant to help a side would hurt it: an extra die, a bonus or an explosion upwards only (Brutal Critical) raises the total, and Caltrops would lower the other side\'s.',
   },
   {
     a: ['doubles-again'],
@@ -211,7 +211,28 @@ export function largestStack(diceSet, { without = [] } = {}) {
 export function clashWith(picked, id, diceSet) {
   for (const other of picked) {
     const clash = clashOf(other, id, diceSet);
+    // Its group's heading says why (stackGroups): one of them only.
+    if (clash?.slot) return `One of these only: ${SPICE[other].name} is picked.`;
     if (clash) return `Clashes with ${SPICE[other].name}: ${clash.why}`;
   }
   return null;
+}
+
+/**
+ * The Spice `ids` grouped for a picker (D58), so it's plain why a card can't
+ * be picked: a group for each slot, only one of which can be picked, then
+ * the rest, which stack with almost anything. A Spice in two slots goes in
+ * the first. Each group in the order of `ids`; groups with none left out.
+ * @param {string[]} ids
+ * @returns {{ title: string, note: string, ids: string[] }[]}
+ */
+export function stackGroups(ids) {
+  const placed = new Set();
+  const groups = Object.values(SLOTS).map(({ what, spice }) => {
+    const mine = ids.filter((id) => spice.includes(id) && !placed.has(id));
+    mine.forEach((id) => placed.add(id));
+    return { title: what, note: 'Pick one', ids: mine };
+  });
+  groups.push({ title: 'Everything else', note: 'Stack with almost anything', ids: ids.filter((id) => !placed.has(id)) });
+  return groups.filter((g) => g.ids.length);
 }

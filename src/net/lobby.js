@@ -19,7 +19,7 @@ import { createSession, savedSession, forgetSession } from './session.js';
 import { newRoom, setReady, setChoice, setDice, toggleSpice, bothReady, started, newGuest, tally, checkRoom } from './room.js';
 import { DICE_SETS, diceSetOf, ANY_DICE_TYPES, ANY_DICE_MAX } from '../rules/dice-sets.js';
 import { testBenchSpice, dealStack } from '../rules/draft.js';
-import { canStack, clashWith } from '../rules/stacking.js';
+import { canStack, clashWith, stackGroups } from '../rules/stacking.js';
 import { diceSetCard, dieCard, anyDiceCard, spiceCard, renderCard } from '../cards.js';
 import { looksOf } from '../profile.js';
 import { randomSeed, createRng } from '../rng.js';
@@ -311,6 +311,7 @@ export function createLobby({ hud, game, profiles }) {
       cards: spiceFor(diceSet).filter((sp) => sp.id !== 'vanilla').map(spiceCard),
       picked: room.choice?.diceSet === diceSet ? room.choice.spices.filter((id) => id !== 'vanilla') : deal(diceSet),
       clash: (picked, id) => clashWith(picked, id, diceSet),
+      groups: stackGroups(spiceFor(diceSet).filter((sp) => sp.id !== 'vanilla').map((sp) => sp.id)),
       start: 'Choose',
       deal: () => deal(diceSet),
       onStart: (spices) => then({ diceSet, spices: spices.length ? spices : ['vanilla'] }),

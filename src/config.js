@@ -196,16 +196,18 @@ export const POTHOLE_RADIUS = 0.85;
 export const POTHOLE_DEPTH = 1.1;
 // Cat Paw: the chance a paw swipes in once a round's dice have settled.
 export const CAT_PAW_CHANCE = 0.4;
-// Gusty Table: how hard the breeze pushes, as an acceleration (units/s²).
-// Always well under what the floor's friction holds (~9), so it never shifts
-// a die lying still; it only drifts the ones rolling.
-export const WIND_MIN = 2.5;
-export const WIND_MAX = 5;
+// Gusty Table: how hard the breeze pushes, as an acceleration (units/s²),
+// from a light breeze to a gale (D58): the strongest, over the two seconds or
+// so a gust blows in full, would carry a die as fast as the hardest throw
+// (MAX_THROW_SPEED). Still under what the floor's friction holds (~9), so it
+// never shifts a die lying still; it only drives the ones rolling.
+export const WIND_MIN = 1.5;
+export const WIND_MAX = 7;
 // A gust, not a gale: full strength for the first WIND_FULL_TIME seconds of a
 // throw, while the dice roll about, then dying away to nothing by
 // WIND_END_TIME, so it never keeps a die from settling.
 export const WIND_FULL_TIME = 1.5;
-export const WIND_END_TIME = 2.5;
+export const WIND_END_TIME = 2.0;
 // Tug of War: the rope lying down the middle of the tray, from your end to
 // the opponent's, on The Classic's tray (scaled with the tray). Thick enough
 // to show over the divider it passes through (0.18 high), low enough that a

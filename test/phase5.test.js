@@ -10,7 +10,7 @@ import {
   tableOf, afterSettle, throwsAgain, canRethrow, spendRethrow,
 } from '../src/rules/engine.js';
 import { DICE_SETS, DIE_MAX, dieFaces, scoreStats } from '../src/rules/dice-sets.js';
-import { SPICE } from '../src/rules/spice.js';
+import { SPICE, CAT_NAMES, catOf } from '../src/rules/spice.js';
 import { failsFor } from '../src/rules/win-conditions.js';
 import { eligibleSpice, testBenchSpice, OFFERS } from '../src/rules/draft.js';
 import {
@@ -359,7 +359,10 @@ describe('Cat Paw', () => {
     let swipes = [];
     while (!swipes.length) ({ state, swipes } = afterSettle(rules, state, { player: 1, opponent: 1 }));
     const { outcome } = playRound(rules, state, { player: [4], opponent: [5] });
-    assert.match(outcome.note, /The cat knocked (a die|two dice)!/);
+    // The cat has a name (D58), the same all match.
+    assert.match(outcome.note, /knocked (a die|two dice)!/);
+    assert.ok(outcome.note.includes(`${catOf(rules)} knocked`), outcome.note);
+    assert.ok(CAT_NAMES.includes(catOf(rules)));
   });
 });
 
@@ -374,7 +377,7 @@ describe('Gusty Table', () => {
       const { wind } = tableOf(rules, state);
       const strength = Math.sqrt(wind[0] ** 2 + wind[1] ** 2);
       assert.ok(strength >= WIND_MIN - 1e-9 && strength <= WIND_MAX + 1e-9, String(strength));
-      assert.match(announce, /^(A breeze|Strong wind) blowing [→↗↑↖←↙↓↘]$/);
+      assert.match(announce, /^(A breeze|Strong wind|A gale) blowing [→↗↑↖←↙↓↘]$/);
       arrows.add(announce.at(-1));
     }
     assert.equal(arrows.size, 8);

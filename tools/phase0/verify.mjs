@@ -677,6 +677,8 @@ if (!ONLY || BENCH.includes(ONLY)) {
     await page.click('#pickerBack');
     const backToDice = (await picks()).join() === sets.join();
     await page.click('#pickerOptions [data-pick="greatsword"]');
+    // Grouped (D58): a heading for each slot, the rest last.
+    const groups = await page.$$eval('#pickerOptions .stack-group span:first-child', (els) => els.map((el) => el.textContent));
     // A stack (D51): with Second Wind picked, Doubles Again clashes, greyed out and saying why.
     await page.click('#pickerOptions [data-pick="snake-eyes"]');
     await page.click('#pickerOptions [data-pick="second-wind"]');
@@ -687,11 +689,12 @@ if (!ONLY || BENCH.includes(ONLY)) {
     const config = await page.evaluate(() => window.superRollies.game.config);
     const expected = testBenchSpice('greatsword').map((s) => s.id).filter((id) => id !== 'vanilla');
     report(BENCH,
-      hiddenWithoutFlag && sets.join() === Object.keys(DICE_SETS).join() && spice.join() === expected.join() &&
+      hiddenWithoutFlag && sets.join() === Object.keys(DICE_SETS).join() && [...spice].sort().join() === [...expected].sort().join() &&
+        groups.includes('How the match is won') && groups.at(-1) === 'Everything else' &&
         expected.slice(0, 2).join() === 'snake-eyes,doubles-again' && backToDice &&
         greyed.off && /Clashes with Second Wind/.test(greyed.why) &&
         config.diceSet === 'greatsword' && config.spices.join() === 'second-wind,cat-paw,snake-eyes',
-      `${sets.length} sets; Greatsword offers ${spice.join(', ')}; played ${config.spices.join(' + ')}; "${greyed.why}"`);
+      `${sets.length} sets; groups ${groups.join(' / ')}; Greatsword offers ${spice.join(', ')}; played ${config.spices.join(' + ')}; "${greyed.why}"`);
   } catch (e) {
     report(BENCH, false, e.message.split('\n')[0]);
   }
@@ -830,7 +833,7 @@ await withMatch(DESKTOP, 'cat paw', async (page) => {
     outcome.faces[side].join() === knock?.result.dice.filter((d) => d.id.startsWith(side)).map((d) => d.face).join());
   const note = await page.textContent('#resultDetail');
   report('Cat Paw: the paw knocks the dice the rules name, from where they lay, and their new faces count',
-    throws.length === 2 && fromRest && knocked === named && faces && /The cat knocked/.test(note),
+    throws.length === 2 && fromRest && knocked === named && faces && / knocked (a die|two dice)!/.test(note),
     `seed ${seed}: knocked ${knocked} (named ${named}); ${throws.length} throws; "${note.match(/🐾[^.!]*!/)?.[0] ?? 'no note'}"`);
 }, '#quickGameBtn', { pick: 'ability-score', spice: 'cat-paw' });
 
