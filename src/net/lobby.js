@@ -17,10 +17,10 @@
 import { createTransport, cleanCode } from './transport.js';
 import { createSession, savedSession, forgetSession } from './session.js';
 import { newRoom, setReady, setChoice, toggleSpice, bothReady, started, newGuest, tally, checkRoom } from './room.js';
-import { DICE_SETS } from '../rules/dice-sets.js';
+import { DICE_SETS, diceSetOf, ANY_DICE_TYPES, ANY_DICE_MAX } from '../rules/dice-sets.js';
 import { testBenchSpice, dealStack } from '../rules/draft.js';
 import { canStack, clashWith } from '../rules/stacking.js';
-import { diceSetCard, spiceCard, renderCard } from '../cards.js';
+import { diceSetCard, dieCard, anyDiceCard, spiceCard, renderCard } from '../cards.js';
 import { looksOf } from '../profile.js';
 import { randomSeed, createRng } from '../rng.js';
 
@@ -73,7 +73,7 @@ export function createLobby({ hud, game, profiles }) {
   const theirSeat = () => (mySeat() === 'host' ? 'guest' : 'host');
   /** The choice's dice set and Spice stack, if this version of the game has them all and they stack. */
   const known = (choice) => {
-    const diceSet = choice && DICE_SETS[choice.diceSet];
+    const diceSet = choice && diceSetOf(choice.diceSet);
     if (!diceSet) return null;
     const allowed = spiceFor(choice.diceSet);
     const spices = choice.spices.map((id) => allowed.find((sp) => sp.id === id));
@@ -292,10 +292,16 @@ export function createLobby({ hud, game, profiles }) {
   function choose(then, onBack) {
     const rng = createRng(randomSeed());
     const deal = (diceSet) => dealStack(diceSet, rng, { without: [...SOLO_ONLY] }).filter((id) => id !== 'vanilla');
+    // The catalogue, and any dice: a die, then how many (D53).
     const pickDice = () => hud.showPicker('Play a friend: choose the dice',
-      Object.values(DICE_SETS).map(diceSetCard), pickSpice, onBack);
+      [...Object.values(DICE_SETS).map(diceSetCard), anyDiceCard()], (id) => (id === 'any' ? pickType() : pickSpice(id)), onBack);
+    const pickType = () => hud.showPicker('Play a friend: any dice, which die?',
+      ANY_DICE_TYPES.map((type) => ({ ...dieCard(type), name: type, tag: `1-${ANY_DICE_MAX}${type}`, summary: `As many ${type}s as you like, up to ${ANY_DICE_MAX}.` })),
+      (id) => pickCount(id.slice('die:'.length)), pickDice);
+    const pickCount = (type) => hud.showPicker(`Play a friend: how many ${type}s?`,
+      Array.from({ length: ANY_DICE_MAX }, (_, i) => diceSetCard(diceSetOf(`${i + 1}${type}`))), pickSpice, pickType);
     const pickSpice = (diceSet) => hud.showStackPicker({
-      title: `Play a friend: Spice for ${DICE_SETS[diceSet].name}`,
+      title: `Play a friend: Spice for ${diceSetOf(diceSet).name}`,
       cards: spiceFor(diceSet).filter((sp) => sp.id !== 'vanilla').map(spiceCard),
       picked: room.choice?.diceSet === diceSet ? room.choice.spices.filter((id) => id !== 'vanilla') : deal(diceSet),
       clash: (picked, id) => clashWith(picked, id, diceSet),

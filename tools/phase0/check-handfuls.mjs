@@ -24,7 +24,7 @@ import * as THREE from 'three';
 import { initPhysics, createRoundSim, createHoldSim, palmFor, TIMEOUT_STEPS } from '../../src/physics.js';
 import { SHAPES } from '../../src/die-shapes.js';
 import { handLayout, scatter, randomHandful } from '../../src/handful.js';
-import { DICE_SETS, dieTypes, extraDieType } from '../../src/rules/dice-sets.js';
+import { DICE_SETS, dieTypes, extraDieType, diceSetOf, ANY_DICE_TYPES, ANY_DICE_MAX } from '../../src/rules/dice-sets.js';
 import { SPICE } from '../../src/rules/spice.js';
 import { isEligible } from '../../src/rules/engine.js';
 import {
@@ -51,6 +51,11 @@ for (const set of Object.values(DICE_SETS)) {
     if (CASES.some((c) => c.set.tray.halfWidth === set.tray.halfWidth && c.types.join() === types.join())) continue;
     CASES.push({ set, id: `${set.id}+${spice}`, notation: `${set.notation} + 1${type}`, types });
   }
+}
+// Any dice (D53): the most of each die there can be, eight, in their tray.
+for (const type of ANY_DICE_TYPES.filter((t) => t !== 'd6')) {
+  const set = diceSetOf(`${ANY_DICE_MAX}${type}`);
+  CASES.push({ set, id: set.id, notation: set.notation, types: dieTypes(set) });
 }
 
 let failures = 0;

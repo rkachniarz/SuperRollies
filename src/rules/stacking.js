@@ -11,7 +11,7 @@
 // Each Spice must still be eligible for the dice set on its own (R3.2).
 // Vanilla is no Spice at all, so it never stacks.
 
-import { DICE_SETS, dieTypes } from './dice-sets.js';
+import { diceSetOf, dieTypes } from './dice-sets.js';
 import { SPICE } from './spice.js';
 import { isEligible } from './engine.js';
 
@@ -152,7 +152,7 @@ export function clashOf(a, b, diceSet) {
   if (a === 'vanilla' || b === 'vanilla') return { why: 'Vanilla is no Spice at all.' };
   const slot = slotsOf(a).find((s) => slotsOf(b).includes(s));
   if (slot) return { slot, why: `Both take the same slot: ${SLOTS[slot].what.toLowerCase()}.` };
-  const dice = diceSet && dieTypes(DICE_SETS[diceSet]).length;
+  const dice = diceSet && dieTypes(diceSetOf(diceSet)).length;
   const clash = CLASHES.find((c) => ((c.a.includes(a) && c.b.includes(b)) || (c.a.includes(b) && c.b.includes(a)))
     && !(dice && c.minDice && dice < c.minDice));
   if (!clash) return null;
@@ -166,7 +166,7 @@ export function clashOf(a, b, diceSet) {
  * @param {string} diceSet  An id.
  */
 export function canStack(ids, diceSet) {
-  if (!ids.every((id) => isEligible(SPICE[id], DICE_SETS[diceSet]))) return false;
+  if (!ids.every((id) => isEligible(SPICE[id], diceSetOf(diceSet)))) return false;
   return ids.every((a, i) => ids.slice(i + 1).every((b) => !clashOf(a, b, diceSet)));
 }
 
@@ -180,7 +180,7 @@ export function canStack(ids, diceSet) {
  */
 export function largestStack(diceSet, { without = [] } = {}) {
   const ids = Object.keys(SPICE)
-    .filter((id) => id !== 'vanilla' && !without.includes(id) && isEligible(SPICE[id], DICE_SETS[diceSet]));
+    .filter((id) => id !== 'vanilla' && !without.includes(id) && isEligible(SPICE[id], diceSetOf(diceSet)));
   /** @type {string[]} */
   let best = [];
   /** @param {string[]} chosen @param {string[]} left */

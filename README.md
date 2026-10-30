@@ -14,7 +14,8 @@ them, roll higher than your opponent. Lose a round and you lose a heart; lose
 them all and the match is over. Or **play a friend**: host a room, send
 them its link, pick the dice and a stack of Spice (or take the one dealt), and once you're both ready each of
 you throws when you like, your friend's dice landing on your screen as they
-throw them; the room keeps count of the games each of you has won. Between
+throw them; the room keeps count of the games each of you has won. The host can
+also pick *any dice*: one to eight of any die, 3d8 or 8d20. Between
 matches the host can switch a Spice off for a rematch without it, and either
 of you can tap your card to change it without leaving the room. Or pick
 **Zen** and just throw: any of the dice, the whole tray, no score. Make it

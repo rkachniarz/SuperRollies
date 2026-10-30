@@ -48,6 +48,12 @@ export async function hostRoom(host, diceSet = 'classic', spice = 'vanilla', { r
   await host.waitForSelector('#netBtn:not([disabled])', { timeout: 30000 });
   await host.click('#netBtn');
   await host.click('#netHostBtn');
+  // Any dice (D53), `3d8`: the Any dice card, the die, then how many.
+  const any = /^\d(d\d+)$/.exec(diceSet);
+  if (any) {
+    await host.click('#pickerOptions [data-pick="any"]');
+    await host.click(`#pickerOptions [data-pick="die:${any[1]}"]`);
+  }
   await host.click(`#pickerOptions [data-pick="${diceSet}"]`);
   await pickStack(host, spice);
   await host.waitForFunction(() => /^[A-Z0-9]{5}$/.test(document.getElementById('netRoomCode').textContent));
@@ -466,6 +472,8 @@ export async function multiplayerChecks(report, only) {
     // A Spice stack (D51): a table, a paw, a breeze, the stakes and a re-throw at once.
     [['raising-the-stakes', 'second-wind', 'pothole', 'cat-paw', 'gusty-table'], 'classic', { fires: true, rethrow: true }],
     [['tug-of-war', 'exploding-dice', 'underdog', 'pothole'], 'classic'],
+    // Any dice (D53).
+    [['exploding-dice', 'cat-paw'], '3d8'],
   ];
   for (const [stack, diceSet, { fires = false, ...hostPlay } = {}, guestPlay = hostPlay] of SPICED) {
     const spice = [stack].flat().join(' + ');

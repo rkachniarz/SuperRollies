@@ -159,6 +159,49 @@ export const DICE_SETS = Object.fromEntries([
   }),
 ].map((set) => [set.id, set]));
 
+/** The die types any dice (XdY) can be: every die but the percentile one, alone. */
+export const ANY_DICE_TYPES = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20'];
+
+/** How many dice any dice can be at most: the most a side may throw (D6). */
+export const ANY_DICE_MAX = 8;
+
+// Any dice's tray, by how many dice there are: as the catalogue's sets of
+// that many have it, eight dice drawn smaller as Fireball's are.
+const ANY_TRAY = [1, 1, 1, 1.15, 1.2, 1.25, 1.3, 1.4, 1.45];
+const COUNT_WORDS = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight'];
+const anyDice = new Map();
+
+/**
+ * Any number of one die (D53), `3d8`: from 1 to 8 of a die of ANY_DICE_TYPES,
+ * added up. Made when it's first asked for, then the same each time. Its id
+ * is its notation, so a match config can name it like any other set.
+ * @param {string} id
+ * @returns {DiceSet | undefined}
+ */
+function anyDiceSet(id) {
+  const match = /^([1-8])(d\d+)$/.exec(id);
+  if (!match || !ANY_DICE_TYPES.includes(match[2])) return undefined;
+  if (!anyDice.has(id)) {
+    const count = Number(match[1]);
+    const type = match[2];
+    anyDice.set(id, diceSet(id, id, [{ type, count }], {
+      tray: ANY_TRAY[count],
+      dieScale: count === ANY_DICE_MAX ? 0.9 : 1,
+      summary: count === 1 ? `One ${type}.` : `${COUNT_WORDS[count]} ${type}s, added up.`,
+      range: count === 1 ? `1–${DIE_MAX[type]}` : `${count}–${count * DIE_MAX[type]}`,
+    }));
+  }
+  return anyDice.get(id);
+}
+
+/**
+ * The dice set `id` names: one of the catalogue's, or any dice (`3d8`).
+ * Undefined if it names neither.
+ * @param {string} id
+ * @returns {DiceSet | undefined}
+ */
+export const diceSetOf = (id) => DICE_SETS[id] ?? anyDiceSet(id);
+
 /**
  * The highest face of each die type, as it counts: a d10's "0" is 10, a
  * percentile die's "00" is 100 (docs/decisions.md D25). What Exploding Dice and

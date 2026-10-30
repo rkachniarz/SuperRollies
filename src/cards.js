@@ -63,6 +63,17 @@ export function diceSetCard(set) {
 }
 
 /**
+ * Any dice (D53): the way to a multiplayer room with any number of one die.
+ * @returns {CardData}
+ */
+export function anyDiceCard() {
+  return {
+    id: 'any', kind: 'dice', name: 'Any dice', tag: 'XdY',
+    summary: 'One to eight of any die: 3d8, 8d20...', icon: ['d4', 'd8', 'd20'].map(dieIcon).join(''),
+  };
+}
+
+/**
  * One die alone (Zen's "One d8"), where no dice set is just that die.
  * @param {string} type
  * @returns {CardData}

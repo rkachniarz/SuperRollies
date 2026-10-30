@@ -17,7 +17,7 @@
 // so going back to the state before the round undoes it.
 
 import { createRng, deriveSeed } from '../rng.js';
-import { DICE_SETS, dieTypes } from './dice-sets.js';
+import { diceSetOf, dieTypes } from './dice-sets.js';
 import { SPICE } from './spice.js';
 import { HEARTS } from './win-conditions.js';
 import { composeSpice } from './compose.js';
@@ -45,7 +45,7 @@ const SIDES = ['player', 'opponent'];
  */
 export function matchConfig({ seed, diceSet = 'classic', spice, spices = spice ? [spice] : [] }) {
   if (!Number.isInteger(seed) || seed < 0 || seed > 0xffffffff) throw new Error(`Seed must be a uint32, got ${seed}`);
-  if (!DICE_SETS[diceSet]) throw new Error(`Unknown dice set "${diceSet}"`);
+  if (!diceSetOf(diceSet)) throw new Error(`Unknown dice set "${diceSet}"`);
   for (const id of spices) if (!SPICE[id]) throw new Error(`Unknown Spice "${id}"`);
   const ids = Object.keys(SPICE).filter((id) => spices.includes(id));
   if (ids.length > 1 && !canStack(ids, diceSet)) throw new Error(`These Spice don't stack with ${diceSet}: ${ids.join(', ')}`);
@@ -61,7 +61,7 @@ export function matchConfig({ seed, diceSet = 'classic', spice, spices = spice ?
 export function resolveRules(config) {
   const spices = config.spices.map((id) => SPICE[id]);
   const spice = composeSpice(spices);
-  const diceSet = DICE_SETS[config.diceSet];
+  const diceSet = diceSetOf(config.diceSet);
   const { winCondition = HEARTS } = spice;
   return {
     config,

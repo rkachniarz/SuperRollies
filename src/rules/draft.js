@@ -5,7 +5,7 @@
 // so the same seed deals the same cards on any client.
 
 import { createRng, deriveSeed } from '../rng.js';
-import { DICE_SETS } from './dice-sets.js';
+import { DICE_SETS, diceSetOf } from './dice-sets.js';
 import { SPICE } from './spice.js';
 import { isEligible } from './engine.js';
 import { clashOf, largestStack } from './stacking.js';
@@ -32,7 +32,7 @@ function deal(list, count, rng) {
  * @param {string} diceSet  An id.
  */
 export function eligibleSpice(diceSet) {
-  return Object.values(SPICE).filter((spice) => isEligible(spice, DICE_SETS[diceSet]));
+  return Object.values(SPICE).filter((spice) => isEligible(spice, diceSetOf(diceSet)));
 }
 
 /**

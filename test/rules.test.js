@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { matchConfig, resolveRules, startMatch, beginRound, playRound, higherWins } from '../src/rules/engine.js';
-import { THE_CLASSIC, DICE_SETS, sum, keepHighest, dropLowest, percentile, dieTypes } from '../src/rules/dice-sets.js';
+import { THE_CLASSIC, DICE_SETS, sum, keepHighest, dropLowest, percentile, dieTypes, diceSetOf } from '../src/rules/dice-sets.js';
 import { VANILLA, SPICE } from '../src/rules/spice.js';
 import { HEARTS, hearts } from '../src/rules/win-conditions.js';
 
@@ -298,5 +298,27 @@ describe('rules engine', () => {
     const withOwn = { ...rules, winCondition: sudden };
     const { outcome } = playRound(withOwn, startMatch(withOwn), roll(1, 2));
     assert.equal(outcome.matchWinner, 'opponent');
+  });
+});
+
+describe('any dice (D53)', () => {
+  test('any number of one die, 1 to 8, from the d4 to the d20, as a dice set of its own', () => {
+    const set = diceSetOf('3d8');
+    assert.equal(set.notation, '3d8');
+    assert.equal(set.range, '3–24');
+    assert.deepEqual(dieTypes(set), ['d8', 'd8', 'd8']);
+    assert.equal(diceSetOf('3d8'), set, 'the same set each time');
+    assert.equal(diceSetOf('classic'), THE_CLASSIC);
+    for (const bad of ['9d6', '0d6', '3d7', '2d%', 'd6', '3d8x']) assert.equal(diceSetOf(bad), undefined, bad);
+  });
+
+  test('a match can be played with it, with Spice that scale to it', () => {
+    const rules = resolveRules(matchConfig({ seed: 1, diceSet: '8d20', spices: ['hit-points', 'cat-paw'] }));
+    let state = startMatch(rules);
+    ({ state } = beginRound(rules, state));
+    const { outcome } = playRound(rules, state, { player: [20, 20, 20, 20, 1, 1, 1, 1], opponent: [1, 1, 1, 1, 1, 1, 1, 1] });
+    assert.equal(outcome.scores.player, 84);
+    assert.equal(outcome.winner, 'player');
+    assert.ok(rules.winCondition.view(startMatch(rules).win).sides.player.max > 50);
   });
 });
