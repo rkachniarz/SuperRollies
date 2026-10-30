@@ -399,6 +399,8 @@ export async function multiplayerChecks(report, only) {
   // other seeing it; a match that starts mid-edit keeps what they had.
   await withRoom('multiplayer: room edits', only, report, async ({ host, guest }) => {
     await joinRoom(guest, await hostRoom(host, 'classic', ['marathon', 'cat-paw', 'gusty-table'], { ready: false }), { ready: false });
+    // The room is full: the code and link are gone from the host's screen.
+    const full = await host.$eval('#netHostOnly', (el) => el.hidden);
     await host.click('#netRoomCards [data-pick="cat-paw"]');
     await guest.waitForFunction(() => window.superRollies.lobby.room.choice.spices.join() === 'marathon,gusty-table', null, { timeout: 5000 });
     const off = await guest.$eval('#netRoomCards [data-pick="cat-paw"]', (el) => el.classList.contains('off'));
@@ -435,10 +437,10 @@ export async function multiplayerChecks(report, only) {
       editor: !document.getElementById('editor').hidden,
       spices: window.superRollies.game.config.spices.join(),
     }));
-    const ok = off && dice === 'greatsword/marathon+gusty-table/marathon+cat-paw+gusty-table' && tops[0].ready === 'Ready' && tops[0].change && tops[1].ready === 'Ready' && !tops[1].change &&
+    const ok = full && off && dice === 'greatsword/marathon+gusty-table/marathon+cat-paw+gusty-table' && tops[0].ready === 'Ready' && tops[0].change && tops[1].ready === 'Ready' && !tops[1].change &&
       kept.name === 'Midway' && !kept.editor && kept.spices === 'marathon,gusty-table';
-    report('Multiplayer: the host switches a Spice off for the next match, and changes just the dice, the buttons are at the top too, and a player edits their profile from the room (a match starting mid-edit keeps it)',
-      ok, JSON.stringify({ off, dice, tops, kept }));
+    report('Multiplayer: a full room hides its code, the host switches a Spice off for the next match, and changes just the dice, the buttons are at the top too, and a player edits their profile from the room (a match starting mid-edit keeps it)',
+      ok, JSON.stringify({ full, off, dice, tops, kept }));
   });
 
   // After a match both are back in the room, unready, the winner's game

@@ -20,7 +20,7 @@ on the bench and by the multiplayer host; playtest pending (9.11).
 
 | Cited as | What | Where |
 |---|---|---|
-| `D1`–`D56` | Decisions and their reasons | [docs/decisions.md](docs/decisions.md) |
+| `D1`–`D57` | Decisions and their reasons | [docs/decisions.md](docs/decisions.md) |
 | `R1.1`–`R7.3`, `§1`, `§4`–`§6` | Vision, requirements, catalogue of dice sets and Spice | [docs/spec.md](docs/spec.md) |
 | `0.1`–`6b.9`, `§8` | Finished phases, task by task, with what was measured | [docs/history.md](docs/history.md) |
 | `Q1`–`Q10`, `7.x`–`10.x`, `P.x` | Open questions, work still to do | here |
@@ -242,6 +242,8 @@ From the first evening with Spice stacks. *(D52)*
   for eight dice), a little bouncier, never a drop (a minimum speed and
   spin), and a handful that follows the finger much faster (D55).
 - [x] **10.8** Reroll Cocked, a Spice: a cocked die is tossed again (D56).
+- [x] **10.10** The AI has a name for its dice set, two or three each (D57).
+- [x] **10.11** A full room hides its code and link (D57).
 - [x] **10.9** The room's Ready button: bigger, red until you're ready and
   green once you are, and always on the right.
 
@@ -275,6 +277,6 @@ already be fixed.
   D50).
 - **Difficult terrain** (spec §6.4): the board covered in bumps and strange
   geometry that influence the rolls.
-- **AI opponent names and a proper AI** (D41, D47): it's "Opponent" and throws
-  at random for now.
+- **A proper AI** (D41, D47): it has a name for its dice now (D57), but
+  throws at random.
 - **Unlockable colours** (D47): the profile's registries take them by id.

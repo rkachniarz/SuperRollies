@@ -1,9 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { DICE_SETS } from '../src/rules/dice-sets.js';
 import { CARD_COLORS, TRAY_COLORS, DICE_COLORS } from '../src/config.js';
 import { createRng, deriveSeed } from '../src/rng.js';
 import {
-  DEFAULT_PROFILE, NAME_MAX, nameLength, limitName, cleanName, checkProfile, looksOf, opponentProfile, createProfileStore,
+  DEFAULT_PROFILE, NAME_MAX, nameLength, limitName, cleanName, checkProfile, looksOf, opponentProfile, createProfileStore, OPPONENT_NAMES,
 } from '../src/profile.js';
 
 /** A Storage stand-in, keeping what's set in a Map. */
@@ -60,7 +61,7 @@ test('looksOf gives the colours a profile picks', () => {
   assert.ok('body' in looks.dice && 'edge' in looks.dice && 'number' in looks.dice);
 });
 
-test("the opponent is 'Opponent', never in the player's dice colour, and every other colour turns up", () => {
+test("the opponent is 'Opponent' with any dice, never in the player's dice colour, and every other colour turns up", () => {
   for (const dice of DICE_COLORS.map((c) => c.id)) {
     const seen = { card: new Set(), tray: new Set(), dice: new Set() };
     for (let seed = 0; seed < 300; seed++) {
@@ -103,4 +104,20 @@ test('a corrupt save is ignored', () => {
   const storage = memoryStorage();
   storage.setItem('superRollies.profile', '{not json');
   assert.deepEqual(createProfileStore(() => storage).get(), { ...DEFAULT_PROFILE });
+});
+
+test('the AI has a name for its dice set (D57): every set two or three, each fitting a card, the colours as before', () => {
+  for (const id of Object.keys(DICE_SETS)) {
+    const names = OPPONENT_NAMES[id];
+    assert.ok(names && names.length >= 2 && names.length <= 3, id);
+    for (const name of names) assert.ok(nameLength(name) <= NAME_MAX && cleanName(name) === name, `${id}: ${name}`);
+  }
+  const seen = new Set();
+  for (let seed = 0; seed < 60; seed++) {
+    const named = opponentProfile(createRng(deriveSeed(seed, 'looks')), DEFAULT_PROFILE, 'fireball');
+    const plain = opponentProfile(createRng(deriveSeed(seed, 'looks')), DEFAULT_PROFILE);
+    assert.deepEqual({ ...named, name: 'Opponent' }, plain);
+    seen.add(named.name);
+  }
+  assert.deepEqual([...seen].sort(), [...OPPONENT_NAMES.fireball].sort());
 });

@@ -18,6 +18,7 @@ import { isEligible, matchConfig, resolveRules, startMatch, beginRound, afterSet
 import { dealDice, dealSpice, testBenchSpice } from '../../src/rules/draft.js';
 import { openGame, startQuickGame, startMode, waitForDiceAtRest, dieScreenPos, drag, throwAndWait, pickStack } from './driver.mjs';
 import { canStack } from '../../src/rules/stacking.js';
+import { OPPONENT_NAMES } from '../../src/profile.js';
 import { multiplayerChecks } from './check-multiplayer.mjs';
 
 const engine = process.argv[2] ?? 'chromium';
@@ -1341,9 +1342,9 @@ for (const [name, viewport] of [['desktop', DESKTOP], ['390x844', PHONE]]) {
       await waitForDiceAtRest(page);
       const cards = await cardLayout(page);
       const ok = Object.values(cards).every((c) => c.dice > 0 && c.corners > 0 && c.nameInside) &&
-        cards.player.text === SAVED.name && cards.opponent.text === 'Opponent';
-      report(`Profile (${name}): ${set} with ${spice}: both cards named, clear of the corners and the dice`, ok,
-        Object.entries(cards).map(([s, c]) => `${s} ${c.dice}px from dice, ${c.corners}px from corners${c.nameInside ? '' : ', NAME OUTSIDE'}`).join('; '));
+        cards.player.text === SAVED.name && OPPONENT_NAMES[set].includes(cards.opponent.text);
+      report(`Profile (${name}): ${set} with ${spice}: both cards named (the AI for its dice, D57), clear of the corners and the dice`, ok,
+        `AI "${cards.opponent.text}"; ` + Object.entries(cards).map(([s, c]) => `${s} ${c.dice}px from dice, ${c.corners}px from corners${c.nameInside ? '' : ', NAME OUTSIDE'}`).join('; '));
     }
 
     // A Spice stack (D51) can give a side several edges at once, in one badge:

@@ -250,7 +250,7 @@ export function createGame({ hud, roller, arena, table, effects, profiles }) {
     // The AI's looks come from a stream of their own, so a replayed match
     // looks the same and no other stream moves (R6.6).
     const you = profiles.get();
-    players = given ?? { player: you, opponent: zen ? null : opponentProfile(createRng(deriveSeed(seed, 'looks')), you) };
+    players = given ?? { player: you, opponent: zen ? null : opponentProfile(createRng(deriveSeed(seed, 'looks')), you, diceSet) };
     const looks = { player: looksOf(you), opponent: looksOf(players.opponent ?? you) };
     table.setup({
       types,

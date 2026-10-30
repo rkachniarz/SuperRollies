@@ -97,21 +97,49 @@ export function looksOf(profile) {
 }
 
 /**
- * The AI opponent's profile for a match: "Opponent" for now, its colours
- * drawn from the same choices as the player's (R6.6), but never the player's
- * dice colour, so the two sides' dice are always told apart.
+ * Who the AI opponent might be, by the dice set it plays (D57): the sort
+ * who'd throw those dice, a barroom gambler for one d20, a paladin for Divine
+ * Smite, a gnome mage for Magic Missile. Made up, after the fashion of World
+ * of Warcraft and of D&D and Baldur's Gate. At most NAME_MAX characters each.
+ * @type {Record<string, string[]>}
+ */
+export const OPPONENT_NAMES = {
+  classic: ['Pip Lightfingers', 'Gorvik Highroll', 'Old Maeve'],
+  advantage: ['Tobin Goodbarrel', 'Lirael Fairwind', 'Aunt Ponsy'],
+  greatsword: ['Sir Brannoc', 'Kael Ironvow', 'Gruntok the Big'],
+  greataxe: ['Thrak Skullsplit', 'Bjorna Axemother', 'Grumdal'],
+  'twin-axes': ["Rok'tasha", "Zan'jibo", 'Varka Twinblade'],
+  'ability-score': ['Graybeard Gil', 'Old-School Osric', 'Ruleskeeper Wynn'],
+  'heroic-stats': ['Valen Brightsun', 'Hero-to-be Hilda', 'Aldric the Bold'],
+  'magic-missile': ['Wizzle Sparkcap', 'Apprentice Fen', 'Magister Quill'],
+  'swarm-of-daggers': ['Nyx Sevenknives', 'Slink', 'Vesper Shade'],
+  'guiding-bolt': ['Sister Lumina', 'Father Bertram', 'Anwen Dawnsong'],
+  'divine-smite': ['Sir Dawnhammer', 'Dame Brightmail', 'Brother Garrick'],
+  fireball: ['Ignatius Singed', 'Pyra Emberwake', 'Fizzwick Boom'],
+  percentile: ['Wild Mage Zorbo', 'Professor Tock', 'Madame Ninety'],
+  'sneak-attack': ['Shiv Malloy', 'Velvet Vex', 'Quickfinger Rook'],
+  'the-whole-bag': ['Hoardy Gribble', 'Collector Tully', 'Bea of the Bag'],
+  'dice-poker': ['Cardsharp Cass', 'Smokey Jax', 'Dealer Moll'],
+};
+
+/**
+ * The AI opponent's profile for a match: a name for the dice set it plays
+ * (OPPONENT_NAMES; "Opponent" for any dice), and its colours drawn from the
+ * same choices as the player's (R6.6), but never the player's dice colour, so
+ * the two sides' dice are always told apart. The name is drawn last, so the
+ * colours a seed gives are the ones it gave before there were names.
  * @param {import('./rng.js').Rng} rng  A stream of its own (`deriveSeed(seed, 'looks')`).
  * @param {Profile} player
+ * @param {string} [diceSet]  The dice set's id.
  * @returns {Profile}
  */
-export function opponentProfile(rng, player) {
+export function opponentProfile(rng, player, diceSet) {
   const dice = DICE_COLORS.filter((c) => c.id !== player.dice);
-  return {
-    name: 'Opponent',
-    card: CARD_COLORS[rng.int(CARD_COLORS.length)].id,
-    tray: TRAY_COLORS[rng.int(TRAY_COLORS.length)].id,
-    dice: dice[rng.int(dice.length)].id,
-  };
+  const card = CARD_COLORS[rng.int(CARD_COLORS.length)].id;
+  const tray = TRAY_COLORS[rng.int(TRAY_COLORS.length)].id;
+  const die = dice[rng.int(dice.length)].id;
+  const names = OPPONENT_NAMES[diceSet] ?? ['Opponent'];
+  return { name: names[rng.int(names.length)], card, tray, dice: die };
 }
 
 /**

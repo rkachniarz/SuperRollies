@@ -177,7 +177,8 @@ export function createLobby({ hud, game, profiles }) {
     const them = session.them;
     const code = session.code;
     roomStep.textContent = host ? 'Your room' : `Room ${code ?? ''}`;
-    hostOnly.hidden = !host;
+    // The code and link are for inviting someone: gone once the room is full.
+    hostOnly.hidden = !host || Boolean(them);
     roomCode.textContent = code ?? '·····';
     const url = new URL(window.location.href);
     url.search = '';
