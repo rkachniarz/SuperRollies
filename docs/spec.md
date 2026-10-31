@@ -233,7 +233,7 @@ the guest's view of it.
 |---|---|
 | Vanilla | No changes. *(D4)* |
 | Mutual Destruction | A tie costs both players a heart. |
-| Exploding Dice | A die showing its maximum rolls again and adds the result; it can chain. |
+| Exploding Dice | A die showing its maximum or a 1 rolls again and adds the result; a maximum chains (D59). |
 | Lowball | The lowest total wins. |
 | Cursed Number | Each round a number is announced; any die showing it counts as 0. |
 | Raising the Stakes | Ties carry over: the next round costs 2 hearts, then 3, and so on. |

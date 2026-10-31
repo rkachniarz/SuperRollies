@@ -2,7 +2,7 @@
 
 A dice roll-off game. Draft your dice - a single d20, 3d4, a percentile roll,
 two d12s, all the way up to a Fireball's 8d6 - then a **Spice** that bends the rules for
-the match: the lowest total wins, dice explode on their highest number, a
+the match: the lowest total wins, dice explode on their highest number and on a 1, a
 natural 20 hits twice as hard, whoever's behind throws an extra die. Or it
 bends the table: a pothole in each half, a breeze across it, a cat's paw
 swiping at the dice once they've settled, no wall down the middle. Or how

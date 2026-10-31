@@ -20,7 +20,7 @@ on the bench and by the multiplayer host; playtest pending (9.11).
 
 | Cited as | What | Where |
 |---|---|---|
-| `D1`–`D58` | Decisions and their reasons | [docs/decisions.md](docs/decisions.md) |
+| `D1`–`D59` | Decisions and their reasons | [docs/decisions.md](docs/decisions.md) |
 | `R1.1`–`R7.3`, `§1`, `§4`–`§6` | Vision, requirements, catalogue of dice sets and Spice | [docs/spec.md](docs/spec.md) |
 | `0.1`–`6b.9`, `§8` | Finished phases, task by task, with what was measured | [docs/history.md](docs/history.md) |
 | `Q1`–`Q10`, `7.x`–`10.x`, `P.x` | Open questions, work still to do | here |

@@ -124,25 +124,24 @@ const EXPLODING_DICE = {
   name: 'Exploding Dice',
   icon: '🧨',
   kind: 'rule',
-  summary: 'A die on its highest number rolls again and adds it; on a 1, rolls again and takes it off. Both chain.',
-  rules: 'Whenever a die lands on its highest number (a 6 on a d6, a 20 on a d20), it explodes: it is rolled again and the new roll is added to it. If that roll is the highest number too, it explodes again, and so on. A die that lands on a 1 explodes the other way: it is rolled again and the new roll is taken off it, and a highest number takes another off, so a total can drop below zero. The extra rolls are made by the game, the same on both screens.',
+  summary: 'A die on its highest number or on a 1 rolls again and adds it, and a highest number rolls again.',
+  rules: 'Whenever a die lands on its highest number (a 6 on a d6, a 20 on a d20), it explodes: it is rolled again and the new roll is added to it. If that roll is the highest number too, it explodes again, and so on. A die that lands on a 1 explodes too: it is rolled again and the new roll is added, chaining on the highest number the same way. The extra rolls are made by the game, the same on both screens.',
   // Percentile's tens and units aren't a total that can grow, nor is a
   // poker hand.
   eligibility: { excludeDiceSets: ['percentile', ...NOT_POKER] },
-  // A 1 explodes downwards (D58): each roll is taken off instead of added,
-  // chaining the same way, on the highest number.
+  // A 1 explodes too (D58, D59): rolled again and added, chaining on the
+  // highest number like the top face.
   values: (faces, { hand, rng }) => faces.map((face, i) => {
     const max = DIE_MAX[hand.types[i]];
     if (face !== max && face !== 1) return { value: face };
-    const down = face !== max;
     const rolls = [face];
     for (let roll = max; roll === max && rolls.length <= MAX_EXPLOSIONS;) {
       roll = 1 + rng.int(max);
       rolls.push(roll);
     }
     const extra = rolls.slice(1);
-    const value = extra.reduce((total, roll) => (down ? total - roll : total + roll), face);
-    return { value, text: `(${rolls.join(down ? '−' : '+')})`, tag: down ? 'imploded' : 'exploded', extra };
+    const value = extra.reduce((total, roll) => total + roll, face);
+    return { value, text: `(${rolls.join('+')})`, tag: 'exploded', extra };
   }),
 };
 

@@ -92,8 +92,8 @@ export const CLASHES = [
   },
   {
     a: ['lowball'],
-    b: ['underdog', 'inspiration', 'caltrops', 'doubles-again', 'crown', 'brutal-critical', 'critical-hit'],
-    why: 'Under Lowball a Spice meant to help a side would hurt it: an extra die, a bonus or an explosion upwards only (Brutal Critical) raises the total, and Caltrops would lower the other side\'s.',
+    b: ['underdog', 'inspiration', 'caltrops', 'doubles-again', 'crown', 'exploding-dice', 'brutal-critical', 'critical-hit'],
+    why: 'Under Lowball a Spice meant to help a side would hurt it: an extra die, a bonus or an explosion raises the total, and Caltrops would lower the other side\'s.',
   },
   {
     a: ['doubles-again'],

@@ -37,7 +37,7 @@ the rules make sense together and only the game doesn't handle it yet.
 | 🧨 Exploding Dice, 🪓 Brutal Critical | 🎲 Count the Sixes, 👑 Crown | An exploded 6 counts as 6 plus its rolls, so it is no longer a six, nor a die on its maximum. |
 | 🕊️ Mercy | 💀 Sudden Death, 🩸 Hit Points, 🏁 Race to N, 💪 Tug of War | Mercy needs a side two hearts behind: with one heart, or no hearts, that never happens. |
 | 💀 Sudden Death | 🐶 Underdog, 😤 Revenge, 📈 Raising the Stakes, 🎯 Critical Hit, ✨ Inspiration | The first round lost ends the match, so nobody is ever behind, or has lost the last round, and double of one heart is one. |
-| 🔻 Lowball | 🐶 Underdog, ✨ Inspiration, 📌 Caltrops, 🎲 Doubles Again, 👑 Crown, 🪓 Brutal Critical, 🎯 Critical Hit | Under Lowball a Spice meant to help a side would hurt it: an extra die, a bonus or an explosion upwards only (Brutal Critical) raises the total, and Caltrops would lower the other side's. |
+| 🔻 Lowball | 🐶 Underdog, ✨ Inspiration, 📌 Caltrops, 🎲 Doubles Again, 👑 Crown, 🧨 Exploding Dice, 🪓 Brutal Critical, 🎯 Critical Hit | Under Lowball a Spice meant to help a side would hurt it: an extra die, a bonus or an explosion raises the total, and Caltrops would lower the other side's. |
 | 🎲 Doubles Again | 🌬️ Second Wind, 🕊️ Mercy | A re-throw replays the round's first throw but not the doubles thrown after it. *Fixable.* |
 | ⚔️ No Man's Land | 🌬️ Second Wind, 🕊️ Mercy, 🎲 Doubles Again | Only one side throws again, and the other side's dice, which may lie anywhere without the divider, are not in that throw. (Fixable as Draw Poker does it: hold them where they lie.) *Fixable.* |
 | 🎲 Doubles Again | 🕳️ Pothole | A throw made again for doubles doesn't say which of its dice went down a hole. *Fixable.* |
@@ -58,8 +58,8 @@ blank: never eligible for the same dice set.
 | 1 | 💀 Sudden Death | · | w | ✓ | ✓ | ✓ | ✕ | ✓ | ✓ | w | w | w | ✕ | ✕ | ✕ | ✓ | ✓ | ✓ | ✓ | ✓ | ✕ | ✓ | ✕ | ✓ | ✓ | ✓ | ✓ | ✓ | w | ✓ | ✓ | w | ✓ | ✓ |
 | 2 | 🏃 Marathon | w | · | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | w | w | w | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | w | ✓ | ✓ | w | ✓ | ✓ |
 | 3 | 💥 Mutual Destruction | ✓ | ✓ | · | ✓ | ✓ | ✓ | ✓ | ✓ | ✕ | ✕ | ✕ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| 4 | 🔻 Lowball | ✓ | ✓ | ✓ | · | ✓ | ✓ | ✓ | ✓ | ✓ | ✕ | ✓ | ✕ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✕ | ✓ | ✕ | ✕ | v | v | ✕ | ✕ | ✓ | ✓ | ✓ | ✓ | ✕ | v |
-| 5 | 🧨 Exploding Dice | ✓ | ✓ | ✓ | ✓ | · | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | r | ✓ | ✓ | ✓ | ✓ | ✓ |   | ✕ | ✓ | ✕ |   |
+| 4 | 🔻 Lowball | ✓ | ✓ | ✓ | · | ✕ | ✓ | ✓ | ✓ | ✓ | ✕ | ✓ | ✕ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✕ | ✓ | ✕ | ✕ | v | v | ✕ | ✕ | ✓ | ✓ | ✓ | ✓ | ✕ | v |
+| 5 | 🧨 Exploding Dice | ✓ | ✓ | ✓ | ✕ | · | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | r | ✓ | ✓ | ✓ | ✓ | ✓ |   | ✕ | ✓ | ✕ |   |
 | 6 | 📈 Raising the Stakes | ✕ | ✓ | ✓ | ✓ | ✓ | · | ✓ | ✓ | ✓ | ✕ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | 7 | 👻 Cursed Number | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | · | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |   |
 | 8 | 🌬️ Second Wind | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | · | ✓ | ✓ | ✓ | ✓ | ✓ | t | ✓ | ✓ | ✓ | f | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | f | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -98,16 +98,16 @@ One largest stack per set (there are often several).
 | The Classic | 14 | 🏃 Marathon, 💥 Mutual Destruction, 🧨 Exploding Dice, 📈 Raising the Stakes, 👻 Cursed Number, 🌬️ Second Wind, 🐶 Underdog, 😤 Revenge, 🕳️ Pothole, 🐾 Cat Paw, 💨 Gusty Table, 🔁 Reroll Cocked, 🎯 Critical Hit, 🍌 Critical Fumble |
 | Advantage | 14 | 🏃 Marathon, 💥 Mutual Destruction, 🧨 Exploding Dice, 📈 Raising the Stakes, 👻 Cursed Number, 🌬️ Second Wind, 🐶 Underdog, 😤 Revenge, 🕳️ Pothole, 🐾 Cat Paw, 💨 Gusty Table, 🔁 Reroll Cocked, 🎯 Critical Hit, 🍌 Critical Fumble |
 | Greatsword | 13 | 🏃 Marathon, 💥 Mutual Destruction, 🧨 Exploding Dice, 📈 Raising the Stakes, 👻 Cursed Number, 🌬️ Second Wind, 🐶 Underdog, 😤 Revenge, 🕳️ Pothole, 🐾 Cat Paw, 💨 Gusty Table, 🔁 Reroll Cocked, 🐍 Snake Eyes / Boxcars |
-| Greataxe | 12 | 🏃 Marathon, 💥 Mutual Destruction, 🔻 Lowball, 🧨 Exploding Dice, 📈 Raising the Stakes, 👻 Cursed Number, 🌬️ Second Wind, 😤 Revenge, 🕳️ Pothole, 🐾 Cat Paw, 💨 Gusty Table, 🔁 Reroll Cocked |
-| Twin Axes | 12 | 🏃 Marathon, 💥 Mutual Destruction, 🔻 Lowball, 🧨 Exploding Dice, 📈 Raising the Stakes, 👻 Cursed Number, 🌬️ Second Wind, 😤 Revenge, 🕳️ Pothole, 🐾 Cat Paw, 💨 Gusty Table, 🔁 Reroll Cocked |
+| Greataxe | 12 | 🏃 Marathon, 💥 Mutual Destruction, 🧨 Exploding Dice, 📈 Raising the Stakes, 👻 Cursed Number, 🌬️ Second Wind, 🐶 Underdog, 😤 Revenge, 🕳️ Pothole, 🐾 Cat Paw, 💨 Gusty Table, 🔁 Reroll Cocked |
+| Twin Axes | 12 | 🏃 Marathon, 💥 Mutual Destruction, 🧨 Exploding Dice, 📈 Raising the Stakes, 👻 Cursed Number, 🌬️ Second Wind, 🐶 Underdog, 😤 Revenge, 🕳️ Pothole, 🐾 Cat Paw, 💨 Gusty Table, 🔁 Reroll Cocked |
 | Ability Score | 13 | 🏃 Marathon, 💥 Mutual Destruction, 🧨 Exploding Dice, 📈 Raising the Stakes, 👻 Cursed Number, 🌬️ Second Wind, 🐶 Underdog, 😤 Revenge, 🕳️ Pothole, 🐾 Cat Paw, 💨 Gusty Table, 🔁 Reroll Cocked, 🎰 Triples |
 | Heroic Stats | 13 | 🏃 Marathon, 💥 Mutual Destruction, 🧨 Exploding Dice, 📈 Raising the Stakes, 👻 Cursed Number, 🌬️ Second Wind, 🐶 Underdog, 😤 Revenge, 🕳️ Pothole, 🐾 Cat Paw, 💨 Gusty Table, 🔁 Reroll Cocked, 🎰 Triples |
 | Magic Missile | 13 | 🏃 Marathon, 💥 Mutual Destruction, 🧨 Exploding Dice, 📈 Raising the Stakes, 👻 Cursed Number, 🌬️ Second Wind, 🐶 Underdog, 😤 Revenge, 🕳️ Pothole, 🐾 Cat Paw, 💨 Gusty Table, 🔁 Reroll Cocked, 📌 Caltrops |
 | Swarm of Daggers | 13 | 🏃 Marathon, 💥 Mutual Destruction, 🧨 Exploding Dice, 📈 Raising the Stakes, 👻 Cursed Number, 🌬️ Second Wind, 🐶 Underdog, 😤 Revenge, 🕳️ Pothole, 🐾 Cat Paw, 💨 Gusty Table, 🔁 Reroll Cocked, 📌 Caltrops |
 | Guiding Bolt | 13 | 🏃 Marathon, 💥 Mutual Destruction, 🧨 Exploding Dice, 📈 Raising the Stakes, 👻 Cursed Number, 🌬️ Second Wind, 🐶 Underdog, 😤 Revenge, 🕳️ Pothole, 🐾 Cat Paw, 💨 Gusty Table, 🔁 Reroll Cocked, 🎰 Triples |
-| Divine Smite | 12 | 🏃 Marathon, 💥 Mutual Destruction, 🔻 Lowball, 🧨 Exploding Dice, 📈 Raising the Stakes, 👻 Cursed Number, 🌬️ Second Wind, 😤 Revenge, 🕳️ Pothole, 🐾 Cat Paw, 💨 Gusty Table, 🔁 Reroll Cocked |
-| Fireball | 12 | 🏃 Marathon, 💥 Mutual Destruction, 🔻 Lowball, 🧨 Exploding Dice, 📈 Raising the Stakes, 👻 Cursed Number, 🌬️ Second Wind, 😤 Revenge, 🕳️ Pothole, 🐾 Cat Paw, 💨 Gusty Table, 🔁 Reroll Cocked |
+| Divine Smite | 12 | 🏃 Marathon, 💥 Mutual Destruction, 🧨 Exploding Dice, 📈 Raising the Stakes, 👻 Cursed Number, 🌬️ Second Wind, 🐶 Underdog, 😤 Revenge, 🕳️ Pothole, 🐾 Cat Paw, 💨 Gusty Table, 🔁 Reroll Cocked |
+| Fireball | 12 | 🏃 Marathon, 💥 Mutual Destruction, 🔻 Lowball, 📈 Raising the Stakes, 👻 Cursed Number, 🌬️ Second Wind, 😤 Revenge, 🕳️ Pothole, 🐾 Cat Paw, 💨 Gusty Table, 🔁 Reroll Cocked, 🎲 Count the Sixes |
 | Percentile | 10 | 🏃 Marathon, 💥 Mutual Destruction, 🔻 Lowball, 📈 Raising the Stakes, 🌬️ Second Wind, 😤 Revenge, 🕳️ Pothole, 🐾 Cat Paw, 💨 Gusty Table, 🔁 Reroll Cocked |
-| Sneak Attack | 12 | 🏃 Marathon, 💥 Mutual Destruction, 🔻 Lowball, 🧨 Exploding Dice, 📈 Raising the Stakes, 👻 Cursed Number, 🌬️ Second Wind, 😤 Revenge, 🕳️ Pothole, 🐾 Cat Paw, 💨 Gusty Table, 🔁 Reroll Cocked |
-| The Whole Bag | 12 | 🏃 Marathon, 💥 Mutual Destruction, 🔻 Lowball, 🧨 Exploding Dice, 📈 Raising the Stakes, 👻 Cursed Number, 🌬️ Second Wind, 😤 Revenge, 🕳️ Pothole, 🐾 Cat Paw, 💨 Gusty Table, 🔁 Reroll Cocked |
+| Sneak Attack | 12 | 🏃 Marathon, 💥 Mutual Destruction, 🧨 Exploding Dice, 📈 Raising the Stakes, 👻 Cursed Number, 🌬️ Second Wind, 🐶 Underdog, 😤 Revenge, 🕳️ Pothole, 🐾 Cat Paw, 💨 Gusty Table, 🔁 Reroll Cocked |
+| The Whole Bag | 12 | 🏃 Marathon, 💥 Mutual Destruction, 🧨 Exploding Dice, 📈 Raising the Stakes, 👻 Cursed Number, 🌬️ Second Wind, 🐶 Underdog, 😤 Revenge, 🕳️ Pothole, 🐾 Cat Paw, 💨 Gusty Table, 🔁 Reroll Cocked |
 | Dice Poker | 11 | 🏃 Marathon, 💥 Mutual Destruction, 🔻 Lowball, 📈 Raising the Stakes, 👻 Cursed Number, 🌬️ Second Wind, 😤 Revenge, 🕳️ Pothole, 🐾 Cat Paw, 💨 Gusty Table, 🔁 Reroll Cocked |

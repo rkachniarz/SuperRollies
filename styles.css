@@ -1001,8 +1001,6 @@
   #result .dropped{ opacity:0.45; text-decoration:line-through; }
   /* A die a Spice changed: one that exploded, one that was cursed to 0. */
   #result .exploded{ color:var(--player-accent); font-weight:700; }
-  /* One that exploded downwards, from a 1 (Exploding Dice, D58). */
-  #result .imploded{ color:#ff8a9d; font-weight:700; }
   #result .cursed{ color:#ff5470; text-decoration:line-through; }
   #result .fallen{ color:#ff8a9d; font-style:italic; }
   /* A die lost for the rest of the match (Burnout). */

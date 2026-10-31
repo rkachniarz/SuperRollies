@@ -142,26 +142,26 @@ describe('a Spice stack played (D51)', () => {
   });
 });
 
-describe('Exploding Dice both ways (D58)', () => {
-  test('a 1 explodes downwards: each roll taken off, chaining on the highest number', () => {
+describe('Exploding Dice on a 1 too (D58, D59)', () => {
+  test('a 1 rolls again and adds it, chaining on the highest number', () => {
     const seen = new Set();
     for (let seed = 1; seed < 400; seed++) {
       const r = stack('greatsword', ['exploding-dice'], seed);
       let state = startMatch(r);
       ({ state } = beginRound(r, state));
       const { outcome } = playRound(r, state, { player: [1, 3], opponent: [6, 2] });
-      const [down] = outcome.dice.player;
-      assert.equal(down.tag, 'imploded');
-      assert.equal(outcome.values.player[0], 1 - down.extra.reduce((a, b) => a + b, 0));
-      assert.ok(down.extra.slice(0, -1).every((roll) => roll === 6), 'chains only on a 6');
+      const [one] = outcome.dice.player;
+      assert.equal(one.tag, 'exploded');
+      assert.equal(outcome.values.player[0], 1 + one.extra.reduce((a, b) => a + b, 0));
+      assert.ok(one.extra.slice(0, -1).every((roll) => roll === 6), 'chains only on a 6');
       assert.equal(outcome.dice.opponent[0].tag, 'exploded');
-      seen.add(down.extra.length);
+      seen.add(one.extra.length);
     }
-    assert.ok(seen.has(2), 'a chain downwards turns up');
+    assert.ok(seen.has(2), 'a chain from a 1 turns up');
   });
 
-  test('so it stacks with Lowball now; Brutal Critical, upwards only, still does not', () => {
-    assert.equal(clashOf('lowball', 'exploding-dice'), null);
+  test('an explosion only ever raises a total, so it clashes with Lowball', () => {
+    assert.ok(clashOf('lowball', 'exploding-dice'));
     assert.ok(clashOf('lowball', 'brutal-critical'));
   });
 });
